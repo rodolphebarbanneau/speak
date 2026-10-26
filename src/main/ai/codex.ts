@@ -75,7 +75,7 @@ export async function codexModels(): Promise<AgentModel[]> {
 
 export async function codexComplete(system: string, user: string, cfg: AgentConfig, opts: { timeoutMs: number; signal?: AbortSignal }): Promise<Completion> {
   const path = cliPath(cfg)
-  if (!path) throw new Error('Codex not found. Install it or pick another provider in Speak → ai.')
+  if (!path) throw new Error('Codex not found. Install it or pick another provider in Speak → settings → ai.')
   const instructions = await promptFile('codex-system', system)
   const out = join(paths.tmp, `codex-out-${process.pid}-${Date.now()}.txt`)
   // Text only: our instructions replace the coding-agent prompt; no user config (MCP servers,

@@ -24,7 +24,7 @@ import { createOverlay, createPreview, showMain } from './windows'
  *   --hidden                                  start in the tray (used by launch-at-login)
  *   --file=<audio.wav>                        run the pipeline on a WAV file (debugging)
  */
-function handleArgs(argv: string[], firstRun: boolean): void {
+function handleArgs(argv: string[]): void {
   const has = (flag: string) => argv.includes(flag)
   // Chromium reorders forwarded arguments, so values must use the --flag=value form.
   const file = argv.find((a) => a.startsWith('--file='))?.slice('--file='.length)
@@ -38,13 +38,13 @@ function handleArgs(argv: string[], firstRun: boolean): void {
     } catch (err) {
       log.error('Could not read --file:', err)
     }
-  } else if (has('--show') || (!firstRun && !has('--hidden'))) showMain('history')
+  } else if (!has('--hidden')) showMain('history')
 }
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', (_e, argv) => handleArgs(argv, false))
+  app.on('second-instance', (_e, argv) => handleArgs(argv))
   // Windows takes the taskbar icon from the Start menu shortcut registered for this ID (Electron
   // writes one on the first notification). Dev runs (electron.exe) get their own ID so they never
   // share the installed app's shortcut, icon or pinning.
@@ -89,8 +89,7 @@ if (!app.requestSingleInstanceLock()) {
     void history.prune()
     setInterval(() => void history.prune(), 6 * 3600_000).unref()
 
-    if (!config.onboarded) showMain('general')
-    handleArgs(process.argv, !config.onboarded)
+    handleArgs(process.argv)
   })
 
   app.on('will-quit', () => {
@@ -101,5 +100,6 @@ if (!app.requestSingleInstanceLock()) {
 
 function applyShortcuts(config: Config): void {
   const error = hotkeys.apply(config.shortcuts.record, config.shortcuts.cancel)
-  if (error && Notification.isSupported()) new Notification({ title: 'Speak shortcut unavailable', body: `${error} Change it in Speak → general.` }).show()
+  if (error && Notification.isSupported())
+    new Notification({ title: 'Speak shortcut unavailable', body: `${error} Change it in Speak → settings → general.` }).show()
 }

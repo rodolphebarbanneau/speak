@@ -215,11 +215,11 @@ class Engine {
     const cfg = configStore.get().transcription
     const engine = cfg.engine
     const def = MODELS.find((m) => m.id === (engine === 'whisper' ? cfg.whisperModel : cfg.parakeetModel))
-    if (!def) throw new Error('No speech model selected. Choose one in Speak → speech.')
+    if (!def) throw new Error('No speech model selected. Choose one in Speak → settings → speech.')
     const model = this.modelPath(def)
-    if (!existsSync(model)) throw new Error(`The speech model "${def.label}" is not downloaded. Download it in Speak → speech.`)
+    if (!existsSync(model)) throw new Error(`The speech model "${def.label}" is not downloaded. Download it in Speak → settings → speech.`)
     const bin = await this.locateBinary()
-    if (!bin) throw new Error('The transcription engine (whisper.cpp) is not installed. Install it in Speak → speech.')
+    if (!bin) throw new Error('The transcription engine (whisper.cpp) is not installed. Install it in Speak → settings → speech.')
     if (engine === 'parakeet' && !existsSync(join(bin.dir, PARAKEET)))
       throw new Error('This whisper.cpp build has no parakeet-cli. Use Whisper or update the engine.')
     return { engine, def, model, bin }

@@ -71,8 +71,8 @@ function buildMenu(phase: Phase): Menu {
     },
     { type: 'separator' },
     { label: 'Copy last result', enabled: !!controller.lastResult(), click: () => void copyToClipboard(controller.lastResult()) },
-    { label: 'History…', click: () => showMain('history') },
-    { label: 'Settings…', click: () => showMain('general') },
+    { label: 'History', click: () => showMain('history') },
+    { label: 'Settings', click: () => showMain('general') },
     { label: 'Open data folder', click: () => void shell.openPath(paths.home) },
     { type: 'separator' },
     { label: 'Quit Speak', click: () => app.quit() }

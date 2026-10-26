@@ -63,7 +63,7 @@ export function aiConfigured(): boolean {
 
 async function complete(system: string, user: string, signal?: AbortSignal): Promise<AiResult> {
   const ai = configStore.get().ai
-  if (ai.provider === 'none') throw new Error('AI processing is off. Pick Claude Code or Codex in Speak → ai, or use the verbatim style.')
+  if (ai.provider === 'none') throw new Error('AI processing is off. Pick Claude Code or Codex in Speak → settings → ai, or use the verbatim style.')
   const agent = AGENTS[ai.provider]
   const started = Date.now()
   const result = await agent.complete(system, user, agent.config(), { timeoutMs: Math.max(10, ai.timeoutSeconds) * 1000, signal })

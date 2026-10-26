@@ -378,6 +378,9 @@ textarea:focus {
   font-weight: 700;
 }
 .titlebar .right {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
   -webkit-app-region: no-drag;
 }
 html:not(.focused) .titlebar-area,
@@ -678,21 +681,6 @@ section + section {
   background: var(--sel);
   border-left-color: var(--accent);
 }
-.nav .spacer {
-  flex: 1;
-}
-.nav .dictate {
-  display: flex;
-  flex-direction: column;
-  padding: 0 var(--s2);
-}
-.nav .dictate .key {
-  padding: 3px 6px;
-}
-.nav .dictate .dim {
-  padding: 0 6px;
-  font-size: 12px;
-}
 .page {
   flex: 1;
   min-width: 0;
@@ -783,7 +771,8 @@ section + section {
   padding: var(--s3) var(--edge);
   color: var(--dim);
 }
-.empty .acc {
+.empty .acc,
+.empty .setup {
   display: block;
   margin-top: var(--s1);
 }

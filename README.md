@@ -57,7 +57,7 @@ Speak runs the **user's own, unmodified CLI** non-interactively. The transcript 
 | **Claude Code** | `haiku`, effort medium      | `claude -p --model haiku --effort medium --system-prompt-file … --tools "" --setting-sources "" --strict-mcp-config --disable-slash-commands --no-session-persistence --output-format json`   |
 | **Codex**       | `gpt-6-luna`, effort medium | `codex exec -m gpt-6-luna -c model_reasoning_effort="medium" -c model_instructions_file="…" --ignore-user-config --ignore-rules --sandbox read-only --ephemeral --skip-git-repo-check -o … -` |
 
-Both run without tools, plugins, MCP servers or project settings, and with Speak's instructions in place of the coding-agent prompt. Cheap, fast models are the default because dictation cleanup doesn't need a frontier model; pick another model or effort in **ai**. Codex's model list comes from its own catalog (`~/.codex/models_cache.json`).
+Both run without tools, plugins, MCP servers or project settings, and with Speak's instructions in place of the coding-agent prompt. Cheap, fast models are the default because dictation cleanup doesn't need a frontier model; pick another model or effort in **settings → ai**. Codex's model list comes from its own catalog (`~/.codex/models_cache.json`).
 
 ## Platform notes
 
@@ -71,11 +71,11 @@ When auto-paste isn't possible, the text is left on the clipboard and a notifica
 
 **First launch on macOS**: release builds without an Apple certificate are ad-hoc signed, so macOS asks once before opening Speak. Control-click Speak in Applications and choose **Open**, or allow it in **System Settings → Privacy & Security**.
 
-**"No signal from …"**: the microphone sends pure silence. Usually the system default input is a virtual device (Voicemod, Voicemeeter…) that isn't routing audio. Pick your microphone in **general → input** and use **[ test ]** (live meter + playback), or change the default input in your system sound settings.
+**"No signal from …"**: the microphone sends pure silence. Usually the system default input is a virtual device (Voicemod, Voicemeeter…) that isn't routing audio. Pick your microphone in **settings → general → input** and use **[ test ]** (live meter + playback), or change the default input in your system sound settings.
 
 ## Updates
 
-Speak checks this repository's GitHub releases at startup and every 4 hours. With **about → updates → automatic** on (the default), new versions download in the background and install when Speak quits; the tray menu and **[ restart & update ]** install right away. Turn it off to choose when to download and install, from the same section.
+Speak checks this repository's GitHub releases at startup and every 4 hours. With **settings → about → updates → automatic** on (the default), new versions download in the background and install when Speak quits; the tray menu and **[ restart & update ]** install right away. Turn it off to choose when to download and install, from the same section.
 
 Updates work with the Windows installer, the AppImage and the .deb (which asks for your password). On macOS they need a signed build; unsigned builds point you to the releases page.
 

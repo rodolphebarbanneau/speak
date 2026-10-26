@@ -58,7 +58,7 @@ export function claudeLogin(cfg: AgentConfig): Promise<void> {
 
 export async function claudeComplete(system: string, user: string, cfg: AgentConfig, opts: { timeoutMs: number; signal?: AbortSignal }): Promise<Completion> {
   const path = cliPath(cfg)
-  if (!path) throw new Error('Claude Code not found. Install it or pick another provider in Speak → ai.')
+  if (!path) throw new Error('Claude Code not found. Install it or pick another provider in Speak → settings → ai.')
   // Text only: no tools, no MCP servers, no user/project settings or CLAUDE.md, no saved session.
   const args = [
     '-p',

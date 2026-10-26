@@ -24,7 +24,7 @@ const SILENT_PEAK = 1e-4
 
 function noSignalMessage(device: string): string {
   const name = device ? `"${device}"` : 'The microphone'
-  return `No signal from ${name}. Pick your microphone in Speak → general → input.`
+  return `No signal from ${name}. Pick your microphone in Speak → settings → general → input.`
 }
 
 /** Orchestrates: record → transcribe → AI → preview dialog or direct paste. */
@@ -260,7 +260,7 @@ class Controller extends EventEmitter {
 
       if (needsAi(session.style, session.outputLanguage)) {
         if (!aiConfigured()) {
-          session.error = 'AI processing is off (Speak → ai). Showing the raw transcript.'
+          session.error = 'AI processing is off (Speak → settings → ai). Showing the raw transcript.'
         } else {
           this.setPhase('processing')
           this.overlayState({ phase: 'processing', purpose })

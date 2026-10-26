@@ -179,7 +179,8 @@ function Detail({ session, onChanged }: { session: Session; onChanged: (s: Sessi
   )
 }
 
-export function History({ config }: { config: Config }) {
+/** `onSetup` opens settings → general, where a new install finishes its setup. */
+export function History({ config, onSetup }: { config: Config; onSetup: () => void }) {
   const [sessions, setSessions] = useState<Session[]>([])
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -200,11 +201,18 @@ export function History({ config }: { config: Config }) {
           <input placeholder="search" value={query} onChange={(e) => setQuery(e.target.value)} />
         </label>
         <div className="history-items">
-          {!config.history.enabled && <p className="empty">history is off · general → keep history</p>}
+          {!config.history.enabled && <p className="empty">history is off · settings → general → keep history</p>}
           {sessions.length === 0 && (
             <p className="empty">
               {query ? 'no match' : 'no dictations yet'}
-              {!query && <span className="acc">{displayShortcut(config.shortcuts.record)} anywhere to start</span>}
+              {!query &&
+                (config.onboarded ? (
+                  <span className="acc">{displayShortcut(config.shortcuts.record)} anywhere to start</span>
+                ) : (
+                  <span className="setup">
+                    first, <Action onClick={onSetup}>set up speak</Action>
+                  </span>
+                ))}
             </p>
           )}
           {sessions.map((s) => (
