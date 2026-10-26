@@ -126,13 +126,21 @@ class Engine {
         hasParakeet: !!bin && existsSync(join(bin.dir, PARAKEET))
       },
       binaryOptions: options,
-      recommendedVariant: options.length ? (gpu.nvidia && options.some((o) => o.variant === 'cuda12') ? 'cuda12' : 'cpu') : undefined,
+      recommendedVariant: await this.recommendedVariant(),
       platformNote,
       gpu,
       models: MODELS.map((m) => ({ ...m, installed: existsSync(this.modelPath(m)) })),
       vadInstalled: existsSync(this.vadPath()),
       serverRunning: !!this.server
     }
+  }
+
+  /** The build to install on this machine: CUDA 12 with an NVIDIA GPU, else the CPU build. */
+  async recommendedVariant(): Promise<BinaryVariant | undefined> {
+    const options = binaryOptions()
+    if (!options.length) return undefined
+    if ((await this.detectGpu()).nvidia && options.some((o) => o.variant === 'cuda12')) return 'cuda12'
+    return options.find((o) => o.variant === 'cpu')?.variant ?? options[0].variant
   }
 
   async installBinary(variant: BinaryVariant): Promise<void> {
@@ -171,13 +179,22 @@ class Engine {
     }
   }
 
+  /**
+   * Install a model (if missing). A model is useless without the engine, so when none is installed (and
+   * there's a build to download for this platform) the recommended one installs alongside.
+   */
   async installModel(id: string): Promise<void> {
     const def = MODELS.find((m) => m.id === id)
     if (!def) throw new Error(`Unknown model ${id}`)
     const dest = this.modelPath(def)
-    await mkdir(dirname(dest), { recursive: true })
-    if (def.engine === 'whisper') await this.ensureVad().catch((err) => log.warn('VAD model download failed:', err))
-    await downloads.fetch(`model:${id}`, def.label, def.url, dest)
+    const variant = (await this.locateBinary()) || downloads.isActive('binary') ? undefined : await this.recommendedVariant()
+    const engine = variant ? this.installBinary(variant) : Promise.resolve()
+    const model = (async () => {
+      await mkdir(dirname(dest), { recursive: true })
+      if (def.engine === 'whisper') await this.ensureVad().catch((err) => log.warn('VAD model download failed:', err))
+      if (!existsSync(dest)) await downloads.fetch(`model:${id}`, def.label, def.url, dest)
+    })()
+    await Promise.all([engine, model])
   }
 
   async deleteModel(id: string): Promise<void> {
@@ -198,11 +215,11 @@ class Engine {
     const cfg = configStore.get().transcription
     const engine = cfg.engine
     const def = MODELS.find((m) => m.id === (engine === 'whisper' ? cfg.whisperModel : cfg.parakeetModel))
-    if (!def) throw new Error('No transcription model selected. Open Settings → Transcription.')
+    if (!def) throw new Error('No speech model selected. Choose one in Speak → speech.')
     const model = this.modelPath(def)
-    if (!existsSync(model)) throw new Error(`Model "${def.label}" is not downloaded. Open Settings → Transcription.`)
+    if (!existsSync(model)) throw new Error(`The speech model "${def.label}" is not downloaded. Download it in Speak → speech.`)
     const bin = await this.locateBinary()
-    if (!bin) throw new Error('Transcription engine (whisper.cpp) is not installed. Open Settings → Transcription.')
+    if (!bin) throw new Error('The transcription engine (whisper.cpp) is not installed. Install it in Speak → speech.')
     if (engine === 'parakeet' && !existsSync(join(bin.dir, PARAKEET)))
       throw new Error('This whisper.cpp build has no parakeet-cli. Use Whisper or update the engine.')
     return { engine, def, model, bin }

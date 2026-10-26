@@ -260,7 +260,7 @@ class Controller extends EventEmitter {
 
       if (needsAi(session.style, session.outputLanguage)) {
         if (!aiConfigured()) {
-          session.error = 'AI processing is off (Settings → AI). Showing the raw transcript.'
+          session.error = 'AI processing is off (Speak → ai). Showing the raw transcript.'
         } else {
           this.setPhase('processing')
           this.overlayState({ phase: 'processing', purpose })

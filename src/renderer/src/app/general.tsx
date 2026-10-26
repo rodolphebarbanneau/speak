@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { LANGUAGES, STYLES } from '@shared/constants'
 import type { AgentStatus, Config, DeepPartial, EngineStatus, MainSection, PasteKeys, PermissionStatus, RecordMode, Style } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
-import { Action, Check, displayShortcut, List, ListRow, Row, Sep, ShortcutInput, TextInput } from '../components/ui'
+import { Action, Bar, Check, displayShortcut, List, ListRow, Row, Sep, ShortcutInput, TextInput } from '../components/ui'
+import { ipcError, sizeMB } from '../lib/format'
 import type { TestVerdict } from '../lib/microphone'
+import { useDownloads } from './hooks'
 import { InputSettings } from './input-settings'
 
 const api = window.speak
@@ -22,6 +24,8 @@ const styleOptions = STYLES.map((s) => ({ value: s.id, label: s.label.toLowerCas
 function Setup({ config, update, onNavigate, micVerdict }: Props & { micVerdict: TestVerdict | null }) {
   const [engine, setEngine] = useState<EngineStatus | null>(null)
   const [agent, setAgent] = useState<AgentStatus | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const downloads = useDownloads()
   useEffect(() => {
     void api.getEngineStatus().then(setEngine)
     if (config.ai.provider !== 'none') void api.getAgentStatus(config.ai.provider).then(setAgent)
@@ -31,42 +35,62 @@ function Setup({ config, update, onNavigate, micVerdict }: Props & { micVerdict:
   }, [config.ai.provider])
 
   const modelId = config.transcription.engine === 'whisper' ? config.transcription.whisperModel : config.transcription.parakeetModel
+  const model = engine?.models.find((m) => m.id === modelId)
+  const engineOk = !!engine?.binary.found
+  const build = engine?.binaryOptions.find((o) => o.variant === engine.recommendedVariant)
+
+  // Speech recognition = the engine + the selected model: one step, installed together.
+  const pending = ['binary', 'model:vad', `model:${modelId}`].map((id) => downloads[id]).filter((d) => d && d.state !== 'error')
+  const received = pending.reduce((n, d) => n + d.received, 0)
+  const total = pending.reduce((n, d) => n + d.total, 0)
+  const extracting = pending.some((d) => d.state === 'extracting')
+  const installSize = (engineOk ? 0 : (build?.sizeMB ?? 0)) + (model?.installed ? 0 : (model?.sizeMB ?? 0))
+  const installSpeech = () => {
+    setError(null)
+    api
+      .installModel(modelId)
+      .catch((e: Error) => !/cancel/i.test(e.message) && setError(ipcError(e)))
+      .finally(() => void api.getEngineStatus().then(setEngine))
+  }
+
   const aiOk = config.ai.provider === 'none' || !!agent?.loggedIn
   const steps = [
-    { ok: micVerdict === 'ok', label: 'microphone', meta: 'test your input', hint: 'the default device may be a silent virtual one', go: 'input' as const },
-    { ok: !!engine?.binary.found, label: 'transcription engine', meta: 'whisper.cpp', hint: 'speech recognition, runs locally', go: 'transcription' as const },
     {
-      ok: !!engine?.models.find((m) => m.id === modelId)?.installed,
-      label: 'speech model',
-      meta: 'whisper turbo',
-      hint: 'whisper large-v3-turbo q8 recommended',
-      go: 'transcription' as const
+      ok: micVerdict === 'ok',
+      label: 'microphone',
+      meta: 'test your input',
+      hint: 'the default device may be a silent virtual one',
+      action: <Action onClick={() => document.getElementById('input-settings')?.scrollIntoView({ behavior: 'smooth' })}>test</Action>
     },
-    { ok: aiOk, label: 'ai provider', meta: 'claude code or codex', hint: 'cleanup & translation, with your own claude code or codex login', go: 'ai' as const }
+    {
+      ok: engineOk && !!model?.installed,
+      label: 'speech recognition',
+      meta: pending.length ? <Bar value={received} total={total} label={extracting ? 'installing the engine…' : undefined} /> : sizeMB(installSize),
+      hint: `whisper.cpp${engine?.binary.found ? '' : build ? ` (${build.label.toLowerCase()})` : ''} + ${model?.label.toLowerCase() ?? 'a speech model'}, running on this computer`,
+      // Without a downloadable engine build (e.g. macOS dev runs), the speech page explains the options.
+      action: pending.length ? null : engineOk || build ? (
+        <Action onClick={installSpeech}>install</Action>
+      ) : (
+        <Action onClick={() => onNavigate('transcription')}>set up</Action>
+      )
+    },
+    {
+      ok: aiOk,
+      label: 'ai provider',
+      meta: 'claude code or codex',
+      hint: 'cleanup & translation, with your own claude code or codex login',
+      action: <Action onClick={() => onNavigate('ai')}>set up</Action>
+    }
   ]
   const done = steps.every((s) => s.ok)
 
   return (
     <section>
       <Sep tail={<Action onClick={() => update({ onboarded: true })}>{done ? 'done' : 'hide'}</Action>}>setup</Sep>
+      {error && <p className="line error">✗ {error}</p>}
       <List>
         {steps.map((s) => (
-          <ListRow
-            key={s.label}
-            hint={s.hint}
-            meta={!s.ok && s.meta}
-            actions={
-              s.ok ? (
-                <span className="green">ready</span>
-              ) : (
-                <Action
-                  onClick={() => (s.go === 'input' ? document.getElementById('input-settings')?.scrollIntoView({ behavior: 'smooth' }) : onNavigate(s.go))}
-                >
-                  {s.go === 'input' ? 'test' : 'set up'}
-                </Action>
-              )
-            }
-          >
+          <ListRow key={s.label} hint={s.hint} meta={!s.ok && s.meta} actions={s.ok ? <span className="green">ready</span> : s.action}>
             <span className={s.ok ? 'acc' : 'muted'}>[{s.ok ? 'x' : ' '}]</span> {s.label}
           </ListRow>
         ))}

@@ -101,5 +101,5 @@ if (!app.requestSingleInstanceLock()) {
 
 function applyShortcuts(config: Config): void {
   const error = hotkeys.apply(config.shortcuts.record, config.shortcuts.cancel)
-  if (error && Notification.isSupported()) new Notification({ title: 'Speak shortcut unavailable', body: `${error} Change it in Settings.` }).show()
+  if (error && Notification.isSupported()) new Notification({ title: 'Speak shortcut unavailable', body: `${error} Change it in Speak → general.` }).show()
 }

@@ -2,12 +2,10 @@ import { useState } from 'react'
 import type { BinaryVariant, Config, DeepPartial, EngineId } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
 import { Action, Bar, Check, List, ListRow, Radio, Row, Sep, TextInput } from '../components/ui'
+import { ipcError, sizeMB } from '../lib/format'
 import { useDownloads, useEngineStatus } from './hooks'
 
 const api = window.speak
-
-const size = (mb: number) => (mb >= 1000 ? `${(mb / 1000).toFixed(1)} GB` : `${mb} MB`)
-const cleanError = (e: Error) => e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
 export function Transcription({ config, update }: { config: Config; update: (patch: DeepPartial<Config>) => Promise<void> }) {
   const [status, refresh] = useEngineStatus()
@@ -23,7 +21,7 @@ export function Transcription({ config, update }: { config: Config; update: (pat
   const binDl = downloads['binary']
   const run = (p: Promise<unknown>) => {
     setError(null)
-    p.catch((e: Error) => !/cancel/i.test(e.message) && setError(cleanError(e))).finally(refresh)
+    p.catch((e: Error) => !/cancel/i.test(e.message) && setError(ipcError(e))).finally(refresh)
   }
   const selectModel = (engine: EngineId, id: string) =>
     update({ transcription: engine === 'whisper' ? { whisperModel: id, engine } : { parakeetModel: id, engine } })
@@ -55,7 +53,7 @@ export function Transcription({ config, update }: { config: Config; update: (pat
         {status.binaryOptions.length > 0 && (
           <Row
             label="build"
-            hint={chosenOption ? `${chosenOption.label.toLowerCase()} · ${size(chosenOption.sizeMB)} download` : undefined}
+            hint={chosenOption ? `${chosenOption.label.toLowerCase()} · ${sizeMB(chosenOption.sizeMB)} download` : undefined}
             actions={
               binDl ? (
                 binDl.state === 'running' && <Action onClick={() => api.cancelDownload('binary')}>cancel</Action>
@@ -113,7 +111,7 @@ export function Transcription({ config, update }: { config: Config; update: (pat
                   key={m.id}
                   selected={on}
                   hint={m.note?.toLowerCase()}
-                  meta={dl ? <Bar value={dl.received} total={dl.total} /> : size(m.sizeMB)}
+                  meta={dl ? <Bar value={dl.received} total={dl.total} /> : sizeMB(m.sizeMB)}
                   actions={
                     dl ? (
                       <Action onClick={() => api.cancelDownload(`model:${m.id}`)}>cancel</Action>
