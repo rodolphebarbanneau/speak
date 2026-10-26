@@ -69,6 +69,8 @@ Both run without tools, plugins, MCP servers or project settings, and with Speak
 
 When auto-paste isn't possible, the text is left on the clipboard and a notification tells you to paste.
 
+**First launch on macOS**: release builds without an Apple certificate are ad-hoc signed, so macOS asks once before opening Speak. Control-click Speak in Applications and choose **Open**, or allow it in **System Settings → Privacy & Security**.
+
 **"No signal from …"**: the microphone sends pure silence. Usually the system default input is a virtual device (Voicemod, Voicemeeter…) that isn't routing audio. Pick your microphone in **general → input** and use **[ test ]** (live meter + playback), or change the default input in your system sound settings.
 
 ## Updates

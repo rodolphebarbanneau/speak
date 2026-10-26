@@ -16,9 +16,9 @@ jobs:
         os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -37,7 +37,18 @@ jobs:
         run: npm run build
 
       - name: Package & publish (draft release)
-        run: npx electron-builder --publish always
+        shell: bash
+        # Secrets that aren't configured arrive as empty strings, and electron-builder reads an
+        # empty CSC_LINK as a certificate path: unset them. Without a certificate, macOS builds
+        # are signed ad-hoc: Apple Silicon Macs then open them after the "unidentified developer"
+        # prompt, instead of reporting an unsigned app as damaged.
+        run: |
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            [ -n "${!v}" ] || unset "$v"
+          done
+          args=()
+          if [ "$RUNNER_OS" = macOS ] && [ -z "${CSC_LINK:-}" ]; then args+=(-c.mac.identity=-); fi
+          npx electron-builder --publish always "${args[@]}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Optional code signing — set these secrets to sign/notarize:
