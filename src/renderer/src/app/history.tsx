@@ -147,6 +147,13 @@ function Detail({ session, onChanged }: { session: Session; onChanged: (s: Sessi
         <p className="block-text dim selectable">{t.text}</p>
       </section>
 
+      {session.context && (
+        <section>
+          <Sep tail={<Action onClick={() => api.copyText(session.context!)}>copy</Action>}>selected text</Sep>
+          <p className="block-text dim selectable">{session.context}</p>
+        </section>
+      )}
+
       <section>
         <Sep>re-process</Sep>
         <Row label="style">

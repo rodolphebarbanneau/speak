@@ -7,10 +7,11 @@ import { aiConfigured, editText, processTranscript } from './ai'
 import { cleanTranscript, encodeWav, prepareAudio } from './audio'
 import { configStore } from './config'
 import { history, newSessionId } from './history'
-import { hotkeys } from './hotkeys'
+import { hotkeys, type RecordAction } from './hotkeys'
 import { log } from './log'
 import { captureFocus, restoreFocus, type FocusTarget } from './platform/focus'
 import { copyToClipboard, pasteText } from './platform/paste'
+import { readSelection } from './platform/selection'
 import { engine } from './stt/engine'
 import { PARAKEET_LANGUAGES } from './stt/catalog'
 import { isMac } from './util'
@@ -31,6 +32,10 @@ function noSignalMessage(device: string): string {
 class Controller extends EventEmitter {
   phase: Phase = 'idle'
   private purpose: Purpose = 'dictation'
+  /** The dictation is a brief to compose from (compose shortcut), not text to clean up. */
+  private compose = false
+  /** Compose: the selection read from the target app, pending while transcription runs. */
+  private selection: Promise<string> | null = null
   private target: FocusTarget | null = null
   private recordStartedAt = 0
   private maxTimer: NodeJS.Timeout | null = null
@@ -55,8 +60,8 @@ class Controller extends EventEmitter {
 
   // ---------------------------------------------------------------- hotkeys
 
-  onShortcutPress(): void {
-    if (this.phase === 'idle') void this.startRecording(previewVisible() && this.current ? 'edit' : 'dictation')
+  onShortcutPress(action: RecordAction = 'dictate'): void {
+    if (this.phase === 'idle') void this.startRecording(previewVisible() && this.current ? 'edit' : 'dictation', action === 'compose')
     else if (this.phase === 'recording') void this.stopRecording()
     else this.flash({ phase: 'info', message: 'Still working on the previous dictation…' })
   }
@@ -67,11 +72,16 @@ class Controller extends EventEmitter {
     if (mode === 'hold' || (mode === 'hybrid' && heldMs > 400)) void this.stopRecording()
   }
 
-  toggle(): void {
-    this.onShortcutPress()
+  toggle(action: RecordAction = 'dictate'): void {
+    this.onShortcutPress(action)
   }
 
   // ---------------------------------------------------------------- overlay
+
+  /** What the overlay calls the current recording. */
+  private get overlayPurpose(): OverlayState['purpose'] {
+    return this.compose ? 'compose' : this.purpose
+  }
 
   private setPhase(phase: Phase): void {
     this.phase = phase
@@ -108,7 +118,7 @@ class Controller extends EventEmitter {
 
   // ---------------------------------------------------------------- recording
 
-  async startRecording(purpose: Purpose): Promise<void> {
+  async startRecording(purpose: Purpose, compose = false): Promise<void> {
     if (this.phase !== 'idle' || !overlay) return
     const cfg = configStore.get()
     if (isMac && systemPreferences.getMediaAccessStatus('microphone') !== 'granted') {
@@ -116,10 +126,12 @@ class Controller extends EventEmitter {
       if (!granted) return this.fail('Microphone access denied. Allow Speak in System Settings → Privacy & Security → Microphone.')
     }
     this.purpose = purpose
+    this.compose = purpose === 'dictation' && compose
+    this.selection = null
     this.setPhase('recording')
     if (purpose === 'dictation') this.target = await captureFocus()
     this.recordStartedAt = Date.now()
-    this.overlayState({ phase: 'recording', purpose, startedAt: this.recordStartedAt })
+    this.overlayState({ phase: 'recording', purpose: this.overlayPurpose, startedAt: this.recordStartedAt })
     if (purpose === 'edit') this.updatePreviewBusy('listening')
     engine.warmup()
 
@@ -165,8 +177,11 @@ class Controller extends EventEmitter {
     if (this.phase !== 'recording' || !overlay) return
     if (this.maxTimer) clearTimeout(this.maxTimer)
     this.setPhase('transcribing')
-    this.overlayState({ phase: 'transcribing', purpose: this.purpose })
+    this.overlayState({ phase: 'transcribing', purpose: this.overlayPurpose })
     if (this.purpose === 'edit') this.updatePreviewBusy('transcribing')
+    // Compose: copy the selection now that the shortcut is (being) released and the target app
+    // still has focus. It runs alongside transcription.
+    if (this.compose && configStore.get().compose.useSelection && this.target) this.selection = readSelection()
     const reqId = ++this.recorderReq
     const result = await new Promise<{ samples: Float32Array | null; error?: string }>((resolve) => {
       this.pendingResult = resolve
@@ -212,6 +227,9 @@ class Controller extends EventEmitter {
     const abort = new AbortController()
     this.abort = abort
     const purpose = this.purpose
+    const compose = this.compose
+    const selection = this.selection
+    this.selection = null
     try {
       const prepared = prepareAudio(raw)
       log.info(`Audio: ${(prepared.durationMs / 1000).toFixed(1)}s, peak ${prepared.peak.toFixed(4)}, speech ${(prepared.speechMs / 1000).toFixed(1)}s`)
@@ -248,10 +266,15 @@ class Controller extends EventEmitter {
         durationMs: Math.round(prepared.durationMs),
         hasAudio: cfg.history.keepAudio,
         transcription: { engine: t.engine, model: t.model, language, ms: t.ms, text: transcript },
-        style: cfg.style,
+        style: compose ? 'compose' : cfg.style,
         outputLanguage: cfg.language.output,
         versions: [],
         text: transcript
+      }
+      const context = selection ? await selection : ''
+      if (context) {
+        session.context = context
+        log.info(`Composing with ${context.length} characters of selected text`)
       }
       if (t.engine === 'parakeet' && language !== 'auto' && !PARAKEET_LANGUAGES.has(language)) {
         log.warn(`Parakeet does not support "${language}"`)
@@ -260,15 +283,16 @@ class Controller extends EventEmitter {
 
       if (needsAi(session.style, session.outputLanguage)) {
         if (!aiConfigured()) {
-          session.error = 'AI processing is off (Speak → settings → ai). Showing the raw transcript.'
+          session.error = `${compose ? 'Compose needs an AI provider' : 'AI processing is off'} (Speak → settings → ai). Showing the raw transcript.`
         } else {
           this.setPhase('processing')
-          this.overlayState({ phase: 'processing', purpose })
+          this.overlayState({ phase: 'processing', purpose: compose ? 'compose' : purpose, message: context ? 'with selected text' : undefined })
           try {
             const r = await processTranscript(transcript, {
               inputLanguage: language,
               style: session.style,
               outputLanguage: session.outputLanguage,
+              context: session.context,
               signal: abort.signal
             })
             if (abort.signal.aborted) return
@@ -397,6 +421,7 @@ class Controller extends EventEmitter {
         inputLanguage: session.transcription.language,
         style,
         outputLanguage,
+        context: session.context,
         signal: abort.signal
       })
       if (abort.signal.aborted) return
@@ -480,12 +505,16 @@ class Controller extends EventEmitter {
   }
 
   /** Run the pipeline on a WAV file as if it had been dictated (like the shortcut: an edit when the preview is open). */
-  async runFile(samples: Float32Array): Promise<void> {
+  async runFile(samples: Float32Array, opts: { compose?: boolean } = {}): Promise<void> {
     if (this.phase !== 'idle') return
     this.purpose = previewVisible() && this.current ? 'edit' : 'dictation'
+    this.compose = this.purpose === 'dictation' && !!opts.compose
+    this.selection = null
     this.device = ''
     if (this.purpose === 'edit') return this.handleAudio(samples)
-    await this.handleAudio(samples, { target: await captureFocus() })
+    const target = await captureFocus()
+    if (this.compose && configStore.get().compose.useSelection && target) this.selection = readSelection()
+    await this.handleAudio(samples, { target })
   }
 
   async reprocessHistory(id: string, style: Style, outputLanguage: string): Promise<Session> {
@@ -494,7 +523,12 @@ class Controller extends EventEmitter {
     if (!needsAi(style, outputLanguage)) {
       this.addVersion(session, { kind: 'processed', text: session.transcription.text, style, outputLanguage })
     } else {
-      const r = await processTranscript(session.transcription.text, { inputLanguage: session.transcription.language, style, outputLanguage })
+      const r = await processTranscript(session.transcription.text, {
+        inputLanguage: session.transcription.language,
+        style,
+        outputLanguage,
+        context: session.context
+      })
       this.addVersion(session, { kind: 'processed', text: r.text, style, outputLanguage, provider: r.provider, model: r.model, ms: r.ms })
     }
     await history.save(session)

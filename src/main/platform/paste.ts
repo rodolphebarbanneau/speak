@@ -5,7 +5,7 @@ import { delay, isLinux, isMac, isWayland, run, which } from '../util'
 import { tapKeys, waitForModifiersReleased } from './keyboard'
 
 /** Copy of every format currently on the clipboard (text, HTML, images…). */
-async function snapshot(): Promise<ClipboardItem[]> {
+export async function snapshotClipboard(): Promise<ClipboardItem[]> {
   try {
     const items = await clipboard.read()
     return await Promise.all(
@@ -17,7 +17,7 @@ async function snapshot(): Promise<ClipboardItem[]> {
   }
 }
 
-async function restore(items: ClipboardItem[]): Promise<void> {
+export async function restoreClipboard(items: ClipboardItem[]): Promise<void> {
   try {
     if (items.length) await clipboard.write(items)
     else clipboard.clear()
@@ -71,7 +71,7 @@ async function sendPasteKeystroke(keys: PasteKeys): Promise<boolean> {
  * Returns false when the keystroke couldn't be sent (text stays on the clipboard).
  */
 export async function pasteText(text: string, opts: { keys: PasteKeys; restoreClipboard: boolean }): Promise<boolean> {
-  const previous = opts.restoreClipboard ? await snapshot() : null
+  const previous = opts.restoreClipboard ? await snapshotClipboard() : null
   await clipboard.writeText(text)
   await waitForModifiersReleased()
   await delay(40)
@@ -84,7 +84,7 @@ export async function pasteText(text: string, opts: { keys: PasteKeys; restoreCl
   if (ok && previous) {
     // Give the target app time to read the clipboard before restoring it.
     setTimeout(async () => {
-      if ((await clipboard.readText()) === text) await restore(previous)
+      if ((await clipboard.readText()) === text) await restoreClipboard(previous)
     }, 700)
   }
   return ok

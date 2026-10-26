@@ -108,6 +108,12 @@ export function Preview() {
         <textarea ref={editorRef} className="editor" value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} disabled={working} />
         <Sep tail={text !== session.transcription.text && <Action onClick={() => setText(session.transcription.text)}>use original</Action>}>transcript</Sep>
         <div className="transcript">{session.transcription.text}</div>
+        {session.context && (
+          <>
+            <Sep>selected text</Sep>
+            <div className="transcript">{session.context}</div>
+          </>
+        )}
       </div>
 
       <div className="preview-meta">

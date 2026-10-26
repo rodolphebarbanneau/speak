@@ -5,7 +5,7 @@ import { decodeWav } from './audio'
 import { configStore } from './config'
 import { controller } from './controller'
 import { history } from './history'
-import { hotkeys } from './hotkeys'
+import { hotkeys, type RecordAction } from './hotkeys'
 import { registerIpc } from './ipc'
 import { log } from './log'
 import { ensureDirs } from './paths'
@@ -20,6 +20,7 @@ import { createOverlay, createPreview, showMain } from './windows'
 /*
  * Command line (also forwarded to the running instance):
  *   --toggle | --start | --stop | --cancel   control dictation (bind these to desktop shortcuts on Wayland)
+ *   --compose                                 start / stop a compose dictation (with --file: compose from the file)
  *   --show                                    open the main window
  *   --hidden                                  start in the tray (used by launch-at-login)
  *   --file=<audio.wav>                        run the pipeline on a WAV file (debugging)
@@ -29,12 +30,13 @@ function handleArgs(argv: string[]): void {
   // Chromium reorders forwarded arguments, so values must use the --flag=value form.
   const file = argv.find((a) => a.startsWith('--file='))?.slice('--file='.length)
   if (has('--toggle')) controller.toggle()
+  else if (has('--compose') && !file) controller.toggle('compose')
   else if (has('--start') && controller.phase === 'idle') controller.toggle()
   else if (has('--stop') && controller.phase === 'recording') controller.toggle()
   else if (has('--cancel')) controller.cancel()
   else if (file) {
     try {
-      void controller.runFile(decodeWav(readFileSync(file)))
+      void controller.runFile(decodeWav(readFileSync(file)), { compose: has('--compose') })
     } catch (err) {
       log.error('Could not read --file:', err)
     }
@@ -73,12 +75,12 @@ if (!app.requestSingleInstanceLock()) {
 
     startKeyboardHook()
     applyShortcuts(config)
-    hotkeys.on('press', () => controller.onShortcutPress())
+    hotkeys.on('press', (action: RecordAction) => controller.onShortcutPress(action))
     hotkeys.on('release', (ms: number) => controller.onShortcutRelease(ms))
     hotkeys.on('cancel', () => controller.cancel())
 
     configStore.on('change', (next: Config, prev: Config) => {
-      if (next.shortcuts.record !== prev.shortcuts.record || next.shortcuts.cancel !== prev.shortcuts.cancel) applyShortcuts(next)
+      if (JSON.stringify(next.shortcuts) !== JSON.stringify(prev.shortcuts)) applyShortcuts(next)
       if (next.ui.launchAtLogin !== prev.ui.launchAtLogin) setLaunchAtLogin(next.ui.launchAtLogin)
       if (JSON.stringify(next.transcription) !== JSON.stringify(prev.transcription)) engine.stopServer()
       if (next.updates.auto !== prev.updates.auto) updater.applyConfig()
@@ -99,7 +101,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 function applyShortcuts(config: Config): void {
-  const error = hotkeys.apply(config.shortcuts.record, config.shortcuts.cancel)
+  const error = hotkeys.apply(config.shortcuts)
   if (error && Notification.isSupported())
     new Notification({ title: 'Speak shortcut unavailable', body: `${error} Change it in Speak → settings → general.` }).show()
 }

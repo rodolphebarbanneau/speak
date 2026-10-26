@@ -101,6 +101,9 @@ export function About({ config, update }: { config: Config; update: (patch: Deep
         <Row label="--toggle">
           <span className="dim">start / stop dictation · bind it to a desktop shortcut on wayland</span>
         </Row>
+        <Row label="--compose">
+          <span className="dim">start / stop a compose dictation</span>
+        </Row>
         <Row label="--cancel">
           <span className="dim">cancel the current dictation</span>
         </Row>

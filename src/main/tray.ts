@@ -1,5 +1,5 @@
 import { app, Menu, nativeImage, nativeTheme, shell, Tray } from 'electron'
-import { LANGUAGES, languageName, STYLES } from '../shared/constants'
+import { DICTATION_STYLES, LANGUAGES, languageName, STYLES } from '../shared/constants'
 import type { Phase } from '../shared/types'
 import { configStore } from './config'
 import { controller } from './controller'
@@ -42,11 +42,17 @@ function buildMenu(phase: Phase): Menu {
       enabled: phase === 'idle' || phase === 'recording',
       click: () => controller.toggle()
     },
+    {
+      label: 'Start composing',
+      accelerator: cfg.shortcuts.compose ? prettyShortcut(cfg.shortcuts.compose) : undefined,
+      visible: phase === 'idle',
+      click: () => controller.toggle('compose')
+    },
     { label: 'Cancel', visible: busy, click: () => controller.cancel() },
     { type: 'separator' },
     {
       label: `Style: ${STYLES.find((s) => s.id === cfg.style)?.label}`,
-      submenu: STYLES.map((s) => ({ label: s.label, type: 'radio', checked: cfg.style === s.id, click: () => configStore.update({ style: s.id }) }))
+      submenu: DICTATION_STYLES.map((s) => ({ label: s.label, type: 'radio', checked: cfg.style === s.id, click: () => configStore.update({ style: s.id }) }))
     },
     {
       label: `Output language: ${languageName(cfg.language.output)}`,

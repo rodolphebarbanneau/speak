@@ -4,6 +4,7 @@ import { DEFAULT_CONFIG } from '../shared/constants'
 import type { Config, DeepPartial } from '../shared/types'
 import { log } from './log'
 import { paths } from './paths'
+import { isMac } from './util'
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -22,15 +23,23 @@ function merge<T>(base: T, patch: unknown): T {
   return out as T
 }
 
+/** Defaults, adjusted for this platform. */
+function defaults(): Config {
+  const config = structuredClone(DEFAULT_CONFIG)
+  // ⌘⌥Space opens Finder search on macOS.
+  if (isMac) config.shortcuts.compose = 'Command+Shift+Alt+Space'
+  return config
+}
+
 class ConfigStore extends EventEmitter {
-  private config: Config = structuredClone(DEFAULT_CONFIG)
+  private config: Config = defaults()
 
   load(): Config {
     try {
-      this.config = merge(structuredClone(DEFAULT_CONFIG), JSON.parse(readFileSync(paths.config, 'utf8')))
+      this.config = merge(defaults(), JSON.parse(readFileSync(paths.config, 'utf8')))
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') log.warn('Invalid config.json, using defaults:', err)
-      this.config = structuredClone(DEFAULT_CONFIG)
+      this.config = defaults()
       this.save()
     }
     return this.config

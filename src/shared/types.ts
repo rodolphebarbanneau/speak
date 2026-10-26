@@ -1,6 +1,7 @@
 export type RecordMode = 'hybrid' | 'toggle' | 'hold'
 export type OutputMode = 'preview' | 'paste'
-export type Style = 'verbatim' | 'clean' | 'prompt' | 'summary'
+/** compose: the dictation is a brief (what to write + material), not text to clean up. */
+export type Style = 'verbatim' | 'clean' | 'prompt' | 'summary' | 'compose'
 export type EngineId = 'whisper' | 'parakeet'
 /** Coding-agent CLIs Speak can drive with the user's own login. */
 export type AgentId = 'claude-code' | 'codex'
@@ -11,7 +12,8 @@ export type Effort = 'low' | 'medium' | 'high'
 
 export interface Config {
   onboarded: boolean
-  shortcuts: { record: string; cancel: string }
+  /** record: dictate · compose: dictate a brief the AI writes from (empty = off). */
+  shortcuts: { record: string; compose: string; cancel: string }
   recordMode: RecordMode
   output: { mode: OutputMode; restoreClipboard: boolean; pasteKeys: PasteKeys }
   /** input: 'auto' or an ISO 639-1 code. output: 'same' or an ISO 639-1 code. */
@@ -19,6 +21,8 @@ export interface Config {
   style: Style
   /** Preferred spellings of names and technical terms, one per line or comma separated. */
   vocabulary: string
+  /** Compose sends the text selected in the target app along with the brief. */
+  compose: { useSelection: boolean }
   /** deviceId differs between origins (dev server vs packaged app), so the label is kept to find the device again. */
   audio: { deviceId: string; deviceLabel: string; maxSeconds: number; sounds: boolean }
   transcription: {
@@ -76,6 +80,8 @@ export interface Session {
   versions: SessionVersion[]
   /** Current text (latest version, or the raw transcript when no AI processing ran). */
   text: string
+  /** Compose: the text that was selected in the target app, given to the AI as material. */
+  context?: string
   error?: string
   action?: SessionAction
 }
@@ -84,7 +90,7 @@ export type Phase = 'idle' | 'recording' | 'transcribing' | 'processing'
 
 export interface OverlayState {
   phase: Phase | 'done' | 'error' | 'info'
-  purpose?: 'dictation' | 'edit'
+  purpose?: 'dictation' | 'compose' | 'edit'
   message?: string
   startedAt?: number
 }
@@ -139,7 +145,10 @@ export interface DownloadProgress {
 export interface AgentConfig {
   /** Path to the CLI; empty = find it automatically. */
   path: string
+  /** Model for dictation (cleanup, translation, edits). */
   model: string
+  /** Model for compose, where staying faithful to the brief matters most; empty = `model`. */
+  composeModel: string
   effort: Effort
 }
 

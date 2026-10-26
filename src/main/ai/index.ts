@@ -4,7 +4,7 @@ import { configStore } from '../config'
 import { log } from '../log'
 import { claudeComplete, claudeLogin, claudeStatus } from './claude-code'
 import { codexComplete, codexLogin, codexModels, codexStatus } from './codex'
-import { cleanOutput, EDIT_SYSTEM, editMessage, PROCESS_SYSTEM, processMessage } from './prompts'
+import { cleanOutput, COMPOSE_SYSTEM, composeMessage, EDIT_SYSTEM, editMessage, PROCESS_SYSTEM, processMessage, stripSubjectLine } from './prompts'
 import type { Completion } from './types'
 
 export interface AiResult {
@@ -61,12 +61,14 @@ export function aiConfigured(): boolean {
   return configStore.get().ai.provider !== 'none'
 }
 
-async function complete(system: string, user: string, signal?: AbortSignal): Promise<AiResult> {
+async function complete(system: string, user: string, signal?: AbortSignal, compose = false): Promise<AiResult> {
   const ai = configStore.get().ai
   if (ai.provider === 'none') throw new Error('AI processing is off. Pick Claude Code or Codex in Speak → settings → ai, or use the verbatim style.')
   const agent = AGENTS[ai.provider]
+  const base = agent.config()
+  const cfg = compose && base.composeModel ? { ...base, model: base.composeModel } : base
   const started = Date.now()
-  const result = await agent.complete(system, user, agent.config(), { timeoutMs: Math.max(10, ai.timeoutSeconds) * 1000, signal })
+  const result = await agent.complete(system, user, cfg, { timeoutMs: Math.max(10, ai.timeoutSeconds) * 1000, signal })
   const text = cleanOutput(result.text)
   if (!text) throw new Error('The AI returned an empty result.')
   const ms = Date.now() - started
@@ -74,11 +76,24 @@ async function complete(system: string, user: string, signal?: AbortSignal): Pro
   return { text, provider: ai.provider, model: result.model, ms }
 }
 
-export function processTranscript(
+/** Rewrite a transcript in a style, or (compose) write the text its brief asks for, with `context` as material. */
+export async function processTranscript(
   transcript: string,
-  opts: { inputLanguage: string; style: Style; outputLanguage: string; signal?: AbortSignal }
+  opts: { inputLanguage: string; style: Style; outputLanguage: string; context?: string; signal?: AbortSignal }
 ): Promise<AiResult> {
   const cfg = configStore.get()
+  if (opts.style === 'compose') {
+    const user = composeMessage({
+      transcript,
+      inputLanguage: opts.inputLanguage,
+      outputLanguage: opts.outputLanguage,
+      vocabulary: cfg.vocabulary,
+      custom: cfg.ai.customInstructions,
+      context: opts.context
+    })
+    const result = await complete(COMPOSE_SYSTEM, user, opts.signal, true)
+    return { ...result, text: stripSubjectLine(result.text, transcript) }
+  }
   const user = processMessage({
     transcript,
     inputLanguage: opts.inputLanguage,

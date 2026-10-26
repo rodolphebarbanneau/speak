@@ -133,7 +133,7 @@ export function modifierKeycodes(modifier: string): number[] {
 }
 
 /** Synthesize a key combination (layout-independent physical keys). */
-export function tapKeys(key: 'V' | 'Insert', modifiers: Array<'Ctrl' | 'Shift' | 'Meta'>): boolean {
+export function tapKeys(key: 'C' | 'V' | 'Insert', modifiers: Array<'Ctrl' | 'Shift' | 'Meta'>): boolean {
   const m = load()
   if (!m) return false
   try {

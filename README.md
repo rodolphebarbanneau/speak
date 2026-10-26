@@ -4,15 +4,16 @@ Cross-platform voice dictation for your desktop. Press a shortcut, speak natural
 
 - **Local speech recognition**: [whisper.cpp](https://github.com/ggml-org/whisper.cpp) with Whisper large-v3-turbo (GPU on NVIDIA/Apple Silicon) or NVIDIA Parakeet v3. Audio never leaves your machine.
 - **AI cleanup & translation**: removes hesitations, repetitions and self-corrections ("la somme, non pardon, la moyenne" → "the average"), applies a style, translates. Runs through the coding-agent CLI you already use, **Claude Code** or **Codex**, with your own login. No API keys.
+- **Compose**: say what to write and give the context ("réponds poliment : l'export PDF n'est pas prévu, propose l'export CSV"), and the AI writes it: an email, a reply, a message. Text you had selected (the email you're answering) is used as material.
 - **Preview dialog or direct paste**: check the result, **edit it by voice** ("ajoute qu'il faut gérer la liste vide"), copy, or insert it into the window you were typing in.
 - **Tray app**: runs in the background; history of every dictation (text + audio) in `~/.speak`.
 - **Keyboard-first, terminal look**: [Omarchy](https://omarchy.org)'s default Tokyo Night palette, JetBrains Mono, native window frames.
 
 ## Usage
 
-1. Launch Speak (it lives in the system tray). The first launch opens a setup checklist:
-   - **Transcription**: install the engine (one click; CUDA build if you have an NVIDIA GPU) and download a model (Whisper large-v3-turbo Q8 is recommended).
-   - **AI processing**: pick Claude Code or Codex. Speak detects the installed CLI and shows whether you're signed in.
+1. Launch Speak (it lives in the system tray). The window opens on your history; on the first launch, **set up speak** leads to the setup checklist:
+   - **Speech recognition**: one click installs the engine (the CUDA build if you have an NVIDIA GPU) and the speech model (Whisper large-v3-turbo Q8).
+   - **AI provider**: pick Claude Code or Codex. Speak detects the installed CLI and shows whether you're signed in.
 2. Put your cursor in any text field and press **Ctrl+Shift+Space** (⌘⇧Space on macOS):
    - **hold** it while you speak and release to finish, or
    - **tap** to start and tap again to stop. **Esc** cancels.
@@ -22,7 +23,17 @@ Cross-platform voice dictation for your desktop. Press a shortcut, speak natural
 
 Styles: **Verbatim** (no AI unless translating), **Clean** (default), **Structured** (organized as a prompt or message), **Summary**.
 
-Tip: set your spoken language explicitly (e.g. French) and add your jargon to **Vocabulary** (General settings). Both feed Whisper and the AI pass and noticeably improve accuracy.
+Tip: set your spoken language explicitly (e.g. French) and add your jargon to **Vocabulary** (settings → general). Both feed Whisper and the AI pass and noticeably improve accuracy.
+
+### Compose
+
+Dictation keeps your words: even "write a function that…" comes out as that sentence, ready to send to an AI assistant. To have the AI _write_ something for you instead, press **Ctrl+Alt+Space** (⌘⇧⌥Space on macOS) and speak a brief: what to write (an email, a reply, a message; tone, length, language) and the context to use, in any order and any language.
+
+> Écris un mail à un client qui demande un export PDF. Contexte : on a déjà l'export CSV, le PDF n'est pas possible pour l'instant et je ne suis pas sûr qu'on le fera. Reste poli, propose le CSV, en anglais.
+
+The AI sticks to what you said: no invented facts, promises or offers, your doubts kept as doubts, and `[placeholders]` for missing details such as a name. If text is selected when you compose (an email to answer, a draft to rework), it is sent along as material, and a reply is written in that text's language. The output then follows _After dictation_ like any dictation, and you can switch a recording between dictation and compose in the preview's **style** menu.
+
+Compose writes more freely than cleanup, so it has its own model (**settings → ai → compose model**): Claude Code composes with **sonnet**, which stayed faithful to the brief where haiku occasionally added a sentence of its own, while dictation keeps the faster, cheaper haiku.
 
 ### Command line
 
@@ -30,6 +41,7 @@ The executable accepts flags that are forwarded to the running instance, useful 
 
 ```
 Speak --toggle        start/stop dictation
+Speak --compose       start/stop a compose dictation
 Speak --cancel        cancel the current dictation
 Speak --show          open the main window
 Speak --file=x.wav    process an audio file (as if dictated)

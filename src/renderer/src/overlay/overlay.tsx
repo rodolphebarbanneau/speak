@@ -67,6 +67,7 @@ export function Overlay() {
   if (state.phase === 'idle') return null
 
   const edit = state.purpose === 'edit'
+  const compose = state.purpose === 'compose'
   let content
   let tone = ''
   switch (state.phase) {
@@ -74,7 +75,7 @@ export function Overlay() {
       content = (
         <>
           <span className="red">
-            <span className="blink">●</span> {edit ? 'edit' : 'rec'}
+            <span className="blink">●</span> {edit ? 'edit' : compose ? 'compose' : 'rec'}
           </span>
           <span className="hi">{formatTime(now - (state.startedAt ?? now))}</span>
           <span className="levels">{levels.map((l) => BLOCKS[Math.min(BLOCKS.length - 1, Math.floor(l * BLOCKS.length))]).join('')}</span>
@@ -94,7 +95,8 @@ export function Overlay() {
       content = (
         <>
           <Spinner />
-          <span>{edit ? 'applying edit' : 'processing'}</span>
+          <span>{edit ? 'applying edit' : compose ? 'composing' : 'processing'}</span>
+          {state.message && <span className="dim">· {state.message}</span>}
         </>
       )
       break

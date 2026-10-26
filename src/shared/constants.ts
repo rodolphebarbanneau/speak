@@ -42,8 +42,11 @@ export const STYLES: Array<{ id: Style; label: string; description: string }> = 
   { id: 'verbatim', label: 'Verbatim', description: 'Exactly what you said (no AI unless translating).' },
   { id: 'clean', label: 'Clean', description: 'Removes fillers, repetitions and self-corrections; fixes punctuation.' },
   { id: 'prompt', label: 'Structured', description: 'Clean and well organized, ready to send as a prompt or message.' },
-  { id: 'summary', label: 'Summary', description: 'Condensed to the key points.' }
+  { id: 'summary', label: 'Summary', description: 'Condensed to the key points.' },
+  { id: 'compose', label: 'Compose', description: 'Follows your spoken instructions: writes the text you ask for from the context you give.' }
 ]
+/** Styles for plain dictation; compose has its own shortcut. */
+export const DICTATION_STYLES = STYLES.filter((s) => s.id !== 'compose')
 
 /** Claude Code model aliases always resolve to the latest model of each family. */
 export const CLAUDE_CODE_MODELS: AgentModel[] = [
@@ -61,12 +64,13 @@ export const CODEX_MODELS: AgentModel[] = [
 
 export const DEFAULT_CONFIG: Config = {
   onboarded: false,
-  shortcuts: { record: 'CommandOrControl+Shift+Space', cancel: 'Escape' },
+  shortcuts: { record: 'CommandOrControl+Shift+Space', compose: 'Control+Alt+Space', cancel: 'Escape' },
   recordMode: 'hybrid',
   output: { mode: 'preview', restoreClipboard: true, pasteKeys: 'auto' },
   language: { input: 'auto', output: 'same' },
   style: 'clean',
   vocabulary: '',
+  compose: { useSelection: true },
   audio: { deviceId: 'default', deviceLabel: '', maxSeconds: 600, sounds: true },
   transcription: {
     engine: 'whisper',
@@ -80,9 +84,10 @@ export const DEFAULT_CONFIG: Config = {
   },
   ai: {
     provider: 'claude-code',
-    // Cheap yet effective defaults: dictation cleanup doesn't need frontier models.
-    claudeCode: { path: '', model: 'haiku', effort: 'medium' },
-    codex: { path: '', model: 'gpt-6-luna', effort: 'medium' },
+    // Cheap yet effective defaults: dictation cleanup doesn't need frontier models. Compose writes
+    // freely from a brief, and sonnet stays faithful to it where haiku sometimes embellishes.
+    claudeCode: { path: '', model: 'haiku', composeModel: 'sonnet', effort: 'medium' },
+    codex: { path: '', model: 'gpt-6-luna', composeModel: '', effort: 'medium' },
     customInstructions: '',
     timeoutSeconds: 90
   },

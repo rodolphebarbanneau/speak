@@ -14,20 +14,22 @@ const PROVIDERS: Array<{ id: ProviderId; label: string; tag: string; hint: strin
   { id: 'none', label: 'none', tag: 'raw transcript', hint: 'no ai pass: verbatim style only, no translation' }
 ]
 
-const AGENTS: Record<AgentId, { name: string; configKey: 'claudeCode' | 'codex'; install: string; command: string; modelHint: string }> = {
+const AGENTS: Record<AgentId, { name: string; configKey: 'claudeCode' | 'codex'; install: string; command: string; modelHint: string; composeHint: string }> = {
   'claude-code': {
     name: 'claude code',
     configKey: 'claudeCode',
     install: 'https://claude.com/claude-code',
     command: 'claude',
-    modelHint: 'haiku is fast and cheap, and plenty for dictation · opus gives the best rewrites'
+    modelHint: 'cleanup, translation and edits by voice · haiku is fast and cheap, and plenty for dictation',
+    composeHint: 'writes from your briefs, where staying faithful matters most · sonnet adds nothing you did not say'
   },
   codex: {
     name: 'codex',
     configKey: 'codex',
     install: 'https://developers.openai.com/codex',
     command: 'codex',
-    modelHint: 'luna is fast and cheap, and plenty for dictation · sol gives the best rewrites'
+    modelHint: 'cleanup, translation and edits by voice · luna is fast and cheap, and plenty for dictation',
+    composeHint: 'writes from your briefs, where staying faithful matters most · a larger model embellishes less'
   }
 }
 
@@ -56,11 +58,10 @@ function AgentSection({ id, config, update }: { id: AgentId; config: Config; upd
   useEffect(() => void api.listAgentModels(id).then(setModels), [id])
 
   const set = (patch: Partial<Config['ai']['claudeCode']>) => update({ ai: { [agent.configKey]: patch } })
-  // Keep the configured model selectable even if the catalog doesn't list it.
-  const modelOptions = (models.some((m) => m.id === cfg.model) ? models : [{ id: cfg.model, label: cfg.model }, ...models]).map((m) => ({
-    value: m.id,
-    label: m.label
-  }))
+  // Keep the configured models selectable even if the catalog doesn't list them.
+  const withModel = (list: AgentModel[], id: string) => (!id || list.some((m) => m.id === id) ? list : [{ id, label: id }, ...list])
+  const modelOptions = withModel(models, cfg.model).map((m) => ({ value: m.id, label: m.label }))
+  const composeOptions = [{ value: '', label: 'same as dictation' }, ...withModel(models, cfg.composeModel).map((m) => ({ value: m.id, label: m.label }))]
 
   return (
     <section>
@@ -101,8 +102,11 @@ function AgentSection({ id, config, update }: { id: AgentId; config: Config; upd
         </Row>
       )}
       {status?.error && status.found && <p className="under error">✗ {status.error}</p>}
-      <Row label="model" hint={agent.modelHint}>
+      <Row label="dictation model" hint={agent.modelHint}>
         <Dropdown value={cfg.model} onChange={(model) => set({ model })} options={modelOptions} disabled={!modelOptions.length} />
+      </Row>
+      <Row label="compose model" hint={agent.composeHint}>
+        <Dropdown value={cfg.composeModel} onChange={(composeModel) => set({ composeModel })} options={composeOptions} />
       </Row>
       <Row label="effort" hint="medium is a good balance · low is faster">
         <Dropdown<Effort> value={cfg.effort} onChange={(effort) => set({ effort })} options={EFFORTS} />

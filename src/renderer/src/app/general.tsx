@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { LANGUAGES, STYLES } from '@shared/constants'
+import { DICTATION_STYLES, LANGUAGES, STYLES } from '@shared/constants'
 import type { AgentStatus, Config, DeepPartial, EngineStatus, MainSection, PasteKeys, PermissionStatus, RecordMode, Style } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
 import { Action, Bar, Check, displayShortcut, List, ListRow, Row, Sep, ShortcutInput, TextInput } from '../components/ui'
@@ -19,7 +19,7 @@ interface Props {
 
 const spokenOptions = [{ value: 'auto', label: 'auto-detect' }, ...LANGUAGES.map((l) => ({ value: l.code, label: l.name.toLowerCase() }))]
 const outputOptions = [{ value: 'same', label: 'as spoken' }, ...LANGUAGES.map((l) => ({ value: l.code, label: l.name.toLowerCase() }))]
-const styleOptions = STYLES.map((s) => ({ value: s.id, label: s.label.toLowerCase() }))
+const styleOptions = DICTATION_STYLES.map((s) => ({ value: s.id, label: s.label.toLowerCase() }))
 
 function Setup({ config, update, onNavigate, micVerdict }: Props & { micVerdict: TestVerdict | null }) {
   const [engine, setEngine] = useState<EngineStatus | null>(null)
@@ -112,7 +112,7 @@ export function General(props: Props) {
   useEffect(() => {
     void api.getPermissions().then(setPerm)
     void api.getInfo().then((i) => setShortcutError(i.shortcutError))
-  }, [config.shortcuts.record])
+  }, [config.shortcuts.record, config.shortcuts.compose])
 
   return (
     <>
@@ -127,7 +127,7 @@ export function General(props: Props) {
         <Row label="dictation" hint="global shortcut, works in any application · click, then press the keys">
           <ShortcutInput value={config.shortcuts.record} onChange={(v) => update({ shortcuts: { record: v } })} />
         </Row>
-        {shortcutError && <p className="line error">✗ {shortcutError}</p>}
+        {shortcutError && !/compose/.test(shortcutError) && <p className="line error">✗ {shortcutError}</p>}
         <Row
           label="record"
           hint={
@@ -148,6 +148,17 @@ export function General(props: Props) {
         </Row>
         <Row label="cancel" hint="only grabbed while recording or processing · click, then press the key">
           <ShortcutInput value={config.shortcuts.cancel} onChange={(v) => update({ shortcuts: { cancel: v } })} allowBare />
+        </Row>
+      </section>
+
+      <section>
+        <Sep>compose</Sep>
+        <Row label="shortcut" hint="say what to write and give the context: the ai writes the email, message or text you ask for · click, then press the keys">
+          <ShortcutInput value={config.shortcuts.compose} onChange={(v) => update({ shortcuts: { compose: v } })} />
+        </Row>
+        {shortcutError && /compose/.test(shortcutError) && <p className="line error">✗ {shortcutError}</p>}
+        <Row label="selected text" hint="the text selected when you compose (a message to reply to, a draft to rework) goes to the ai with your instructions">
+          <Check checked={config.compose.useSelection} onChange={(v) => update({ compose: { useSelection: v } })} />
         </Row>
       </section>
 
