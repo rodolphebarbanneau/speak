@@ -1,7 +1,7 @@
 {
   "name": "speak",
   "productName": "Speak",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Cross-platform voice dictation: speak naturally, get clean (optionally translated) text where your cursor is.",
   "main": "./out/main/index.js",
   "author": "Rodolphe Barbanneau",
