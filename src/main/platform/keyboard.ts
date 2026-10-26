@@ -1,6 +1,7 @@
 import { systemPreferences } from 'electron'
 import { log } from '../log'
-import { delay, isMac, isWayland } from '../util'
+import { delay, isMac, isWayland, isWin } from '../util'
+import { sendKeyCombo, VK } from './send-input'
 
 type Uiohook = typeof import('uiohook-napi')
 
@@ -134,6 +135,13 @@ export function modifierKeycodes(modifier: string): number[] {
 
 /** Synthesize a key combination (layout-independent physical keys). */
 export function tapKeys(key: 'C' | 'V' | 'Insert', modifiers: Array<'Ctrl' | 'Shift' | 'Meta'>): boolean {
+  if (isWin && !modifiers.includes('Meta')) {
+    const sent = sendKeyCombo(
+      VK[key],
+      modifiers.map((k) => VK[k as 'Ctrl' | 'Shift'])
+    )
+    if (sent !== null) return sent
+  }
   const m = load()
   if (!m) return false
   try {

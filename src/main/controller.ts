@@ -320,7 +320,7 @@ class Controller extends EventEmitter {
         const ok = await pasteText(session.text, { keys: cfg.output.pasteKeys, restoreClipboard: cfg.output.restoreClipboard })
         await this.finish(session, ok ? 'pasted' : 'copied')
         if (ok) this.sound('done')
-        else this.notify('Copied to clipboard', 'Speak could not paste automatically. Press Ctrl+V / ⌘V to insert the text.')
+        else this.pasteFailed()
         return
       }
       this.overlayState({ phase: 'idle' })
@@ -464,7 +464,7 @@ class Controller extends EventEmitter {
     const cfg = configStore.get().output
     await restoreFocus(this.target, hidePreview)
     const ok = await pasteText(session.text, { keys: cfg.pasteKeys, restoreClipboard: cfg.restoreClipboard })
-    if (!ok) this.notify('Copied to clipboard', 'Speak could not paste automatically. Press Ctrl+V / ⌘V to insert the text.')
+    if (!ok) this.pasteFailed()
     await this.finish(session, ok ? 'inserted' : 'copied')
   }
 
@@ -498,6 +498,16 @@ class Controller extends EventEmitter {
 
   lastResult(): string {
     return this.lastText
+  }
+
+  /**
+   * The paste keystroke didn't go through (e.g. an anti-cheat blocks synthetic input): the text
+   * stays on the clipboard. Notifications are hidden while gaming, so the overlay says it too.
+   */
+  private pasteFailed(): void {
+    const keys = isMac ? '⌘V' : 'Ctrl+V'
+    this.flash({ phase: 'info', message: `Copied: press ${keys} to paste` }, 6000)
+    this.notify('Copied to clipboard', `Speak could not paste automatically. Press ${keys} to insert the text.`)
   }
 
   private notify(title: string, body: string): void {
