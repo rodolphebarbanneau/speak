@@ -1,0 +1,47 @@
+{
+  "name": "speak",
+  "productName": "Speak",
+  "version": "0.1.0",
+  "description": "Cross-platform voice dictation: speak naturally, get clean (optionally translated) text where your cursor is.",
+  "main": "./out/main/index.js",
+  "author": "Rodolphe Barbanneau",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rodolphebarbanneau/speak.git"
+  },
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "icons": "node scripts/generate-icons.mjs",
+    "dist": "npm run build && electron-builder",
+    "dist:dir": "npm run build && electron-builder --dir"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11",
+    "extract-zip": "^2.0.1",
+    "koffi": "^3.3.4",
+    "tar": "^7.5.22",
+    "uiohook-napi": "^1.5.5"
+  },
+  "devDependencies": {
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "prettier": "^3.9.10",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}

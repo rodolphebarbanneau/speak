@@ -1,0 +1,66 @@
+appId: io.github.rodolphebarbanneau.speak
+productName: Speak
+copyright: Copyright © 2026 Rodolphe Barbanneau
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**
+  - resources/**
+  - package.json
+  - '!**/*.map'
+asarUnpack:
+  - node_modules/uiohook-napi/**
+  - node_modules/koffi/**
+# Optional whisper.cpp binaries bundled by CI (scripts/build-whisper.sh); empty folders are fine.
+extraResources:
+  - from: vendor/whisper/${os}
+    to: whisper
+    filter: ['**/*', '!.gitkeep']
+npmRebuild: false
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: false
+  shortcutName: Speak
+
+mac:
+  target:
+    - target: dmg
+    - target: zip
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: Speak records your voice to transcribe it on this computer.
+    LSUIElement: true
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
+  icon: build/icon.png
+  synopsis: Voice dictation with local transcription and AI cleanup
+  maintainer: Rodolphe Barbanneau
+  desktop:
+    entry:
+      StartupWMClass: Speak
+
+# Releases on GitHub double as the update feed: installers + latest*.yml manifests read by
+# electron-updater. CI creates a draft; publishing it rolls the update out to every install.
+publish:
+  provider: github
+  owner: rodolphebarbanneau
+  repo: speak
+  releaseType: draft
