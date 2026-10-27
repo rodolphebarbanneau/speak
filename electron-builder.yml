@@ -31,10 +31,13 @@ nsis:
   createDesktopShortcut: false
   shortcutName: Speak
 
+# Apple Silicon (arm64) and Intel (x64) builds. The updater picks the zip matching the Mac.
 mac:
   target:
     - target: dmg
+      arch: [arm64, x64]
     - target: zip
+      arch: [arm64, x64]
   category: public.app-category.productivity
   icon: build/icon.icns
   hardenedRuntime: true
@@ -44,6 +47,9 @@ mac:
   extendInfo:
     NSMicrophoneUsageDescription: Speak records your voice to transcribe it on this computer.
     LSUIElement: true
+# Name both installers by chip (the default leaves x64 unnamed).
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
 
 linux:
   target:

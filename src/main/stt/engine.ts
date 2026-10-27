@@ -92,7 +92,7 @@ class Engine {
     }
     if (app.isPackaged) {
       const bundled = join(process.resourcesPath, 'whisper')
-      if (existsSync(join(bundled, SERVER))) return { dir: bundled, source: 'bundled', variant: isMac ? 'metal' : 'cpu' }
+      if (existsSync(join(bundled, SERVER))) return { dir: bundled, source: 'bundled', variant: isMac && process.arch === 'arm64' ? 'metal' : 'cpu' }
     }
     const system = which('whisper-server')
     if (system) return { dir: dirname(system), source: 'system' }

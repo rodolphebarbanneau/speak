@@ -48,7 +48,7 @@ export function Transcription({ config, update }: { config: Config; update: (pat
           )}
         </Row>
         <Row label="gpu" hint="used by whisper.cpp when 'use gpu' is on">
-          {status.gpu.nvidia ? status.gpu.name : <span className="dim">{api.platform === 'darwin' ? 'apple metal' : 'none detected'}</span>}
+          {status.gpu.nvidia ? status.gpu.name : <span className="dim">{status.platform === 'darwin-arm64' ? 'apple metal' : 'none detected'}</span>}
         </Row>
         {status.binaryOptions.length > 0 && (
           <Row

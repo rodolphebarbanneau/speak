@@ -58,15 +58,15 @@ Every dictation is saved in your history, with its recording, so you can find it
 
 ## Get started
 
-1. **Download** Speak for your system from the [latest release](https://github.com/rodolphebarbanneau/speak/releases/latest): the `.exe` installer for Windows, the `.dmg` for macOS (Apple Silicon), or the `.AppImage` / `.deb` for Linux.
+1. **Download** Speak for your system from the [latest release](https://github.com/rodolphebarbanneau/speak/releases/latest): the `.exe` installer for Windows, the `.dmg` for macOS (`arm64` for Apple Silicon, `x64` for Intel), or the `.AppImage` / `.deb` for Linux.
 2. **Open it.** Speak lives in your system tray. On the first launch, click **set up speak**:
    - **Speech recognition:** one click downloads it (about 1 GB, or 1.5 GB for the faster NVIDIA GPU version).
    - **AI provider:** pick Claude Code or Codex. Speak shows whether it's installed and signed in. Without one, Speak still types exactly what you said.
 3. **Talk.** Hold Ctrl+Shift+Space in any app.
 
-Speak isn't code-signed yet, so on the first launch Windows shows "Windows protected your PC" (click **More info → Run anyway**), and macOS asks for confirmation (Control-click Speak in Applications, then **Open**).
+Speak isn't code-signed yet, so on the first launch Windows shows "Windows protected your PC" (click **More info → Run anyway**), and macOS asks for confirmation (Control-click Speak in Applications, then **Open**; on macOS 15 or later, open it once, then click **Open Anyway** in **System Settings → Privacy & Security**).
 
-Speak runs on any recent computer. An NVIDIA graphics card or an Apple Silicon Mac makes transcription almost instant.
+Speak runs on any recent computer (on a Mac, macOS 13.3 or later). An NVIDIA graphics card or an Apple Silicon Mac makes transcription almost instant. Intel Macs transcribe on the processor.
 
 ## Shortcuts
 
@@ -120,7 +120,7 @@ If you launch from inside another Electron app's terminal (T3 Code, VS Code…),
 
 ### Release
 
-Bump `version` in `package.json` and push a matching `v*` tag. `.github/workflows/release.yml` builds Windows, macOS (compiling whisper.cpp with Metal via `scripts/build-whisper.sh`) and Linux, and uploads the installers and their update manifests to a draft GitHub release. Publishing the draft rolls the update out to every install. Code signing is optional (`CSC_LINK`, `APPLE_ID`… secrets). Unsigned macOS builds are signed ad hoc and can't update themselves.
+Bump `version` in `package.json` and push a matching `v*` tag. `.github/workflows/release.yml` builds Windows, macOS for Apple Silicon and Intel (compiling universal whisper.cpp binaries via `scripts/build-whisper.sh`) and Linux, and uploads the installers and their update manifests to a draft GitHub release. Publishing the draft rolls the update out to every install. Code signing is optional (`CSC_LINK`, `APPLE_ID`… secrets). Unsigned macOS builds are signed ad hoc and can't update themselves.
 
 To test an update without publishing, serve a newer build's `dist/` folder over HTTP and start a packaged build with `SPEAK_UPDATE_FEED=http://localhost:<port>/`.
 
