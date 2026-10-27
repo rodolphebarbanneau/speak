@@ -66,7 +66,7 @@ Every dictation is saved in your history, with its recording, so you can find it
 
 Speak isn't code-signed yet, so on the first launch Windows shows "Windows protected your PC" (click **More info → Run anyway**), and macOS asks for confirmation (Control-click Speak in Applications, then **Open**; on macOS 15 or later, open it once, then click **Open Anyway** in **System Settings → Privacy & Security**).
 
-Speak runs on any recent computer (on a Mac, macOS 13.3 or later). An NVIDIA graphics card or an Apple Silicon Mac makes transcription almost instant. Intel Macs transcribe on the processor.
+Speak runs on any recent computer (on a Mac, macOS 13.5 or later). An NVIDIA graphics card or an Apple Silicon Mac makes transcription almost instant. Intel Macs transcribe on the processor.
 
 ## Shortcuts
 
