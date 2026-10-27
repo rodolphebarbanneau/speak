@@ -64,7 +64,8 @@ export const CODEX_MODELS: AgentModel[] = [
 
 export const DEFAULT_CONFIG: Config = {
   onboarded: false,
-  shortcuts: { record: 'CommandOrControl+Shift+Space', compose: 'Control+Alt+Space', cancel: 'Escape' },
+  // Compose is the dictation shortcut plus Alt (⌥).
+  shortcuts: { record: 'CommandOrControl+Shift+Space', compose: 'CommandOrControl+Shift+Alt+Space', cancel: 'Escape' },
   recordMode: 'hybrid',
   // The result stays on the clipboard, so Ctrl+V pastes it again if the app ignored Speak's paste.
   output: { mode: 'preview', restoreClipboard: false, pasteKeys: 'auto' },

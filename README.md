@@ -37,7 +37,7 @@ It's made for people who write a lot: messages, emails, notes, and prompts for A
 
 Plain dictation keeps your words. Even "write a function that…" is written down as that sentence, ready to send to an AI assistant, not carried out.
 
-When you want Speak to _write_ something for you, press **Ctrl+Alt+Space** (**⌘⇧⌥Space** on a Mac) instead and describe it, in any order and any language:
+When you want Speak to _write_ something for you, add **Alt** to the shortcut: press **Ctrl+Shift+Alt+Space** (**⌘⇧⌥Space** on a Mac) instead and describe it, in any order and any language:
 
 > Write a short email to Sarah. Tell her the release moves to Thursday because we found a bug in the export, and ask if we can push the demo to Friday. Keep it friendly.
 
@@ -68,11 +68,11 @@ Speak runs on any recent computer. An NVIDIA graphics card or an Apple Silicon M
 
 ## Shortcuts
 
-| Action  | Windows and Linux | macOS    |
-| ------- | ----------------- | -------- |
-| Dictate | Ctrl+Shift+Space  | ⌘⇧Space  |
-| Compose | Ctrl+Alt+Space    | ⌘⇧⌥Space |
-| Cancel  | Esc               | Esc      |
+| Action  | Windows and Linux    | macOS    |
+| ------- | -------------------- | -------- |
+| Dictate | Ctrl+Shift+Space     | ⌘⇧Space  |
+| Compose | Ctrl+Shift+Alt+Space | ⌘⇧⌥Space |
+| Cancel  | Esc                  | Esc      |
 
 Hold a shortcut while you speak, or tap it to start and again to stop. You can change all of them in **settings → general**.
 
