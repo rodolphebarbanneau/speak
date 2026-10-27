@@ -22,6 +22,9 @@ interface Win32 {
   AttachThreadInput: (from: number, to: number, attach: boolean) => boolean
   SetForegroundWindowPtr: (h: bigint) => boolean
   BringWindowToTopPtr: (h: bigint) => boolean
+  FindWindowExPtr: (parent: bigint, after: bigint, cls: string, title: string | null) => number | bigint
+  IsWindowVisiblePtr: (h: number | bigint) => boolean
+  ShowWindowPtr: (h: number | bigint, cmd: number) => boolean
 }
 
 let win32: Win32 | null | undefined
@@ -44,7 +47,10 @@ function loadWin32(): Win32 | null {
       GetCurrentThreadId: koffi.load('kernel32.dll').func('uint32 __stdcall GetCurrentThreadId()'),
       AttachThreadInput: user32.func('bool __stdcall AttachThreadInput(uint32 idAttach, uint32 idAttachTo, bool fAttach)'),
       SetForegroundWindowPtr: user32.func('SetForegroundWindow', 'bool', ['intptr_t']),
-      BringWindowToTopPtr: user32.func('BringWindowToTop', 'bool', ['intptr_t'])
+      BringWindowToTopPtr: user32.func('BringWindowToTop', 'bool', ['intptr_t']),
+      FindWindowExPtr: user32.func('FindWindowExW', 'intptr_t', ['intptr_t', 'intptr_t', 'str16', 'str16']),
+      IsWindowVisiblePtr: user32.func('IsWindowVisible', 'bool', ['intptr_t']),
+      ShowWindowPtr: user32.func('ShowWindow', 'bool', ['intptr_t', 'int'])
     } as unknown as Win32
   } catch (err) {
     log.warn('Win32 bindings unavailable:', err)
@@ -141,4 +147,24 @@ export function bringToFront(win: BrowserWindow): void {
   if (isMac) app.focus({ steal: true })
   win.show()
   win.focus()
+}
+
+/**
+ * Windows: Chromium receives a window's mouse input through a child window
+ * (Chrome_RenderWidgetHostHWND). Hiding the window hides that child too, and showing the window
+ * again doesn't bring it back when the page is never marked hidden (background throttling off).
+ * Clicks then land on the top-level window, which, when it can't be focused, swallows the
+ * mouse-down: the overlay pill's buttons stopped working after the first recording. Call this
+ * after showing such a window again.
+ */
+export function restoreMouseInput(win: BrowserWindow): void {
+  if (!isWin) return
+  const w = loadWin32()
+  if (!w) return
+  try {
+    const child = w.FindWindowExPtr(win.getNativeWindowHandle().readBigUInt64LE(0), 0n, 'Chrome_RenderWidgetHostHWND', null)
+    if (child && !w.IsWindowVisiblePtr(child)) w.ShowWindowPtr(child, 4) // SW_SHOWNOACTIVATE
+  } catch (err) {
+    log.warn('restoreMouseInput failed:', err)
+  }
 }

@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { app, BrowserWindow, screen } from 'electron'
 import type { MainSection } from '../shared/types'
 import { resource } from './paths'
-import { bringToFront } from './platform/focus'
+import { bringToFront, restoreMouseInput } from './platform/focus'
 import { isMac, isWin } from './util'
 
 type View = 'overlay' | 'preview' | 'main'
@@ -89,7 +89,8 @@ export function createOverlay(): BrowserWindow {
     skipTaskbar: true,
     hasShadow: false,
     alwaysOnTop: true,
-    ...(isMac ? { type: 'panel' } : {}),
+    // The pill is never the active window: on macOS its buttons must take the first click.
+    ...(isMac ? { type: 'panel', acceptFirstMouse: true } : {}),
     webPreferences: webPreferences()
   })
   overlay.setAlwaysOnTop(true, 'screen-saver')
@@ -110,7 +111,10 @@ export function showOverlay(): void {
     y: Math.round(workArea.y + workArea.height - OVERLAY_SIZE.height - 40),
     ...OVERLAY_SIZE
   })
-  if (!overlay.isVisible()) overlay.showInactive()
+  if (!overlay.isVisible()) {
+    overlay.showInactive()
+    restoreMouseInput(overlay)
+  }
 }
 
 export function hideOverlay(): void {
