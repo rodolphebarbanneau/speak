@@ -128,7 +128,7 @@ To test an update without publishing, serve a newer build's `dist/` folder over 
 - **AI**: the user's own, unmodified CLI, run non-interactively without tools, plugins, MCP servers or project settings. Speak never reads or stores credentials.
   - Claude Code: `claude -p --model haiku --effort medium --system-prompt-file … --tools "" --setting-sources "" --strict-mcp-config --disable-slash-commands --no-session-persistence --output-format json`. Compose uses sonnet.
   - Codex: `codex exec -m gpt-6-luna -c model_reasoning_effort="medium" -c model_instructions_file="…" --ignore-user-config --ignore-rules --sandbox read-only --ephemeral --skip-git-repo-check -o … -`.
-- **Insertion**: the text goes on the clipboard, Speak sends the paste keystroke (Windows: `SendInput` with scan codes) and restores the clipboard. Compose reads the selection with Ctrl+Insert, which never interrupts a terminal.
+- **Insertion**: the text goes on the clipboard and Speak sends the paste keystroke (Windows: `SendInput` with scan codes). The text stays on the clipboard so a manual Ctrl+V works if the app ignored it, unless **restore clipboard** is on. Compose reads the selection with Ctrl+Insert, which never interrupts a terminal.
 
 ### Command line
 

@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { Notification, systemPreferences } from 'electron'
 import { needsAi } from '../shared/constants'
-import type { OverlayState, Phase, PreviewState, Session, SessionAction, SessionVersion, Style } from '../shared/types'
+import type { OverlayState, Phase, PreviewState, RecordingAction, Session, SessionAction, SessionVersion, Style } from '../shared/types'
 import { aiConfigured, editText, processTranscript } from './ai'
 import { cleanTranscript, encodeWav, prepareAudio } from './audio'
 import { configStore } from './config'
@@ -74,6 +74,17 @@ class Controller extends EventEmitter {
 
   toggle(action: RecordAction = 'dictate'): void {
     this.onShortcutPress(action)
+  }
+
+  /** The pill's buttons: finish or cancel the recording, or switch a dictation to compose and back. */
+  recordingAction(action: RecordingAction): void {
+    if (this.phase !== 'recording') return
+    if (action === 'finish') void this.stopRecording()
+    else if (action === 'cancel') this.cancel()
+    else if (this.purpose === 'dictation') {
+      this.compose = action === 'compose'
+      this.overlayState({ phase: 'recording', purpose: this.overlayPurpose, startedAt: this.recordStartedAt })
+    }
   }
 
   // ---------------------------------------------------------------- overlay
@@ -313,6 +324,7 @@ class Controller extends EventEmitter {
         }
       }
       await history.save(session, audio)
+      void history.dropCancelled(session.id).catch((err) => log.warn('Could not drop cancelled dictations:', err))
       this.setPhase('idle')
 
       if (cfg.output.mode === 'paste' && !session.error) {

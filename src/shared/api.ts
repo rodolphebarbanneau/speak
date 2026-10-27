@@ -15,6 +15,7 @@ import type {
   PermissionStatus,
   PreviewState,
   RecorderCommand,
+  RecordingAction,
   Session,
   Style
 } from './types'
@@ -72,6 +73,10 @@ export interface SpeakApi {
   listSessions(query?: string, limit?: number): Promise<Session[]>
   getSessionAudio(id: string): Promise<Uint8Array | null>
   deleteSession(id: string): Promise<void>
+  /** Number of stored dictations and their size on disk. */
+  historyStats(): Promise<{ count: number; bytes: number }>
+  /** Asks for confirmation, then deletes every dictation. True when deleted. */
+  clearHistory(): Promise<boolean>
   reprocessSession(id: string, style: Style, outputLanguage: string): Promise<Session>
   revealSession(id: string): void
   copyText(text: string): void
@@ -94,4 +99,8 @@ export interface SpeakApi {
   /** The microphone delivers digital silence (muted, or an idle virtual device). */
   recorderNoSignal(device: string): void
   recorderResult(reqId: number, samples: Float32Array | null, error?: string): void
+  /** The pointer is over the pill: catch clicks there instead of passing them through. */
+  overlayInteractive(interactive: boolean): void
+  /** Pill buttons: finish (process) or cancel the recording, or switch it to compose or dictation. */
+  recordingAction(action: RecordingAction): void
 }

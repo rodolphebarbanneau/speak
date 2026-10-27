@@ -313,19 +313,43 @@ textarea:focus {
   border-color: var(--accent);
 }
 
+/* Fixed-width box for a run of fallback-font glyphs (see Track). */
+.track {
+  display: inline-block;
+  overflow: hidden;
+  white-space: pre;
+  vertical-align: top;
+}
 .bar {
   color: var(--accent);
 }
-.bar i {
-  font-style: normal;
-  color: var(--muted);
+.bar > .dim {
+  white-space: pre;
 }
 
-.meter {
-  letter-spacing: -0.5px;
+/* Horizontal block bar (see Blocks): solid fill, dotted shade like ░, optional peak mark. */
+.blocks {
+  position: relative;
+  display: inline-block;
+  height: 1em;
+  vertical-align: -0.15em;
+  background-image: radial-gradient(circle, var(--muted) 0.75px, transparent 0.9px);
+  background-size: 3px 3px;
 }
-.meter-rest {
-  color: var(--muted);
+.blocks > .fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+}
+.blocks > .fill.alert {
+  background: var(--red);
+}
+.blocks > .mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
 }
 
 .spin {
@@ -410,17 +434,20 @@ html[data-view='overlay'],
 html[data-view='overlay'] body {
   background: transparent;
 }
+/* The pill sits at the bottom of a taller, transparent window: its settings list opens above. */
 .overlay-root {
   height: 100%;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
+  padding-bottom: 7px;
 }
 .osd {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--s3);
-  max-width: 336px;
+  max-width: 620px;
   padding: 5px var(--s3);
   background: var(--bg);
   border: 2px solid var(--accent);
@@ -437,9 +464,71 @@ html[data-view='overlay'] body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Level meter: 8-step bars drawn in CSS, so they share one baseline and one width (the ▁…█
+   characters come from fallback fonts whose bars neither line up nor keep the same width). */
 .osd .levels {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 1em;
   color: var(--accent);
-  letter-spacing: 1px;
+}
+.osd .levels > i {
+  width: 1ch;
+  background: currentColor;
+}
+/* Settings on the pill while recording: click one to change it. */
+.osd .choices {
+  display: flex;
+  gap: var(--s1);
+}
+.osd .choices > button {
+  color: var(--fg);
+}
+.osd .choices > button:hover,
+.osd .choices > button.open {
+  color: var(--accent);
+}
+/* done: stop and process the recording · esc: cancel it */
+.osd .finish {
+  display: flex;
+  gap: var(--s2);
+}
+.osd .finish .done {
+  color: var(--green);
+}
+.osd .finish .esc {
+  color: var(--dim);
+}
+.osd .finish .done:hover {
+  color: var(--hi);
+}
+.osd .finish .esc:hover {
+  color: var(--red);
+}
+.overlay-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  min-width: 150px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: var(--s1) 0;
+  background: var(--bg);
+  border: 2px solid var(--accent);
+}
+.overlay-menu > button {
+  display: block;
+  width: 100%;
+  padding: 2px var(--s3);
+  text-align: left;
+  color: var(--fg);
+}
+.overlay-menu > button:hover {
+  background: var(--sel);
+  color: var(--hi);
+}
+.overlay-menu > button.on {
+  color: var(--accent);
 }
 
 /* ---------- sections, rows, lists ---------- */

@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { existsSync } from 'node:fs'
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Session } from '../shared/types'
 import { configStore } from './config'
@@ -92,6 +92,41 @@ class History extends EventEmitter {
   async delete(id: string): Promise<void> {
     this.cache.delete(id)
     await rm(sessionDir(id), { recursive: true, force: true })
+    this.emit('changed')
+  }
+
+  /**
+   * A dictation cancelled in the preview is kept only until the next one is saved: a safety net
+   * for a mistaken Esc, without filling the history with discarded text.
+   */
+  async dropCancelled(keepId: string): Promise<void> {
+    for (const s of await this.list('', Infinity)) if (s.action === 'cancelled' && s.id !== keepId) await this.delete(s.id)
+  }
+
+  /** How many dictations are stored, and their size on disk (transcripts and recordings). */
+  async stats(): Promise<{ count: number; bytes: number }> {
+    let count = 0
+    let bytes = 0
+    if (!existsSync(paths.history)) return { count, bytes }
+    for (const day of await readdir(paths.history)) {
+      const dayDir = join(paths.history, day)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue
+      for (const id of await readdir(dayDir)) {
+        const files = await readdir(join(dayDir, id)).catch((): string[] => [])
+        if (files.includes('session.json')) count++
+        for (const f of files) bytes += (await stat(join(dayDir, id, f)).catch(() => null))?.size ?? 0
+      }
+    }
+    return { count, bytes }
+  }
+
+  /** Delete every dictation, transcripts and recordings. */
+  async clear(): Promise<void> {
+    this.cache.clear()
+    if (existsSync(paths.history)) {
+      for (const day of await readdir(paths.history)) await rm(join(paths.history, day), { recursive: true, force: true })
+    }
+    log.info('History cleared')
     this.emit('changed')
   }
 

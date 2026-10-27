@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { DICTATION_STYLES, LANGUAGES, STYLES } from '@shared/constants'
 import type { AgentStatus, Config, DeepPartial, EngineStatus, MainSection, PasteKeys, PermissionStatus, RecordMode, Style } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
-import { Action, Bar, Check, displayShortcut, List, ListRow, Row, Sep, ShortcutInput, TextInput } from '../components/ui'
+import { Action, Bar, Check, displayShortcut, formatSize, List, ListRow, Row, Sep, ShortcutInput, TextInput } from '../components/ui'
 import { ipcError, sizeMB } from '../lib/format'
 import type { TestVerdict } from '../lib/microphone'
 import { useDownloads } from './hooks'
@@ -100,6 +100,34 @@ function Setup({ config, update, onNavigate, micVerdict }: Props & { micVerdict:
         to start and tap again to stop.
       </p>
     </section>
+  )
+}
+
+/** stored   312 dictations · 1.2 GB   [ delete all ] (asks for confirmation first) */
+function StoredRow() {
+  const [stats, setStats] = useState<{ count: number; bytes: number } | null>(null)
+  useEffect(() => {
+    const load = () => void api.historyStats().then(setStats)
+    load()
+    return api.onHistoryChanged(load)
+  }, [])
+  const count = stats?.count ?? 0
+  return (
+    <Row
+      label="stored"
+      hint="dictations and their recordings in ~/.speak/history · settings and speech models are not affected"
+      actions={
+        <Action danger disabled={!count} onClick={() => void api.clearHistory()}>
+          delete all
+        </Action>
+      }
+    >
+      {stats && (
+        <span>
+          {count} {count === 1 ? 'dictation' : 'dictations'} <span className="dim">· {formatSize(stats.bytes)}</span>
+        </span>
+      )}
+    </Row>
   )
 }
 
@@ -208,7 +236,7 @@ export function General(props: Props) {
             ]}
           />
         </Row>
-        <Row label="restore clipboard" hint="put back what was on the clipboard after pasting">
+        <Row label="restore clipboard" hint="put back what was on the clipboard after pasting · off: the text stays on it, so ctrl+v pastes it again if needed">
           <Check checked={config.output.restoreClipboard} onChange={(v) => update({ output: { restoreClipboard: v } })} />
         </Row>
         {isMac && perm && (
@@ -255,6 +283,7 @@ export function General(props: Props) {
             options={[7, 30, 90, 365, 0].map((d) => ({ value: String(d), label: d ? `${d} days` : 'never' }))}
           />
         </Row>
+        <StoredRow />
         <Row label="launch at login" hint="speak runs in the system tray">
           <Check checked={config.ui.launchAtLogin} onChange={(v) => update({ ui: { launchAtLogin: v } })} />
         </Row>

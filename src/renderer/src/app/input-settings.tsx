@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Config, DeepPartial } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
-import { Action, Row, Sep } from '../components/ui'
+import { Action, Blocks, Row, Sep } from '../components/ui'
 import {
   listMicrophones,
   meterLevel,
@@ -27,13 +27,7 @@ interface Props {
 function Meter({ level, peak }: { level: number; peak: number }) {
   const filled = Math.round(level * METER_CELLS)
   const mark = Math.min(METER_CELLS - 1, Math.round(peak * METER_CELLS))
-  const cells = Array.from({ length: METER_CELLS }, (_, i) => (i < filled ? '█' : i === mark ? '▏' : '░'))
-  return (
-    <span className="meter">
-      <span className={level > 0.9 ? 'red' : 'acc'}>{cells.slice(0, filled).join('')}</span>
-      <span className="meter-rest">{cells.slice(filled).join('')}</span>
-    </span>
-  )
+  return <Blocks cells={METER_CELLS} filled={filled} mark={mark} alert={level > 0.9} />
 }
 
 /** Input device picker with a Discord-style test: live meter, verdict, playback. */

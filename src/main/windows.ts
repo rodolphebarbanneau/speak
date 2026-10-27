@@ -67,9 +67,12 @@ function cursorDisplay(): Electron.Display {
   return screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
 }
 
-/** The overlay pill: always on top, never takes focus, hosts the microphone recorder. */
+/**
+ * The overlay pill: always on top, never takes focus, hosts the microphone recorder. The window
+ * leaves room above the pill for its settings list, and lets clicks through except over the pill.
+ */
 export let overlay: BrowserWindow | null = null
-const OVERLAY_SIZE = { width: 340, height: 48 }
+const OVERLAY_SIZE = { width: 640, height: 320 }
 
 export function createOverlay(): BrowserWindow {
   overlay = new BrowserWindow({
@@ -90,7 +93,7 @@ export function createOverlay(): BrowserWindow {
     webPreferences: webPreferences()
   })
   overlay.setAlwaysOnTop(true, 'screen-saver')
-  overlay.setIgnoreMouseEvents(true)
+  setOverlayInteractive(false)
   overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   overlay.on('close', (e) => {
     if (!quitting) e.preventDefault()
@@ -111,7 +114,14 @@ export function showOverlay(): void {
 }
 
 export function hideOverlay(): void {
+  setOverlayInteractive(false)
   overlay?.hide()
+}
+
+/** Catch clicks while the pointer is over the pill; otherwise pass them through (still reporting moves). */
+export function setOverlayInteractive(interactive: boolean): void {
+  if (interactive) overlay?.setIgnoreMouseEvents(false)
+  else overlay?.setIgnoreMouseEvents(true, { forward: true })
 }
 
 /** Preview dialog: created once, reused. Closing it means "cancel". */

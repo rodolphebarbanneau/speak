@@ -1,6 +1,6 @@
-import { app, clipboard, ipcMain, shell, systemPreferences } from 'electron'
+import { app, clipboard, dialog, ipcMain, shell, systemPreferences } from 'electron'
 import { RELEASES_URL } from '../shared/constants'
-import type { AgentId, BinaryVariant, Config, DeepPartial, MainSection, PermissionStatus, Style } from '../shared/types'
+import type { AgentId, BinaryVariant, Config, DeepPartial, MainSection, PermissionStatus, RecordingAction, Style } from '../shared/types'
 import { agentLogin, agentModels, agentStatus, testAi } from './ai'
 import { configStore } from './config'
 import { controller } from './controller'
@@ -12,7 +12,7 @@ import { accessibilityTrusted, keyboardHookAvailable, startKeyboardHook } from '
 import { engine } from './stt/engine'
 import { updater } from './updater'
 import { isMac, isWayland } from './util'
-import { broadcast, showMain } from './windows'
+import { broadcast, mainWindow, setOverlayInteractive, showMain } from './windows'
 
 function permissions(): PermissionStatus {
   return {
@@ -87,6 +87,26 @@ export function registerIpc(): void {
     return buf ? new Uint8Array(buf) : null
   })
   handle('deleteSession', (id: string) => history.delete(id))
+  handle('historyStats', () => history.stats())
+  handle('clearHistory', async () => {
+    const { count } = await history.stats()
+    if (!count) return false
+    const what = count === 1 ? 'your dictation' : `all ${count} dictations`
+    const options: Electron.MessageBoxOptions = {
+      type: 'warning',
+      title: 'Delete history',
+      message: `Delete ${what} and ${count === 1 ? 'its recording' : 'their recordings'}?`,
+      detail: "This can't be undone. Your settings, speech models and engine are kept.",
+      buttons: ['Cancel', 'Delete all'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true
+    }
+    const { response } = mainWindow ? await dialog.showMessageBox(mainWindow, options) : await dialog.showMessageBox(options)
+    if (response !== 1) return false
+    await history.clear()
+    return true
+  })
   handle('reprocessSession', (id: string, style: Style, outputLanguage: string) => controller.reprocessHistory(id, style, outputLanguage))
   on('revealSession', (id: string) => shell.showItemInFolder(`${history.dir(id)}/session.json`))
   on('copyText', (text: string) => void clipboard.writeText(text))
@@ -103,6 +123,8 @@ export function registerIpc(): void {
   // Recorder
   on('recorderStarted', (ok: boolean, error?: string, device?: string) => controller.recorderStarted(ok, error, device))
   on('recorderNoSignal', (device: string) => controller.recorderNoSignal(device))
+  on('overlayInteractive', (interactive: boolean) => setOverlayInteractive(interactive))
+  on('recordingAction', (action: RecordingAction) => controller.recordingAction(action))
   on('recorderResult', (reqId: number, samples: Float32Array | null, error?: string) => controller.recorderResult(reqId, samples, error))
 
   // Push events

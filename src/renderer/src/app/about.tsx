@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { AppInfo, Config, DeepPartial, UpdateState } from '@shared/types'
-import { Action, Bar, Check, Row, Sep, Spinner } from '../components/ui'
+import { Action, Bar, Check, percent, Row, Sep, Spinner } from '../components/ui'
 
 const api = window.speak
 
@@ -32,7 +32,7 @@ function UpdateStatus({ state }: { state: UpdateState }) {
     case 'available':
       return <span className="acc">{state.latest} available</span>
     case 'downloading':
-      return <Bar value={state.percent ?? 0} total={100} label={`downloading ${state.latest ?? ''} · ${state.percent ?? 0}%`} />
+      return <Bar value={state.percent ?? 0} total={100} label={`downloading ${state.latest ?? ''} · ${percent((state.percent ?? 0) / 100)}`} />
     case 'downloaded':
       return <span className="green">{state.latest} ready to install</span>
     case 'error':

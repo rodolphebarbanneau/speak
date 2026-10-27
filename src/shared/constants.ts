@@ -66,7 +66,8 @@ export const DEFAULT_CONFIG: Config = {
   onboarded: false,
   shortcuts: { record: 'CommandOrControl+Shift+Space', compose: 'Control+Alt+Space', cancel: 'Escape' },
   recordMode: 'hybrid',
-  output: { mode: 'preview', restoreClipboard: true, pasteKeys: 'auto' },
+  // The result stays on the clipboard, so Ctrl+V pastes it again if the app ignored Speak's paste.
+  output: { mode: 'preview', restoreClipboard: false, pasteKeys: 'auto' },
   language: { input: 'auto', output: 'same' },
   style: 'clean',
   vocabulary: '',

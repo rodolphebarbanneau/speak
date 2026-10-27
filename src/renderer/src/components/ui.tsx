@@ -194,24 +194,57 @@ export function TextInput({
   )
 }
 
-/** Block progress bar: ████████░░░░ 45%  312 / 685 MB */
+/**
+ * A run of block or box-drawing characters (bars, meters) in a box `cells` characters wide.
+ * Those characters come from a fallback font with uneven widths: the box keeps the layout still.
+ */
+export function Track({ cells, children }: { cells: number; children: ReactNode }) {
+  return (
+    <span className="track" style={{ width: `${cells}ch` }}>
+      {children}
+    </span>
+  )
+}
+
+/**
+ * A horizontal block bar (████░░░░) drawn in CSS: `filled` of `cells` solid, the rest shaded, and
+ * an optional `mark` (a peak). The block characters come from fallback fonts whose solid and
+ * shaded blocks don't line up.
+ */
+export function Blocks({ cells, filled, mark, alert }: { cells: number; filled: number; mark?: number; alert?: boolean }) {
+  const at = (n: number) => `${(Math.max(0, Math.min(cells, n)) / cells) * 100}%`
+  return (
+    <span className="blocks" style={{ width: `${cells}ch` }}>
+      <span className={`fill ${alert ? 'alert' : ''}`} style={{ width: at(filled) }} />
+      {mark !== undefined && mark >= filled && <span className="mark" style={{ left: at(mark) }} />}
+    </span>
+  )
+}
+
+/** Block progress bar: ████████░░░░  45%  312 MB / 685 MB (numbers padded so the width holds). */
 export function Bar({ value, total, label }: { value: number; total: number; label?: string }) {
   const width = 20
   const filled = total > 0 ? Math.round((value / total) * width) : 0
+  const size = formatSize(total)
   return (
     <span className="bar">
-      {total > 0 ? '█'.repeat(filled) : <Spinner />}
-      <i>{total > 0 ? '░'.repeat(width - filled) : ''}</i>
+      {total > 0 ? <Blocks cells={width} filled={filled} /> : <Spinner />}
       <span className="dim">
         {' '}
-        {label ?? (total > 0 ? `${Math.round((value / total) * 100)}%  ${formatSize(value)} / ${formatSize(total)}` : formatSize(value))}
+        {label ?? (total > 0 ? `${percent(value / total)}  ${formatSize(value).padStart(size.length)} / ${size}` : formatSize(value))}
       </span>
     </span>
   )
 }
 
+/** "  5%", " 45%", "100%": always four characters. */
+export function percent(ratio: number): string {
+  return `${Math.round(Math.min(1, Math.max(0, ratio)) * 100)}%`.padStart(4)
+}
+
 export function formatSize(bytes: number): string {
-  return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(2)} GB` : `${Math.round(bytes / 1e6)} MB`
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`
+  return bytes >= 1e6 ? `${Math.round(bytes / 1e6)} MB` : `${Math.max(bytes ? 1 : 0, Math.round(bytes / 1e3))} KB`
 }
 
 const FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'

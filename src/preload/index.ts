@@ -54,6 +54,8 @@ const api: SpeakApi = {
   listSessions: (query, limit) => invoke('listSessions', query, limit),
   getSessionAudio: (id) => invoke('getSessionAudio', id),
   deleteSession: (id) => invoke('deleteSession', id),
+  historyStats: () => invoke('historyStats'),
+  clearHistory: () => invoke('clearHistory'),
   reprocessSession: (id, style, outputLanguage) => invoke('reprocessSession', id, style, outputLanguage),
   revealSession: (id) => send('revealSession', id),
   copyText: (text) => send('copyText', text),
@@ -71,6 +73,8 @@ const api: SpeakApi = {
   onRecorderCommand: listen('recorder'),
   recorderStarted: (ok, error, device) => send('recorderStarted', ok, error, device),
   recorderNoSignal: (device) => send('recorderNoSignal', device),
+  overlayInteractive: (interactive) => send('overlayInteractive', interactive),
+  recordingAction: (action) => send('recordingAction', action),
   recorderResult: (reqId, samples, error) => send('recorderResult', reqId, samples, error)
 }
 

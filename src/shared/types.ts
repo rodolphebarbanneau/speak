@@ -88,6 +88,9 @@ export interface Session {
 
 export type Phase = 'idle' | 'recording' | 'transcribing' | 'processing'
 
+/** What the pill's buttons do to the recording in progress. */
+export type RecordingAction = 'finish' | 'cancel' | 'compose' | 'dictate'
+
 export interface OverlayState {
   phase: Phase | 'done' | 'error' | 'info'
   purpose?: 'dictation' | 'compose' | 'edit'

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { LANGUAGES, languageName, shortModel, STYLES } from '@shared/constants'
 import type { Config, Session, Style } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
-import { Action, displayShortcut, Row, Sep, Spinner } from '../components/ui'
+import { Action, displayShortcut, Row, Sep, Spinner, Track } from '../components/ui'
 
 const api = window.speak
 
@@ -71,10 +71,10 @@ function AudioRow({ id }: { id: string }) {
         <span className="hi">{clock(time)}</span>
         <span className="dim"> / {clock(duration)}</span>
       </span>
-      <span>
+      <Track cells={width}>
         <span className="acc">{'━'.repeat(filled)}</span>
         <span className="muted">{'─'.repeat(width - filled)}</span>
-      </span>
+      </Track>
     </Row>
   )
 }
