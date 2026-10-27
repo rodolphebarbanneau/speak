@@ -6,6 +6,7 @@ import { basename, dirname, join } from 'node:path'
 import { app } from 'electron'
 import extractZip from 'extract-zip'
 import * as tar from 'tar'
+import { LANGUAGES } from '../../shared/constants'
 import type { BinaryVariant, EngineId, EngineStatus } from '../../shared/types'
 import { configStore } from '../config'
 import { downloads } from '../download'
@@ -40,9 +41,16 @@ export interface TranscribeOptions {
 
 export interface TranscribeResult {
   text: string
+  /** The language whisper detected, when asked to auto-detect (Parakeet doesn't say). */
+  detected?: string
   engine: EngineId
   model: string
   ms: number
+}
+
+/** whisper names languages in English ("french"): Speak's ISO code, or that name when Speak has none. */
+function languageCode(name: string): string {
+  return LANGUAGES.find((l) => l.name.toLowerCase() === name)?.code ?? name
 }
 
 function threads(): number {
@@ -236,16 +244,18 @@ class Engine {
   async transcribe(wav: Buffer, opts: TranscribeOptions): Promise<TranscribeResult> {
     const { engine, def, model, bin } = await this.prepare()
     const started = Date.now()
-    const text = engine === 'whisper' ? await this.transcribeWhisper(wav, model, bin, opts) : await this.transcribeParakeet(wav, model, bin, opts)
-    return { text, engine, model: def.id, ms: Date.now() - started }
+    const { text, detected } =
+      engine === 'whisper' ? await this.transcribeWhisper(wav, model, bin, opts) : { text: await this.transcribeParakeet(wav, model, bin, opts) }
+    return { text, detected, engine, model: def.id, ms: Date.now() - started }
   }
 
-  private async transcribeWhisper(wav: Buffer, model: string, bin: BinaryLocation, opts: TranscribeOptions): Promise<string> {
+  private async transcribeWhisper(wav: Buffer, model: string, bin: BinaryLocation, opts: TranscribeOptions): Promise<{ text: string; detected?: string }> {
     await this.ensureServer(model, bin)
     this.touch()
     const form = new FormData()
     form.append('file', new Blob([new Uint8Array(wav)], { type: 'audio/wav' }), 'audio.wav')
-    form.append('response_format', 'json')
+    // verbose_json also names the language it transcribed.
+    form.append('response_format', 'verbose_json')
     form.append('temperature', '0.0')
     form.append('temperature_inc', '0.2')
     form.append('language', opts.language || 'auto')
@@ -253,7 +263,7 @@ class Engine {
     const res = await fetch(`http://127.0.0.1:${this.serverPort}/inference`, { method: 'POST', body: form, signal: opts.signal })
     const body = await res.text()
     if (!res.ok) throw new Error(`Transcription failed (${res.status}): ${body.slice(0, 300)}`)
-    let parsed: { text?: string; error?: string }
+    let parsed: { text?: string; language?: string; error?: string }
     try {
       parsed = JSON.parse(body)
     } catch {
@@ -261,7 +271,8 @@ class Engine {
     }
     if (parsed.error) throw new Error(`Transcription failed: ${parsed.error}`)
     this.touch()
-    return (parsed.text ?? '').trim()
+    const auto = !opts.language || opts.language === 'auto'
+    return { text: (parsed.text ?? '').trim(), detected: auto && parsed.language ? languageCode(parsed.language) : undefined }
   }
 
   private async transcribeParakeet(wav: Buffer, model: string, bin: BinaryLocation, opts: TranscribeOptions): Promise<string> {

@@ -107,7 +107,9 @@ export function registerIpc(): void {
     await history.clear()
     return true
   })
-  handle('reprocessSession', (id: string, style: Style, outputLanguage: string) => controller.reprocessHistory(id, style, outputLanguage))
+  handle('reprocessSession', (id: string, style: Style, outputLanguage: string, inputLanguage?: string) =>
+    controller.reprocessHistory(id, style, outputLanguage, inputLanguage)
+  )
   on('revealSession', (id: string) => shell.showItemInFolder(`${history.dir(id)}/session.json`))
   on('copyText', (text: string) => void clipboard.writeText(text))
 
@@ -117,6 +119,7 @@ export function registerIpc(): void {
   on('previewCopy', (text: string) => void controller.previewCopy(text))
   on('previewCancel', () => void controller.previewCancel())
   on('previewReprocess', (style: Style, outputLanguage: string) => void controller.previewReprocess(style, outputLanguage))
+  on('previewRetranscribe', (language: string) => void controller.previewRetranscribe(language))
   on('previewVoiceEdit', () => controller.previewVoiceEdit())
   on('previewUndo', () => void controller.previewUndo())
 

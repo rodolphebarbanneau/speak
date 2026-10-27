@@ -51,7 +51,8 @@ export interface Config {
 
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] }
 
-export type VersionKind = 'processed' | 'edit' | 'manual'
+/** transcribed: the recording transcribed again in another spoken language, then processed. */
+export type VersionKind = 'processed' | 'transcribed' | 'edit' | 'manual'
 
 export interface SessionVersion {
   id: string
@@ -64,6 +65,21 @@ export interface SessionVersion {
   provider?: string
   model?: string
   ms?: number
+  /** transcribed: the spoken language it was transcribed in. */
+  inputLanguage?: string
+  /** transcribed: the transcription it replaced, which undo restores. */
+  previous?: Transcription
+}
+
+export interface Transcription {
+  engine: EngineId
+  model: string
+  /** The spoken language setting: 'auto' or an ISO 639-1 code. */
+  language: string
+  /** The language whisper heard, when it was auto-detected (ISO code, or its English name). */
+  detected?: string
+  ms: number
+  text: string
 }
 
 export type SessionAction = 'inserted' | 'pasted' | 'copied' | 'cancelled'
@@ -74,7 +90,7 @@ export interface Session {
   updatedAt: string
   durationMs: number
   hasAudio: boolean
-  transcription: { engine: EngineId; model: string; language: string; ms: number; text: string }
+  transcription: Transcription
   style: Style
   outputLanguage: string
   versions: SessionVersion[]
@@ -89,13 +105,16 @@ export interface Session {
 export type Phase = 'idle' | 'recording' | 'transcribing' | 'processing'
 
 /** What the pill's buttons do to the recording in progress. */
-export type RecordingAction = 'finish' | 'cancel' | 'compose' | 'dictate'
+export type RecordingAction = 'finish' | 'cancel' | 'pause' | 'resume' | 'compose' | 'dictate'
 
 export interface OverlayState {
   phase: Phase | 'done' | 'error' | 'info'
   purpose?: 'dictation' | 'compose' | 'edit'
   message?: string
+  /** Recording: when it started, moved forward by the time spent paused. */
   startedAt?: number
+  /** Recording: set while paused, since when. */
+  pausedAt?: number
 }
 
 export interface PreviewState {
@@ -204,6 +223,8 @@ export interface AppInfo {
 export type RecorderCommand =
   | { type: 'start'; deviceId: string; deviceLabel: string; sounds: boolean }
   | { type: 'stop'; reqId: number }
+  | { type: 'pause' }
+  | { type: 'resume' }
   | { type: 'cancel' }
   | { type: 'sound'; name: 'start' | 'stop' | 'error' | 'done' }
 

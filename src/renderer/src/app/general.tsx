@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { DICTATION_STYLES, LANGUAGES, STYLES } from '@shared/constants'
+import { DICTATION_STYLES, STYLES } from '@shared/constants'
 import type { AgentStatus, Config, DeepPartial, EngineStatus, MainSection, PasteKeys, PermissionStatus, RecordMode, Style } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
 import { Action, Bar, Check, displayShortcut, formatSize, List, ListRow, Row, Sep, ShortcutInput, TextInput } from '../components/ui'
 import { ipcError, sizeMB } from '../lib/format'
+import { outputOptions, spokenOptions } from '../lib/languages'
 import type { TestVerdict } from '../lib/microphone'
 import { useDownloads } from './hooks'
 import { InputSettings } from './input-settings'
@@ -17,8 +18,6 @@ interface Props {
   onNavigate: (s: MainSection) => void
 }
 
-const spokenOptions = [{ value: 'auto', label: 'auto-detect' }, ...LANGUAGES.map((l) => ({ value: l.code, label: l.name.toLowerCase() }))]
-const outputOptions = [{ value: 'same', label: 'as spoken' }, ...LANGUAGES.map((l) => ({ value: l.code, label: l.name.toLowerCase() }))]
 const styleOptions = DICTATION_STYLES.map((s) => ({ value: s.id, label: s.label.toLowerCase() }))
 
 function Setup({ config, update, onNavigate, micVerdict }: Props & { micVerdict: TestVerdict | null }) {
@@ -203,7 +202,11 @@ export function General(props: Props) {
           />
         </Row>
         <Row label="spoken" hint="the language you speak · setting it explicitly is more accurate than auto-detect">
-          <Dropdown value={config.language.input} onChange={(v) => update({ language: { input: v } })} options={spokenOptions} />
+          <Dropdown
+            value={config.language.input}
+            onChange={(v) => update({ language: { input: v } })}
+            options={spokenOptions(config.transcription.engine, config.language.input)}
+          />
         </Row>
         <Row label="output" hint="translate what you say into another language">
           <Dropdown value={config.language.output} onChange={(v) => update({ language: { output: v } })} options={outputOptions} />

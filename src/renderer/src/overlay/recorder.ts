@@ -1,29 +1,42 @@
 /** Microphone capture in the overlay renderer: Web Audio → Float32 PCM → 16 kHz mono. */
 import { cleanLabel, meterLevel, openMicrophone, resolveDeviceId, SILENT_PEAK } from '../lib/microphone'
 
+/** Silence put where a recording was paused, in seconds. */
+const PAUSE_GAP_S = 0.3
+
+/**
+ * Collects the microphone's samples. Messages: 'flush' hands over what's buffered, 'pause' drops
+ * the input until 'resume', which first adds a short silence so the words on either side stay apart.
+ */
 const WORKLET = `
 class SpeakCapture extends AudioWorkletProcessor {
   constructor() {
     super()
     this.buf = new Float32Array(2048)
     this.n = 0
-    this.port.onmessage = () => {
-      this.port.postMessage({ flush: true, data: this.buf.slice(0, this.n) })
+    this.paused = false
+    this.port.onmessage = (e) => {
+      if (e.data === 'pause') this.paused = true
+      else if (e.data === 'resume') {
+        if (this.paused) for (let i = 0; i < sampleRate * ${PAUSE_GAP_S}; i++) this.push(0)
+        this.paused = false
+      } else {
+        this.port.postMessage({ flush: true, data: this.buf.slice(0, this.n) })
+        this.n = 0
+      }
+    }
+  }
+  push(sample) {
+    this.buf[this.n++] = sample
+    if (this.n === this.buf.length) {
+      this.port.postMessage({ data: this.buf })
+      this.buf = new Float32Array(2048)
       this.n = 0
     }
   }
   process(inputs) {
     const ch = inputs[0] && inputs[0][0]
-    if (ch) {
-      for (let i = 0; i < ch.length; i++) {
-        this.buf[this.n++] = ch[i]
-        if (this.n === this.buf.length) {
-          this.port.postMessage({ data: this.buf })
-          this.buf = new Float32Array(2048)
-          this.n = 0
-        }
-      }
-    }
+    if (ch && !this.paused) for (let i = 0; i < ch.length; i++) this.push(ch[i])
     return true
   }
 }
@@ -87,6 +100,11 @@ export async function startCapture(deviceId: string, deviceLabel: string, onNoSi
   source.connect(node)
   node.connect(mute).connect(ctx.destination)
   return device
+}
+
+/** Pause or resume: the microphone stays open, its audio is dropped meanwhile. */
+export function pauseCapture(paused: boolean): void {
+  node?.port.postMessage(paused ? 'pause' : 'resume')
 }
 
 async function stopTracks(): Promise<void> {

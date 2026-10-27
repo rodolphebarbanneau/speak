@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { LANGUAGES, languageName, shortModel, STYLES } from '@shared/constants'
-import type { Config, Session, Style } from '@shared/types'
+import { languageName, shortModel, STYLES } from '@shared/constants'
+import type { Config, EngineId, Session, Style } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
 import { Action, displayShortcut, Row, Sep, Spinner, Track } from '../components/ui'
+import { ipcError } from '../lib/format'
+import { outputOptions, spokenOptions } from '../lib/languages'
 
 const api = window.speak
 
 const ACTION_TONE: Record<string, string> = { inserted: 'green', pasted: 'green', copied: 'acc', cancelled: 'dim' }
 const styleOptions = STYLES.map((s) => ({ value: s.id, label: s.label.toLowerCase() }))
-const outputOptions = [{ value: 'same', label: 'as spoken' }, ...LANGUAGES.map((l) => ({ value: l.code, label: l.name.toLowerCase() }))]
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
@@ -79,29 +80,33 @@ function AudioRow({ id }: { id: string }) {
   )
 }
 
-function Detail({ session, onChanged }: { session: Session; onChanged: (s: Session | null) => void }) {
+function Detail({ session, engine, onChanged }: { session: Session; engine: EngineId; onChanged: (s: Session | null) => void }) {
+  const t = session.transcription
+  const [spoken, setSpoken] = useState(t.language)
   const [style, setStyle] = useState<Style>(session.style)
   const [output, setOutput] = useState(session.outputLanguage)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    setSpoken(t.language)
     setStyle(session.style)
     setOutput(session.outputLanguage)
     setError(null)
-  }, [session.id, session.style, session.outputLanguage])
+  }, [session.id, t.language, session.style, session.outputLanguage])
 
   const reprocess = () => {
     setBusy(true)
     setError(null)
     api
-      .reprocessSession(session.id, style, output)
+      .reprocessSession(session.id, style, output, spoken)
       .then(onChanged)
-      .catch((e: Error) => setError(e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')))
+      .catch((e: Error) => setError(ipcError(e)))
       .finally(() => setBusy(false))
   }
 
-  const t = session.transcription
+  // What auto-detect heard, when it did.
+  const heard = t.detected ? `${lang(t.detected)} (detected)` : lang(t.language)
   const created = new Date(session.createdAt)
   return (
     <>
@@ -128,7 +133,7 @@ function Detail({ session, onChanged }: { session: Session; onChanged: (s: Sessi
           </span>
         </Row>
         <Row label="languages">
-          {lang(t.language)} → {lang(session.outputLanguage === 'same' ? t.language : session.outputLanguage)}
+          {heard} → {session.outputLanguage === 'same' ? lang(t.detected ?? t.language) : lang(session.outputLanguage)}
         </Row>
         {session.action && (
           <Row label="outcome">
@@ -156,6 +161,11 @@ function Detail({ session, onChanged }: { session: Session; onChanged: (s: Sessi
 
       <section>
         <Sep>re-process</Sep>
+        {session.hasAudio && (
+          <Row label="spoken" hint="transcribe the recording again in another language">
+            <Dropdown value={spoken} onChange={setSpoken} options={spokenOptions(engine, t.language, t.detected)} />
+          </Row>
+        )}
         <Row label="style">
           <Dropdown<Style> value={style} onChange={setStyle} options={styleOptions} />
         </Row>
@@ -172,6 +182,7 @@ function Detail({ session, onChanged }: { session: Session; onChanged: (s: Sessi
             <div key={v.id} className="version">
               <p className="dim">
                 {hms(new Date(v.at))} · {v.kind}
+                {v.inputLanguage ? ` · from ${lang(v.inputLanguage)}` : ''}
                 {v.style ? ` · ${v.style}` : ''}
                 {v.outputLanguage ? ` · ${lang(v.outputLanguage)}` : ''}
                 {v.model ? ` · ${shortModel(v.model)}` : ''}
@@ -235,7 +246,13 @@ export function History({ config, onSetup }: { config: Config; onSetup: () => vo
       </div>
       <div className="history-detail">
         <div className="page-inner">
-          {selected && <Detail session={selected} onChanged={(s) => (s ? setSessions((list) => list.map((x) => (x.id === s.id ? s : x))) : load())} />}
+          {selected && (
+            <Detail
+              session={selected}
+              engine={config.transcription.engine}
+              onChanged={(s) => (s ? setSessions((list) => list.map((x) => (x.id === s.id ? s : x))) : load())}
+            />
+          )}
         </div>
       </div>
     </div>

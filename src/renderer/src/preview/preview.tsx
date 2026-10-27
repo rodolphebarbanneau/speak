@@ -1,27 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { LANGUAGES, shortModel, STYLES } from '@shared/constants'
-import type { PreviewState, Style } from '@shared/types'
+import { shortModel, STYLES } from '@shared/constants'
+import type { EngineId, PreviewState, Style } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
 import { Action, displayShortcut, Key, MOD, Sep, Spinner, TitleBar, useWindowFocus } from '../components/ui'
+import { outputOptions, spokenOptions } from '../lib/languages'
 
 const api = window.speak
 
 const styleOptions = STYLES.map((s) => ({ value: s.id, label: s.label.toLowerCase() }))
-const outputOptions = [{ value: 'same', label: 'as spoken' }, ...LANGUAGES.map((l) => ({ value: l.code, label: l.name.toLowerCase() }))]
-const langName = (code: string) => (code === 'auto' ? 'auto' : code === 'same' ? 'same' : code)
 
 export function Preview() {
   useWindowFocus()
   const [state, setState] = useState<PreviewState | null>(null)
   const [text, setText] = useState('')
   const [recordShortcut, setRecordShortcut] = useState('')
+  const [engine, setEngine] = useState<EngineId>('whisper')
   const editorRef = useRef<HTMLTextAreaElement>(null)
   const versionKey = state ? `${state.session.id}:${state.session.versions.length}:${state.session.text.length}` : ''
 
   useEffect(() => {
     const off = api.onPreview(setState)
     api.previewReady()
-    void api.getConfig().then((c) => setRecordShortcut(displayShortcut(c.shortcuts.record)))
+    void api.getConfig().then((c) => {
+      setRecordShortcut(displayShortcut(c.shortcuts.record))
+      setEngine(c.transcription.engine)
+    })
     return off
   }, [])
 
@@ -92,14 +95,13 @@ export function Preview() {
   const reprocess = (style: Style, lang: string) => api.previewReprocess(style, lang)
   const last = session.versions[session.versions.length - 1]
   const working = busy === 'transcribing' || busy === 'processing'
+  const t = session.transcription
+  // The languages actually used: what auto-detect heard, and the output it resolves to.
+  const heard = t.detected ?? t.language
 
   return (
     <div className="frame">
-      <TitleBar
-        right={
-          <span>{`${langName(session.transcription.language)} → ${langName(session.outputLanguage === 'same' ? session.transcription.language : session.outputLanguage)}`}</span>
-        }
-      >
+      <TitleBar right={<span>{`${heard} → ${session.outputLanguage === 'same' ? heard : session.outputLanguage}`}</span>}>
         <b>speak</b> · preview
       </TitleBar>
 
@@ -130,6 +132,10 @@ export function Preview() {
           </span>
         ) : (
           <>
+            <span>
+              <span className="dim">spoken</span>{' '}
+              <Dropdown value={t.language} options={spokenOptions(engine, t.language, t.detected)} onChange={(v) => api.previewRetranscribe(v)} />
+            </span>
             <span>
               <span className="dim">style</span>{' '}
               <Dropdown<Style> value={session.style} options={styleOptions} onChange={(v) => reprocess(v, session.outputLanguage)} />

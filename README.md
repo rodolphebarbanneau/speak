@@ -29,6 +29,8 @@ It's made for people who write a lot: messages, emails, notes, and prompts for A
 2. Hold **Ctrl+Shift+Space** (**⌘⇧Space** on a Mac) and talk. Let go when you're done. You can also tap it once to start and again to stop.
 3. Your text appears. Speak can paste it straight away, or show it to you first: change the style or the language, fix it by voice ("make it shorter"), then insert it.
 
+While you talk, a small bar at the bottom of the screen shows the recording. Click the style, the languages or the mode on it to change them, and use its buttons to pause, finish or cancel.
+
 <p align="center">
   <img src="docs/preview.png" alt="The preview: spoken in French, written in English, ready to insert" width="720">
 </p>
@@ -92,7 +94,7 @@ Speak updates itself: new versions download in the background and install the ne
 
 **The text isn't pasted in a game**: anti-cheat software such as FACEIT blocks simulated key presses while it runs. Speak notices, keeps your text on the clipboard and tells you to press **Ctrl+V** yourself.
 
-**Recognition is off, or picks the wrong language**: set the language you speak in **settings → general → spoken** instead of auto-detect, and add names and jargon you use to **vocabulary**.
+**Recognition is off, or picks the wrong language**: in the preview or the history, pick the language you spoke under **spoken** to transcribe the recording again. To avoid it next time, set that language in **settings → general → spoken** instead of auto-detect, and add names and jargon you use to **vocabulary**.
 
 **macOS**: allow Speak in **System Settings → Privacy & Security** for the microphone, and for Accessibility so it can paste and detect when you release the shortcut.
 

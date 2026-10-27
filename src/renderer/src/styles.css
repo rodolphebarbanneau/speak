@@ -470,12 +470,18 @@ html[data-view='overlay'] body {
   display: flex;
   align-items: flex-end;
   gap: 1px;
+  width: calc(10ch + 9px); /* 10 bars */
   height: 1em;
   color: var(--accent);
 }
 .osd .levels > i {
   width: 1ch;
   background: currentColor;
+}
+.osd .levels.paused {
+  align-items: center;
+  justify-content: center;
+  color: var(--yellow);
 }
 /* Settings on the pill while recording: click one to change it. */
 .osd .choices {
@@ -489,21 +495,41 @@ html[data-view='overlay'] body {
 .osd .choices > button.open {
   color: var(--accent);
 }
-/* done: stop and process the recording · esc: cancel it */
-.osd .finish {
+/* pause or resume · done: stop and process the recording · cancel it */
+.osd .controls {
   display: flex;
-  gap: var(--s2);
+  gap: 2px;
 }
-.osd .finish .done {
-  color: var(--green);
+.osd .controls > button {
+  display: flex;
+  padding: 3px;
+  color: var(--fg);
 }
-.osd .finish .esc {
-  color: var(--dim);
+.osd .controls > button:hover {
+  background: var(--sel);
 }
-.osd .finish .done:hover {
+.osd .controls svg {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+}
+.osd .controls .pause:hover {
+  color: var(--yellow);
+}
+.osd .controls .resume {
+  color: var(--yellow);
+}
+.osd .controls .resume:hover,
+.osd .controls .done:hover {
   color: var(--hi);
 }
-.osd .finish .esc:hover {
+.osd .controls .done {
+  color: var(--green);
+}
+.osd .controls .esc {
+  color: var(--dim);
+}
+.osd .controls .esc:hover {
   color: var(--red);
 }
 .overlay-menu {

@@ -90,6 +90,3 @@ export const VAD_MODEL = {
   url: 'https://huggingface.co/ggml-org/silero-v5.1.2/resolve/main/ggml-silero-v5.1.2.bin',
   sizeMB: 1
 }
-
-/** Languages supported by Parakeet TDT 0.6B v3 (auto-detected, no language hint). */
-export const PARAKEET_LANGUAGES = new Set('bg hr cs da nl en et fi fr de el hu it lv lt mt pl pt ro sk sl es sv ru uk'.split(' '))

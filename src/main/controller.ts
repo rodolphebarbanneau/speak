@@ -1,10 +1,10 @@
 import { randomBytes } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { Notification, systemPreferences } from 'electron'
-import { needsAi } from '../shared/constants'
+import { languageName, needsAi, PARAKEET_LANGUAGES } from '../shared/constants'
 import type { OverlayState, Phase, PreviewState, RecordingAction, Session, SessionAction, SessionVersion, Style } from '../shared/types'
 import { aiConfigured, editText, processTranscript } from './ai'
-import { cleanTranscript, encodeWav, prepareAudio } from './audio'
+import { cleanTranscript, decodeWav, encodeWav, prepareAudio } from './audio'
 import { configStore } from './config'
 import { history, newSessionId } from './history'
 import { hotkeys, type RecordAction } from './hotkeys'
@@ -13,7 +13,6 @@ import { captureFocus, restoreFocus, type FocusTarget } from './platform/focus'
 import { copyToClipboard, pasteText } from './platform/paste'
 import { readSelection } from './platform/selection'
 import { engine } from './stt/engine'
-import { PARAKEET_LANGUAGES } from './stt/catalog'
 import { isMac } from './util'
 import { broadcast, hideOverlay, hidePreview, onPreviewClose, overlay, preview, previewVisible, showOverlay, showPreview } from './windows'
 
@@ -28,6 +27,10 @@ function noSignalMessage(device: string): string {
   return `No signal from ${name}. Pick your microphone in Speak → settings → general → input.`
 }
 
+function aiOffMessage(style: Style): string {
+  return `${style === 'compose' ? 'Compose needs an AI provider' : 'AI processing is off'} (Speak → settings → ai). Showing the raw transcript.`
+}
+
 /** Orchestrates: record → transcribe → AI → preview dialog or direct paste. */
 class Controller extends EventEmitter {
   phase: Phase = 'idle'
@@ -38,6 +41,10 @@ class Controller extends EventEmitter {
   private selection: Promise<string> | null = null
   private target: FocusTarget | null = null
   private recordStartedAt = 0
+  /** While paused, since when (0 = recording). */
+  private pausedAt = 0
+  /** Time spent paused so far in this recording. */
+  private pausedMs = 0
   private maxTimer: NodeJS.Timeout | null = null
   private abort: AbortController | null = null
   private recorderReq = 0
@@ -49,6 +56,8 @@ class Controller extends EventEmitter {
 
   /** Session currently shown in the preview dialog. */
   private current: Session | null = null
+  /** Its recording, prepared for the engine, to transcribe it again in another spoken language. */
+  private currentAudio: Buffer | null = null
   private previewBusy: PreviewState['busy'] = null
   private previewError: string | undefined
   private lastText = ''
@@ -76,15 +85,48 @@ class Controller extends EventEmitter {
     this.onShortcutPress(action)
   }
 
-  /** The pill's buttons: finish or cancel the recording, or switch a dictation to compose and back. */
+  /** The pill's buttons: finish, cancel or pause the recording, or switch a dictation to compose and back. */
   recordingAction(action: RecordingAction): void {
     if (this.phase !== 'recording') return
     if (action === 'finish') void this.stopRecording()
     else if (action === 'cancel') this.cancel()
+    else if (action === 'pause' || action === 'resume') this.setPaused(action === 'pause')
     else if (this.purpose === 'dictation') {
       this.compose = action === 'compose'
-      this.overlayState({ phase: 'recording', purpose: this.overlayPurpose, startedAt: this.recordStartedAt })
+      this.overlayState(this.recordingState())
     }
+  }
+
+  /**
+   * Pause: the microphone stays open so resuming is instant, but its audio isn't kept. Paused time
+   * counts neither on the clock nor toward the maximum length. The shortcut still finishes.
+   */
+  private setPaused(paused: boolean): void {
+    // Until the microphone has started, there's nothing to pause.
+    if (paused === !!this.pausedAt || this.pendingStart) return
+    if (paused) {
+      this.pausedAt = Date.now()
+      if (this.maxTimer) clearTimeout(this.maxTimer)
+    } else {
+      this.pausedMs += Date.now() - this.pausedAt
+      this.pausedAt = 0
+      this.armMaxTimer()
+    }
+    log.info(paused ? 'Recording paused' : 'Recording resumed')
+    overlay?.webContents.send('speak:recorder', { type: paused ? 'pause' : 'resume' })
+    this.overlayState(this.recordingState())
+  }
+
+  /** Stop the recording when it reaches the maximum length, counting only the time recorded. */
+  private armMaxTimer(): void {
+    if (this.maxTimer) clearTimeout(this.maxTimer)
+    const recorded = Date.now() - this.recordStartedAt - this.pausedMs
+    this.maxTimer = setTimeout(
+      () => {
+        if (this.phase === 'recording') void this.stopRecording()
+      },
+      Math.max(0, configStore.get().audio.maxSeconds * 1000 - recorded)
+    )
   }
 
   // ---------------------------------------------------------------- overlay
@@ -92,6 +134,10 @@ class Controller extends EventEmitter {
   /** What the overlay calls the current recording. */
   private get overlayPurpose(): OverlayState['purpose'] {
     return this.compose ? 'compose' : this.purpose
+  }
+
+  private recordingState(): OverlayState {
+    return { phase: 'recording', purpose: this.overlayPurpose, startedAt: this.recordStartedAt + this.pausedMs, pausedAt: this.pausedAt || undefined }
   }
 
   private setPhase(phase: Phase): void {
@@ -142,7 +188,9 @@ class Controller extends EventEmitter {
     this.setPhase('recording')
     if (purpose === 'dictation') this.target = await captureFocus()
     this.recordStartedAt = Date.now()
-    this.overlayState({ phase: 'recording', purpose: this.overlayPurpose, startedAt: this.recordStartedAt })
+    this.pausedAt = 0
+    this.pausedMs = 0
+    this.overlayState(this.recordingState())
     if (purpose === 'edit') this.updatePreviewBusy('listening')
     engine.warmup()
 
@@ -159,10 +207,7 @@ class Controller extends EventEmitter {
     }
     this.device = started.device ?? ''
     log.info(`Recording from "${this.device}"`)
-    if (this.maxTimer) clearTimeout(this.maxTimer)
-    this.maxTimer = setTimeout(() => {
-      if (this.phase === 'recording') void this.stopRecording()
-    }, cfg.audio.maxSeconds * 1000)
+    this.armMaxTimer()
   }
 
   recorderStarted(ok: boolean, error?: string, device?: string): void {
@@ -276,7 +321,7 @@ class Controller extends EventEmitter {
         updatedAt: now,
         durationMs: Math.round(prepared.durationMs),
         hasAudio: cfg.history.keepAudio,
-        transcription: { engine: t.engine, model: t.model, language, ms: t.ms, text: transcript },
+        transcription: { engine: t.engine, model: t.model, language, detected: t.detected, ms: t.ms, text: transcript },
         style: compose ? 'compose' : cfg.style,
         outputLanguage: cfg.language.output,
         versions: [],
@@ -294,7 +339,7 @@ class Controller extends EventEmitter {
 
       if (needsAi(session.style, session.outputLanguage)) {
         if (!aiConfigured()) {
-          session.error = `${compose ? 'Compose needs an AI provider' : 'AI processing is off'} (Speak → settings → ai). Showing the raw transcript.`
+          session.error = aiOffMessage(session.style)
         } else {
           this.setPhase('processing')
           this.overlayState({ phase: 'processing', purpose: compose ? 'compose' : purpose, message: context ? 'with selected text' : undefined })
@@ -336,7 +381,7 @@ class Controller extends EventEmitter {
         return
       }
       this.overlayState({ phase: 'idle' })
-      this.openPreview(session)
+      this.openPreview(session, wav)
     } catch (err) {
       if (abort.signal.aborted) return
       this.setPhase('idle')
@@ -367,8 +412,9 @@ class Controller extends EventEmitter {
 
   // ---------------------------------------------------------------- preview dialog
 
-  private openPreview(session: Session): void {
+  private openPreview(session: Session, audio: Buffer): void {
     this.current = session
+    this.currentAudio = audio
     this.previewBusy = null
     this.previewError = session.error
     this.sendPreview()
@@ -448,6 +494,68 @@ class Controller extends EventEmitter {
     }
   }
 
+  /** Transcribe the recording again in another spoken language, then redo the style and translation. */
+  async previewRetranscribe(language: string): Promise<void> {
+    const session = this.current
+    const audio = this.currentAudio
+    if (!session || !audio || this.phase !== 'idle' || language === session.transcription.language) return
+    const abort = new AbortController()
+    this.abort = abort
+    this.setPhase('transcribing')
+    this.updatePreviewBusy('transcribing')
+    try {
+      const warning = await this.retranscribe(session, audio, {
+        language,
+        style: session.style,
+        outputLanguage: session.outputLanguage,
+        signal: abort.signal,
+        onProcessing: () => {
+          this.setPhase('processing')
+          this.updatePreviewBusy('processing')
+        }
+      })
+      if (abort.signal.aborted) return
+      await history.save(session)
+      this.updatePreviewBusy(null, warning)
+    } catch (err) {
+      if (!abort.signal.aborted) this.updatePreviewBusy(null, (err as Error).message)
+    } finally {
+      if (this.abort === abort) this.abort = null
+      this.setPhase('idle')
+    }
+  }
+
+  /**
+   * Transcribe `wav` in `language` and process the new transcript: one 'transcribed' version, which
+   * undo reverts along with the transcript. Returns a warning when the AI step had to be skipped.
+   */
+  private async retranscribe(
+    session: Session,
+    wav: Buffer,
+    opts: { language: string; style: Style; outputLanguage: string; signal?: AbortSignal; onProcessing?: () => void }
+  ): Promise<string | undefined> {
+    const { language, style, outputLanguage, signal } = opts
+    const t = await engine.transcribe(wav, { language, prompt: this.whisperPrompt(), signal })
+    const text = cleanTranscript(t.text)
+    if (signal?.aborted) return
+    if (!text) throw new Error(`No speech recognized in ${languageName(language).toLowerCase()}.`)
+    log.info(`Transcribed again in ${language} in ${t.ms}ms`)
+    let result: { text: string; provider?: string; model?: string; ms?: number } = { text }
+    let warning: string | undefined
+    if (needsAi(style, outputLanguage)) {
+      if (!aiConfigured()) warning = aiOffMessage(style)
+      else {
+        opts.onProcessing?.()
+        result = await processTranscript(text, { inputLanguage: language, style, outputLanguage, context: session.context, signal })
+        if (signal?.aborted) return
+      }
+    }
+    const previous = session.transcription
+    session.transcription = { engine: t.engine, model: t.model, language, detected: t.detected, ms: t.ms, text }
+    this.addVersion(session, { kind: 'transcribed', ...result, style, outputLanguage, inputLanguage: language, previous })
+    return warning
+  }
+
   previewVoiceEdit(): void {
     if (this.phase === 'recording' && this.purpose === 'edit') void this.stopRecording()
     else if (this.phase === 'idle') void this.startRecording('edit')
@@ -456,7 +564,8 @@ class Controller extends EventEmitter {
   async previewUndo(): Promise<void> {
     const session = this.current
     if (!session || session.versions.length === 0 || this.phase !== 'idle') return
-    session.versions.pop()
+    const undone = session.versions.pop()!
+    if (undone.previous) session.transcription = undone.previous
     const prev = session.versions[session.versions.length - 1]
     session.text = prev ? prev.text : session.transcription.text
     session.updatedAt = new Date().toISOString()
@@ -503,7 +612,10 @@ class Controller extends EventEmitter {
     session.updatedAt = new Date().toISOString()
     if (action !== 'cancelled') this.lastText = session.text
     await history.save(session)
-    if (this.current === session) this.current = null
+    if (this.current === session) {
+      this.current = null
+      this.currentAudio = null
+    }
     this.emit('phase', this.phase) // refresh tray ("Copy last result")
     this.target = null
   }
@@ -539,9 +651,22 @@ class Controller extends EventEmitter {
     await this.handleAudio(samples, { target })
   }
 
-  async reprocessHistory(id: string, style: Style, outputLanguage: string): Promise<Session> {
+  /** Redo a past dictation in another style or output language, or from its recording in another spoken language. */
+  async reprocessHistory(id: string, style: Style, outputLanguage: string, inputLanguage?: string): Promise<Session> {
     const session = await history.get(id)
     if (!session) throw new Error('Session not found')
+    if (inputLanguage && inputLanguage !== session.transcription.language) {
+      const recording = await history.audio(id)
+      if (!recording) throw new Error('The recording of this dictation was not kept.')
+      const warning = await this.retranscribe(session, encodeWav(prepareAudio(decodeWav(recording)).samples), {
+        language: inputLanguage,
+        style,
+        outputLanguage
+      })
+      await history.save(session)
+      if (warning) throw new Error(warning)
+      return session
+    }
     if (!needsAi(style, outputLanguage)) {
       this.addVersion(session, { kind: 'processed', text: session.transcription.text, style, outputLanguage })
     } else {

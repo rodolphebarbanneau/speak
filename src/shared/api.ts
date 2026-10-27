@@ -77,7 +77,8 @@ export interface SpeakApi {
   historyStats(): Promise<{ count: number; bytes: number }>
   /** Asks for confirmation, then deletes every dictation. True when deleted. */
   clearHistory(): Promise<boolean>
-  reprocessSession(id: string, style: Style, outputLanguage: string): Promise<Session>
+  /** With another spoken language, transcribes the saved recording again first. */
+  reprocessSession(id: string, style: Style, outputLanguage: string, inputLanguage?: string): Promise<Session>
   revealSession(id: string): void
   copyText(text: string): void
   onHistoryChanged(cb: () => void): () => void
@@ -89,6 +90,8 @@ export interface SpeakApi {
   previewCopy(text: string): void
   previewCancel(): void
   previewReprocess(style: Style, outputLanguage: string): void
+  /** Transcribe the recording again in another spoken language, then redo style and translation. */
+  previewRetranscribe(language: string): void
   previewVoiceEdit(): void
   previewUndo(): void
 
@@ -101,6 +104,6 @@ export interface SpeakApi {
   recorderResult(reqId: number, samples: Float32Array | null, error?: string): void
   /** The pointer is over the pill: catch clicks there instead of passing them through. */
   overlayInteractive(interactive: boolean): void
-  /** Pill buttons: finish (process) or cancel the recording, or switch it to compose or dictation. */
+  /** Pill buttons: finish (process), cancel or pause the recording, or switch it to compose or dictation. */
   recordingAction(action: RecordingAction): void
 }

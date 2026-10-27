@@ -56,7 +56,7 @@ const api: SpeakApi = {
   deleteSession: (id) => invoke('deleteSession', id),
   historyStats: () => invoke('historyStats'),
   clearHistory: () => invoke('clearHistory'),
-  reprocessSession: (id, style, outputLanguage) => invoke('reprocessSession', id, style, outputLanguage),
+  reprocessSession: (id, style, outputLanguage, inputLanguage) => invoke('reprocessSession', id, style, outputLanguage, inputLanguage),
   revealSession: (id) => send('revealSession', id),
   copyText: (text) => send('copyText', text),
   onHistoryChanged: listen('historyChanged'),
@@ -67,6 +67,7 @@ const api: SpeakApi = {
   previewCopy: (text) => send('previewCopy', text),
   previewCancel: () => send('previewCancel'),
   previewReprocess: (style, outputLanguage) => send('previewReprocess', style, outputLanguage),
+  previewRetranscribe: (language) => send('previewRetranscribe', language),
   previewVoiceEdit: () => send('previewVoiceEdit'),
   previewUndo: () => send('previewUndo'),
 

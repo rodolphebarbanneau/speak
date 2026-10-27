@@ -1,4 +1,4 @@
-import type { AgentModel, Config, Style } from './types'
+import type { AgentModel, Config, EngineId, Style } from './types'
 
 /** Releases are published here; the updater reads them through electron-builder's update manifests. */
 export const RELEASES_URL = 'https://github.com/rodolphebarbanneau/speak/releases'
@@ -31,6 +31,14 @@ export const LANGUAGES: Array<{ code: string; name: string }> = [
   { code: 'vi', name: 'Vietnamese' },
   { code: 'id', name: 'Indonesian' }
 ]
+
+/** Languages supported by Parakeet TDT 0.6B v3 (auto-detected, no language hint). */
+export const PARAKEET_LANGUAGES = new Set('bg hr cs da nl en et fi fr de el hu it lv lt mt pl pt ro sk sl es sv ru uk'.split(' '))
+
+/** The spoken languages to offer for an engine: Parakeet knows 25 of them. */
+export function spokenLanguages(engine: EngineId): typeof LANGUAGES {
+  return engine === 'parakeet' ? LANGUAGES.filter((l) => PARAKEET_LANGUAGES.has(l.code)) : LANGUAGES
+}
 
 export function languageName(code: string): string {
   if (code === 'auto') return 'Auto-detect'
