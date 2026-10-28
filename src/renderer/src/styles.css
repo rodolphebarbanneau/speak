@@ -320,6 +320,14 @@ textarea:focus {
   white-space: pre;
   vertical-align: top;
 }
+/* A track you can click or drag to move the playhead. */
+.track.seek {
+  cursor: pointer;
+  touch-action: none;
+}
+.track.seek:hover .muted {
+  color: var(--dim);
+}
 .bar {
   color: var(--accent);
 }

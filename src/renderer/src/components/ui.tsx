@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 
 const api = window.speak
 const isMac = api.platform === 'darwin'
@@ -198,9 +198,9 @@ export function TextInput({
  * A run of block or box-drawing characters (bars, meters) in a box `cells` characters wide.
  * Those characters come from a fallback font with uneven widths: the box keeps the layout still.
  */
-export function Track({ cells, children }: { cells: number; children: ReactNode }) {
+export function Track({ cells, children, className, ...rest }: { cells: number; children: ReactNode } & ComponentProps<'span'>) {
   return (
-    <span className="track" style={{ width: `${cells}ch` }}>
+    <span {...rest} className={`track ${className ?? ''}`} style={{ width: `${cells}ch` }}>
       {children}
     </span>
   )

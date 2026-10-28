@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
 import { languageName, shortModel, STYLES } from '@shared/constants'
 import type { Config, EngineId, Session, Style } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
@@ -24,7 +24,13 @@ function when(iso: string): string {
   return d.toDateString() === new Date().toDateString() ? hm(d) : `${ymd(d)} ${hm(d)}`
 }
 
-/** audio   0:04 / 0:13  ━━━━━━────────   [ play ] */
+/** Seconds the arrow keys move the playhead by. */
+const SKIP_S = 5
+
+/**
+ * audio   0:04 / 0:13  ━━━━━━──────────────   [ restart ] [ play ]
+ * The bar is the scrubber: click or drag it, or focus it and use ← → Home End.
+ */
 function AudioRow({ id }: { id: string }) {
   const audio = useRef<HTMLAudioElement | null>(null)
   const [url, setUrl] = useState<string | null>(null)
@@ -37,6 +43,7 @@ function AudioRow({ id }: { id: string }) {
     setUrl(null)
     setPlaying(false)
     setTime(0)
+    setDuration(0)
     void api.getSessionAudio(id).then((bytes) => {
       if (!bytes) return
       objectUrl = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'audio/wav' }))
@@ -48,31 +55,81 @@ function AudioRow({ id }: { id: string }) {
   }, [id])
 
   if (!url) return null
-  const width = 16
+  const width = 24
   const filled = duration ? Math.round((time / duration) * width) : 0
+  const play = () => void audio.current?.play()
   const toggle = () => {
     const a = audio.current
-    if (!a) return
-    if (a.paused) void a.play().then(() => setPlaying(true))
-    else {
-      a.pause()
-      setPlaying(false)
-    }
+    if (a?.paused) play()
+    else a?.pause()
+  }
+  const seek = (to: number) => {
+    const a = audio.current
+    if (!a || !duration) return
+    a.currentTime = Math.max(0, Math.min(duration, to))
+    setTime(a.currentTime)
+  }
+  const restart = () => {
+    seek(0)
+    play()
+  }
+  const seekToPointer = (e: PointerEvent<HTMLSpanElement>) => {
+    const box = e.currentTarget.getBoundingClientRect()
+    seek(((e.clientX - box.left) / box.width) * duration)
+  }
+  const keys: Record<string, () => void> = {
+    ArrowLeft: () => seek(time - SKIP_S),
+    ArrowDown: () => seek(time - SKIP_S),
+    ArrowRight: () => seek(time + SKIP_S),
+    ArrowUp: () => seek(time + SKIP_S),
+    Home: () => seek(0),
+    End: () => seek(duration)
   }
   return (
-    <Row label="audio" hint="the original recording" actions={<Action onClick={toggle}>{playing ? 'pause' : 'play'}</Action>}>
+    <Row
+      label="audio"
+      hint="the original recording · click or drag the bar to move through it"
+      actions={
+        <>
+          {time > 0 && <Action onClick={restart}>restart</Action>}
+          <Action onClick={toggle}>{playing ? 'pause' : 'play'}</Action>
+        </>
+      }
+    >
       <audio
         ref={audio}
         src={url}
-        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+        onLoadedMetadata={(e) => setDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0)}
         onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
-        onEnded={() => setPlaying(false)}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
       />
       <span>
         <span className="hi">{clock(time)}</span>
         <span className="dim"> / {clock(duration)}</span>
       </span>
-      <Track cells={width}>
+      <Track
+        cells={width}
+        className="seek"
+        role="slider"
+        tabIndex={0}
+        aria-label="position"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(duration)}
+        aria-valuenow={Math.round(time)}
+        aria-valuetext={`${clock(time)} of ${clock(duration)}`}
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId)
+          seekToPointer(e)
+        }}
+        onPointerMove={(e) => e.currentTarget.hasPointerCapture(e.pointerId) && seekToPointer(e)}
+        onKeyDown={(e) => {
+          const key = keys[e.key]
+          if (!key) return
+          e.preventDefault()
+          key()
+        }}
+      >
         <span className="acc">{'━'.repeat(filled)}</span>
         <span className="muted">{'─'.repeat(width - filled)}</span>
       </Track>
