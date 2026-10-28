@@ -4,7 +4,10 @@ import type { AppUpdater, ProgressInfo, UpdateInfo } from 'electron-updater'
 import type { UpdateState } from '../shared/types'
 import { configStore } from './config'
 import { log } from './log'
-import { allowQuit } from './windows'
+import { label, withLoading } from './loading'
+import { stopKeyboardHook } from './platform/keyboard'
+import { engine } from './stt/engine'
+import { allowQuit, hideWindows } from './windows'
 
 const FIRST_CHECK_MS = 15_000
 const CHECK_EVERY_MS = 4 * 3600_000
@@ -78,11 +81,29 @@ class Updater extends EventEmitter {
     }
   }
 
-  /** Quit and run the installer, then relaunch. */
-  install(): void {
-    if (!this.updater || this.state.status !== 'downloaded') return
-    allowQuit()
-    this.updater.quitAndInstall(true, true)
+  /**
+   * Quit and run the installer, then relaunch. A loading dialog shows Speak letting go of what it
+   * holds first (the speech model, the keyboard), as the installer itself runs out of sight.
+   */
+  async install(): Promise<void> {
+    const updater = this.updater
+    if (!updater || this.state.status !== 'downloaded') return
+    await withLoading(
+      `updating to ${this.state.latest}`,
+      [
+        [label('stopping the speech engine', 'letting the speech engine finish its sentence'), () => engine.shutdown()],
+        [label('releasing the keyboard', 'handing the keyboard back'), () => stopKeyboardHook()],
+        ['closing windows', () => hideWindows()],
+        [
+          label('starting the installer', 'handing over to the installer'),
+          () => {
+            allowQuit()
+            updater.quitAndInstall(true, true)
+          }
+        ]
+      ],
+      { showAfterMs: 0, minShownMs: 1500, note: 'speak reopens by itself in a few seconds', leaveOpen: true }
+    )
   }
 
   private set(patch: Partial<UpdateState>): void {

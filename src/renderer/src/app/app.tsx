@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { MainSection } from '@shared/types'
+import { AppName } from '@themes/components'
 import { Action, displayShortcut, HelpProvider, Key, TitleBar, useWindowFocus } from '../components/ui'
 import { About } from './about'
 import { AiSettings } from './ai-settings'
@@ -51,7 +52,7 @@ export function App() {
             </>
           }
         >
-          <b>speak</b> · {page ? `settings · ${page.label}` : 'history'}
+          <AppName /> · {page ? `settings · ${page.label}` : 'history'}
         </TitleBar>
         <div className="main">
           {!page ? (

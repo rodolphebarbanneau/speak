@@ -14,5 +14,13 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["electron.vite.config.ts", "src/main/**/*", "src/preload/**/*", "src/shared/**/*"]
+  "include": [
+    "electron.vite.config.ts",
+    "src/main/**/*",
+    "src/preload/**/*",
+    "src/shared/**/*",
+    "src/themes/shared.ts",
+    "src/themes/schedule.ts",
+    "src/themes/*/palette.ts"
+  ]
 }

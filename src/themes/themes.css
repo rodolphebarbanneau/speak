@@ -1,0 +1,91 @@
+/* Shared by the easter egg themes. Each theme's palette (palette.ts) is set on <html> while
+   it's on; its own styles are in its folder. */
+
+/* Registered so the palette can fade when the theme is turned off or back on. Initial values
+   are styles.css's (Tokyo Night). */
+@property --bg {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #1a1b26;
+}
+@property --bg-dark {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #16161e;
+}
+@property --bg-light {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #24283b;
+}
+@property --sel {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #292e42;
+}
+@property --hover {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(41, 46, 66, 0.55);
+}
+@property --muted {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #414868;
+}
+@property --dim {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #565f89;
+}
+@property --fg {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #a9b1d6;
+}
+@property --hi {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #c0caf5;
+}
+@property --accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #7aa2f7;
+}
+@property --yellow {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #e0af68;
+}
+html.theme-fade {
+  transition-property: --bg, --bg-dark, --bg-light, --sel, --hover, --muted, --dim, --fg, --hi, --accent, --yellow;
+  transition-duration: 0.6s;
+}
+
+/* The app name or logo in the title row, clickable while a theme is in season. */
+.theme-toggle {
+  -webkit-app-region: no-drag;
+}
+/* Centered on the title's text; the negative margins keep it from growing the line, so the
+   logo sits clear of the window's top edge whatever its height. */
+.theme-toggle.logo {
+  display: inline-flex;
+  vertical-align: middle;
+  margin: -8px 0;
+}
+
+/* Decorations around the recording pill: behind it, never in the way of a click. */
+.pill-decor {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.pill-decor ~ .osd {
+  z-index: 1;
+}
+.pill-decor svg {
+  display: block;
+}

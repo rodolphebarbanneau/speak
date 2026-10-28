@@ -12,7 +12,7 @@ import { configStore } from '../config'
 import { downloads } from '../download'
 import { log } from '../log'
 import { paths } from '../paths'
-import { delay, findDirContaining, freePort, isLinux, isMac, isWin, run, shellEnv, which } from '../util'
+import { delay, findDirContaining, freePort, isLinux, isMac, isWin, lowerPriority, run, shellEnv, which } from '../util'
 import { binaryOption, binaryOptions, MODELS, VAD_MODEL, WHISPER_CPP_TAG, type ModelDef } from './catalog'
 
 const exe = (name: string) => (isWin ? `${name}.exe` : name)
@@ -281,7 +281,7 @@ class Engine {
     try {
       const args = ['-m', model, '-t', String(threads()), '-np', '-f', file]
       if (!configStore.get().transcription.useGpu) args.push('-ng')
-      const r = await run(join(bin.dir, PARAKEET), args, { cwd: bin.dir, env: childEnv(bin.dir), timeoutMs: 300_000, signal: opts.signal })
+      const r = await run(join(bin.dir, PARAKEET), args, { cwd: bin.dir, env: childEnv(bin.dir), timeoutMs: 300_000, signal: opts.signal, lowPriority: true })
       if (r.code !== 0) throw new Error(`parakeet-cli failed: ${(r.stderr || r.stdout).trim().split('\n').slice(-3).join(' ')}`)
       return r.stdout
         .split('\n')
@@ -315,6 +315,7 @@ class Engine {
     if (useVad) args.push('--vad', '-vm', this.vadPath())
     log.info('Starting whisper-server', args.join(' '))
     const child = spawn(join(bin.dir, SERVER), args, { cwd: bin.dir, env: childEnv(bin.dir), windowsHide: true })
+    lowerPriority(child)
     this.server = child
     this.serverPort = port
     let output = ''
@@ -363,6 +364,22 @@ class Engine {
         this.stopServer()
       }, minutes * 60_000)
     }
+  }
+
+  /** Whether the Whisper model is in memory, ready for the next transcription. */
+  get modelLoaded(): boolean {
+    return !!this.server && !this.starting
+  }
+
+  /** Stop the server and wait (up to 3 s) for it to exit and hand the memory and the GPU back. */
+  async shutdown(): Promise<void> {
+    const server = this.server
+    this.stopServer()
+    if (!server || server.exitCode !== null) return
+    await new Promise<void>((resolve) => {
+      server.once('exit', () => resolve())
+      setTimeout(resolve, 3000).unref()
+    })
   }
 
   stopServer(): void {

@@ -10,6 +10,7 @@ import type {
   DeepPartial,
   DownloadProgress,
   EngineStatus,
+  LoadingState,
   MainSection,
   OverlayState,
   PermissionStatus,
@@ -19,6 +20,7 @@ import type {
   Session,
   Style
 } from './types'
+import type { Season } from '../themes/shared'
 
 /** API exposed to renderers as `window.speak` by the preload script. */
 export interface SpeakApi {
@@ -32,6 +34,13 @@ export interface SpeakApi {
   /** Open the OS sound/input settings (Windows, macOS). */
   openSoundSettings(): void
   onNavigate(cb: (section: MainSection) => void): () => void
+  /** The loading dialog's progress. */
+  onLoading(cb: (state: LoadingState) => void): () => void
+  /** The loading dialog listens: send it the progress. */
+  loaderReady(): void
+  /** The easter egg theme in season (themes/schedule.ts), if any. */
+  getSeason(): Promise<Season | null>
+  onSeason(cb: (season: Season | null) => void): () => void
 
   // Updates
   getUpdateState(): Promise<UpdateState>

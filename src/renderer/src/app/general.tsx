@@ -143,6 +143,13 @@ export function General(props: Props) {
 
   return (
     <>
+      <section>
+        <Sep>startup</Sep>
+        <Row label="launch at login" hint="speak runs in the system tray">
+          <Check checked={config.ui.launchAtLogin} onChange={(v) => update({ ui: { launchAtLogin: v } })} />
+        </Row>
+      </section>
+
       {!config.onboarded && <Setup {...props} micVerdict={micVerdict} />}
 
       <section id="input-settings">
@@ -272,7 +279,7 @@ export function General(props: Props) {
       </section>
 
       <section>
-        <Sep>history & startup</Sep>
+        <Sep>history</Sep>
         <Row label="keep history" hint="transcripts are saved in ~/.speak/history">
           <Check checked={config.history.enabled} onChange={(v) => update({ history: { enabled: v } })} />
         </Row>
@@ -287,8 +294,12 @@ export function General(props: Props) {
           />
         </Row>
         <StoredRow />
-        <Row label="launch at login" hint="speak runs in the system tray">
-          <Check checked={config.ui.launchAtLogin} onChange={(v) => update({ ui: { launchAtLogin: v } })} />
+      </section>
+
+      <section>
+        <Sep>theme</Sep>
+        <Row label="easter eggs" hint="a seasonal look around halloween and christmas · click its logo, top left, to turn it off · off: never shown">
+          <Check checked={config.ui.easterEggs} onChange={(v) => update({ ui: { easterEggs: v } })} />
         </Row>
       </section>
     </>

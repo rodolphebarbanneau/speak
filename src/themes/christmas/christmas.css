@@ -1,0 +1,138 @@
+/* Christmas: the tree logo, snow around the recording pill, and its meter in green. */
+
+.christmas-tree {
+  display: inline-flex;
+  filter: drop-shadow(0 0 2px rgba(255, 215, 94, 0.3));
+}
+.christmas-tree .star rect {
+  animation: christmas-star 3s ease-in-out infinite;
+}
+/* Fairy lights: each color at its own pace, each bauble a little apart. */
+.christmas-tree .lights.red rect {
+  animation: christmas-red 2.1s ease-in-out infinite;
+}
+.christmas-tree .lights.gold rect {
+  animation: christmas-gold 2.6s ease-in-out -0.8s infinite;
+}
+.christmas-tree .lights.blue rect {
+  animation: christmas-blue 1.8s ease-in-out -1.3s infinite;
+}
+.christmas-tree .lights rect:nth-child(2) {
+  animation-delay: -0.7s;
+}
+.christmas-tree .lights rect:nth-child(3) {
+  animation-delay: -1.5s;
+}
+.christmas-tree .rays {
+  opacity: 0;
+}
+.christmas-tree .rays rect {
+  fill: #fff3c4;
+}
+.christmas-tree.sparkle .rays {
+  animation: christmas-sparkle 0.6s ease-out;
+}
+@keyframes christmas-star {
+  0%,
+  100% {
+    fill: #ffd75e;
+  }
+  50% {
+    fill: #fff0a8;
+  }
+}
+@keyframes christmas-red {
+  0%,
+  100% {
+    fill: #ff5a5f;
+  }
+  50% {
+    fill: #8f2a30;
+  }
+}
+@keyframes christmas-gold {
+  0%,
+  100% {
+    fill: #ffd65c;
+  }
+  50% {
+    fill: #8c6d22;
+  }
+}
+@keyframes christmas-blue {
+  0%,
+  100% {
+    fill: #7cc4ff;
+  }
+  50% {
+    fill: #2c5a86;
+  }
+}
+@keyframes christmas-sparkle {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+}
+
+/* Red border, green meter. */
+html[data-theme='christmas'] .osd .levels:not(.paused) {
+  color: var(--green);
+}
+
+/* Outlined, so the flakes show over light windows too (the pill floats over any app). */
+.christmas-flake {
+  position: absolute;
+  opacity: 0;
+  filter: drop-shadow(0 0 1px rgba(16, 23, 26, 0.85));
+  animation-name: christmas-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.christmas-flake > svg {
+  animation: christmas-sway var(--sway) ease-in-out infinite alternate;
+}
+@keyframes christmas-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+  15%,
+  85% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(var(--fall));
+  }
+}
+@keyframes christmas-sway {
+  from {
+    transform: translateX(-4px);
+  }
+  to {
+    transform: translateX(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .christmas-tree .star rect,
+  .christmas-tree .lights rect {
+    animation: none;
+  }
+  .christmas-tree .star rect {
+    fill: #ffd75e;
+  }
+  .christmas-tree .lights.red rect {
+    fill: #ff5a5f;
+  }
+  .christmas-tree .lights.gold rect {
+    fill: #ffd65c;
+  }
+  .christmas-tree .lights.blue rect {
+    fill: #7cc4ff;
+  }
+}

@@ -9,6 +9,7 @@ import { history } from './history'
 import { hotkeys } from './hotkeys'
 import { paths } from './paths'
 import { accessibilityTrusted, keyboardHookAvailable, startKeyboardHook } from './platform/keyboard'
+import { seasons } from './season'
 import { engine } from './stt/engine'
 import { updater } from './updater'
 import { isMac, isWayland } from './util'
@@ -28,6 +29,7 @@ export function registerIpc(): void {
   const on = (channel: string, fn: (...args: any[]) => void) => ipcMain.on(`speak:${channel}`, (_e, ...args) => fn(...args))
 
   // App
+  handle('getSeason', () => seasons.current)
   handle('getInfo', () => ({ version: app.getVersion(), platform: process.platform, dataDir: paths.home, shortcutError: hotkeys.error }))
   on('openMain', (section?: MainSection) => showMain(section))
   on('openDataDir', () => void shell.openPath(paths.home))
@@ -43,7 +45,7 @@ export function registerIpc(): void {
   handle('getUpdateState', () => updater.state)
   on('checkForUpdates', () => void updater.check())
   on('downloadUpdate', () => void updater.download())
-  on('installUpdate', () => updater.install())
+  on('installUpdate', () => void updater.install())
   on('openReleases', () => void shell.openExternal(RELEASES_URL))
 
   // Config

@@ -122,6 +122,8 @@ If you launch from inside another Electron app's terminal (T3 Code, VS Code…),
 
 Bump `version` in `package.json` and push a matching `v*` tag. `.github/workflows/release.yml` builds Windows, macOS for Apple Silicon and Intel (compiling universal whisper.cpp binaries via `scripts/build-whisper.sh`) and Linux, and uploads the installers and their update manifests to a draft GitHub release. Publishing the draft rolls the update out to every install. Code signing is optional (`CSC_LINK`, `APPLE_ID`… secrets). Unsigned macOS builds are signed ad hoc and can't update themselves.
 
+Easter eggs: `src/themes/schedule.ts` lists when each seasonal theme shows (Halloween and Christmas, a week either side), as month-day ranges read from the clock of the computer Speak runs on. Themes come and go by themselves; a release is only needed to change them or the schedule. A theme shows by default; clicking its logo, top left, turns it off until its next season, and **settings → general → easter eggs** turns them off for good. To try a theme out of season: `SPEAK_THEME=christmas npm run dev`.
+
 To test an update without publishing, serve a newer build's `dist/` folder over HTTP and start a packaged build with `SPEAK_UPDATE_FEED=http://localhost:<port>/`.
 
 ### How it works

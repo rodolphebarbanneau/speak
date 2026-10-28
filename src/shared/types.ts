@@ -44,7 +44,12 @@ export interface Config {
     timeoutSeconds: number
   }
   history: { enabled: boolean; keepAudio: boolean; retentionDays: number }
-  ui: { showOverlay: boolean; launchAtLogin: boolean }
+  /**
+   * easterEggs: allow the seasonal themes (src/themes/schedule.ts). themeOff: the season of the
+   * theme the user turned off by clicking its logo ("christmas-2026"), off until the next season.
+   * lastVersion: the version that last started, to tell when an update was just installed.
+   */
+  ui: { showOverlay: boolean; launchAtLogin: boolean; easterEggs: boolean; themeOff: string; lastVersion: string }
   /** Download updates in the background and install them when Speak quits. */
   updates: { auto: boolean }
 }
@@ -115,6 +120,19 @@ export interface OverlayState {
   startedAt?: number
   /** Recording: set while paused, since when. */
   pausedAt?: number
+}
+
+/** The loading dialog: a few steps (starting, updating), the one in progress under the bar. */
+export interface LoadingState {
+  /** What is happening: "starting speak 0.2.8", "updating to 0.2.9"… */
+  title: string
+  /** Steps finished, of `total`. */
+  done: number
+  total: number
+  /** The step in progress. */
+  item: string
+  /** What happens next, under the status. */
+  note?: string
 }
 
 export interface PreviewState {

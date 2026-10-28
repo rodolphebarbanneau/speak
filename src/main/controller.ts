@@ -94,7 +94,13 @@ class Controller extends EventEmitter {
     else if (this.purpose === 'dictation') {
       this.compose = action === 'compose'
       this.overlayState(this.recordingState())
+      this.emit('phase', this.phase) // refresh tray
     }
+  }
+
+  /** The recording in progress (for the tray): paused or not, and what it's for. */
+  get recording(): { paused: boolean; purpose: OverlayState['purpose'] } | null {
+    return this.phase === 'recording' ? { paused: !!this.pausedAt, purpose: this.overlayPurpose } : null
   }
 
   /**
@@ -115,6 +121,7 @@ class Controller extends EventEmitter {
     log.info(paused ? 'Recording paused' : 'Recording resumed')
     overlay?.webContents.send('speak:recorder', { type: paused ? 'pause' : 'resume' })
     this.overlayState(this.recordingState())
+    this.emit('phase', this.phase) // refresh tray
   }
 
   /** Stop the recording when it reaches the maximum length, counting only the time recorded. */
@@ -152,7 +159,7 @@ class Controller extends EventEmitter {
     broadcast('overlay', state)
     if (!configStore.get().ui.showOverlay && state.phase !== 'error') return
     if (state.phase === 'idle') hideOverlay()
-    else showOverlay()
+    else showOverlay(state.phase === 'recording')
   }
 
   /** Show a transient message in the overlay. */
@@ -233,7 +240,9 @@ class Controller extends EventEmitter {
     if (this.phase !== 'recording' || !overlay) return
     if (this.maxTimer) clearTimeout(this.maxTimer)
     this.setPhase('transcribing')
-    this.overlayState({ phase: 'transcribing', purpose: this.overlayPurpose })
+    // The first dictation after a while waits for the speech model: say so.
+    const loading = configStore.get().transcription.engine === 'whisper' && !engine.modelLoaded
+    this.overlayState({ phase: 'transcribing', purpose: this.overlayPurpose, message: loading ? 'loading the speech model' : undefined })
     if (this.purpose === 'edit') this.updatePreviewBusy('transcribing')
     // Compose: copy the selection now that the shortcut is (being) released and the target app
     // still has focus. It runs alongside transcription.

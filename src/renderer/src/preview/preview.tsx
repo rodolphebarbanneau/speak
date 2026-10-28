@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { shortModel, STYLES } from '@shared/constants'
 import type { EngineId, PreviewState, Style } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
+import { AppName } from '@themes/components'
 import { Action, displayShortcut, Key, MOD, Sep, Spinner, TitleBar, useWindowFocus } from '../components/ui'
 import { outputOptions, spokenOptions } from '../lib/languages'
 
@@ -85,7 +86,7 @@ export function Preview() {
     return (
       <div className="frame">
         <TitleBar>
-          <b>speak</b> · preview
+          <AppName /> · preview
         </TitleBar>
         <div className="preview-body dim">waiting for dictation…</div>
       </div>
@@ -102,7 +103,7 @@ export function Preview() {
   return (
     <div className="frame">
       <TitleBar right={<span>{`${heard} → ${session.outputLanguage === 'same' ? heard : session.outputLanguage}`}</span>}>
-        <b>speak</b> · preview
+        <AppName /> · preview
       </TitleBar>
 
       <div className="preview-body">

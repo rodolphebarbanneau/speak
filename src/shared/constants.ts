@@ -102,7 +102,7 @@ export const DEFAULT_CONFIG: Config = {
     timeoutSeconds: 90
   },
   history: { enabled: true, keepAudio: true, retentionDays: 90 },
-  ui: { showOverlay: true, launchAtLogin: false },
+  ui: { showOverlay: true, launchAtLogin: false, easterEggs: true, themeOff: '', lastVersion: '' },
   updates: { auto: true }
 }
 

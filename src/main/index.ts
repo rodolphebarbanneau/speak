@@ -1,13 +1,16 @@
 import { readFileSync } from 'node:fs'
 import { app, Notification, session } from 'electron'
 import type { Config } from '../shared/types'
+import { themeShown } from '../themes/shared'
 import { decodeWav } from './audio'
 import { configStore } from './config'
 import { controller } from './controller'
 import { history } from './history'
 import { hotkeys, type RecordAction } from './hotkeys'
 import { registerIpc } from './ipc'
+import { label, withLoading } from './loading'
 import { log } from './log'
+import { seasons } from './season'
 import { ensureDirs } from './paths'
 import { setLaunchAtLogin } from './platform/autostart'
 import { startKeyboardHook, stopKeyboardHook } from './platform/keyboard'
@@ -15,7 +18,7 @@ import { engine } from './stt/engine'
 import { createTray } from './tray'
 import { updater } from './updater'
 import { isMac, isWin, loadShellEnv } from './util'
-import { createOverlay, createPreview, showMain } from './windows'
+import { applyChrome, broadcast, createOverlay, createPreview, showMain } from './windows'
 
 /*
  * Command line (also forwarded to the running instance):
@@ -56,39 +59,62 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     ensureDirs()
-    log.info(`Speak ${app.getVersion()} starting (${process.platform}-${process.arch}, electron ${process.versions.electron})`)
-    await loadShellEnv()
+    const version = app.getVersion()
+    log.info(`Speak ${version} starting (${process.platform}-${process.arch}, electron ${process.versions.electron})`)
     const config = configStore.load()
+    seasons.start() // the easter egg theme in season, before any window takes its colors
     if (isMac) app.dock?.hide()
+    // Right after "restart & update", say so: the new version shows up instead of reappearing silently.
+    const updated = !!config.ui.lastVersion && config.ui.lastVersion !== version
+    registerIpc() // first: the loading dialog asks for the settings (its theme)
 
-    // Allow microphone access for our own pages only.
-    session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => {
-      const local = wc.getURL().startsWith('file://') || wc.getURL().startsWith('http://localhost')
-      callback(local && (permission === 'media' || permission === 'clipboard-sanitized-write'))
-    })
-    session.defaultSession.setPermissionCheckHandler((_wc, permission) => permission === 'media' || permission === 'clipboard-sanitized-write')
-
-    registerIpc()
-    createOverlay()
-    createPreview()
-    createTray()
-
-    startKeyboardHook()
-    applyShortcuts(config)
-    hotkeys.on('press', (action: RecordAction) => controller.onShortcutPress(action))
-    hotkeys.on('release', (ms: number) => controller.onShortcutRelease(ms))
-    hotkeys.on('cancel', () => controller.cancel())
-
-    configStore.on('change', (next: Config, prev: Config) => {
-      if (JSON.stringify(next.shortcuts) !== JSON.stringify(prev.shortcuts)) applyShortcuts(next)
-      if (next.ui.launchAtLogin !== prev.ui.launchAtLogin) setLaunchAtLogin(next.ui.launchAtLogin)
-      if (JSON.stringify(next.transcription) !== JSON.stringify(prev.transcription)) engine.stopServer()
-      if (next.updates.auto !== prev.updates.auto) updater.applyConfig()
-    })
-
-    updater.init()
-
-    void history.prune()
+    // A loading dialog shows only if startup is slow (or just updated). Speech models load later,
+    // on the first dictation.
+    await withLoading(
+      updated ? `updated to ${version}` : `starting ${version}`,
+      [
+        [label('reading your environment', 'finding your tools'), () => loadShellEnv()],
+        [
+          label('opening windows', 'setting up the desk'),
+          () => {
+            // Allow microphone access for our own pages only.
+            session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => {
+              const local = wc.getURL().startsWith('file://') || wc.getURL().startsWith('http://localhost')
+              callback(local && (permission === 'media' || permission === 'clipboard-sanitized-write'))
+            })
+            session.defaultSession.setPermissionCheckHandler((_wc, permission) => permission === 'media' || permission === 'clipboard-sanitized-write')
+            createOverlay()
+            createPreview()
+            createTray()
+          }
+        ],
+        [
+          label('connecting your shortcuts', 'listening for your shortcut'),
+          () => {
+            startKeyboardHook()
+            applyShortcuts(config)
+            hotkeys.on('press', (action: RecordAction) => controller.onShortcutPress(action))
+            hotkeys.on('release', (ms: number) => controller.onShortcutRelease(ms))
+            hotkeys.on('cancel', () => controller.cancel())
+            configStore.on('change', (next: Config, prev: Config) => {
+              if (JSON.stringify(next.shortcuts) !== JSON.stringify(prev.shortcuts)) applyShortcuts(next)
+              if (next.ui.launchAtLogin !== prev.ui.launchAtLogin) setLaunchAtLogin(next.ui.launchAtLogin)
+              if (JSON.stringify(next.transcription) !== JSON.stringify(prev.transcription)) engine.stopServer()
+              if (next.updates.auto !== prev.updates.auto) updater.applyConfig()
+              if (themeShown(next.ui, seasons.current) !== themeShown(prev.ui, seasons.current)) applyChrome()
+            })
+            seasons.on('change', (season) => {
+              applyChrome()
+              broadcast('season', season)
+            })
+            updater.init()
+          }
+        ],
+        [label('tidying up your history', 'dusting off old dictations'), () => history.prune()]
+      ],
+      updated ? { showAfterMs: 0, minShownMs: 1500 } : {}
+    )
+    if (config.ui.lastVersion !== version) configStore.update({ ui: { lastVersion: version } })
     setInterval(() => void history.prune(), 6 * 3600_000).unref()
 
     handleArgs(process.argv)

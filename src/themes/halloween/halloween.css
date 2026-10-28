@@ -1,0 +1,108 @@
+/* Halloween: the jack-o'-lantern logo, and bats around the recording pill. */
+
+.halloween-pumpkin {
+  display: inline-flex;
+  filter: drop-shadow(0 0 3px rgba(255, 158, 100, 0.4));
+}
+.halloween-pumpkin .face rect,
+.halloween-pumpkin .eye rect {
+  animation:
+    halloween-ignite 0.8s linear,
+    halloween-candle 3.1s linear 0.8s infinite;
+}
+.halloween-pumpkin .lid rect {
+  fill: #3b2418;
+}
+.halloween-pumpkin .lid,
+.halloween-pumpkin.wink .eye {
+  display: none;
+}
+.halloween-pumpkin.wink .lid {
+  display: inline;
+}
+@keyframes halloween-ignite {
+  0% {
+    fill: #3b2418;
+  }
+  12% {
+    fill: #ffe08c;
+  }
+  22% {
+    fill: #5a3420;
+  }
+  40% {
+    fill: #ffcd6e;
+  }
+  52% {
+    fill: #7a4524;
+  }
+  70%,
+  100% {
+    fill: #ffe08c;
+  }
+}
+@keyframes halloween-candle {
+  0%,
+  100% {
+    fill: #ffe08c;
+  }
+  8% {
+    fill: #ffcd6e;
+  }
+  11% {
+    fill: #ffe9a6;
+  }
+  36% {
+    fill: #ffd77e;
+  }
+  39% {
+    fill: #ffbf5c;
+  }
+  43% {
+    fill: #ffe08c;
+  }
+  70% {
+    fill: #ffecb0;
+  }
+  73% {
+    fill: #ffd072;
+  }
+}
+
+.halloween-bat {
+  position: absolute;
+  top: 0;
+  left: 0;
+  offset-rotate: 0deg;
+  animation: halloween-orbit 8s linear infinite;
+}
+.halloween-bat .up {
+  animation: halloween-flap 0.26s steps(1) infinite;
+}
+.halloween-bat .down {
+  position: absolute;
+  top: 0;
+  left: 0;
+  animation: halloween-flap 0.26s steps(1) -0.13s infinite;
+}
+@keyframes halloween-orbit {
+  from {
+    offset-distance: 0%;
+  }
+  to {
+    offset-distance: 100%;
+  }
+}
+@keyframes halloween-flap {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .halloween-pumpkin .face rect,
+  .halloween-pumpkin .eye rect {
+    animation: none;
+    fill: #ffe08c;
+  }
+}

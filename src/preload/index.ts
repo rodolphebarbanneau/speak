@@ -20,6 +20,10 @@ const api: SpeakApi = {
   openExternal: (url) => send('openExternal', url),
   openSoundSettings: () => send('openSoundSettings'),
   onNavigate: listen('navigate'),
+  onLoading: listen('loading'),
+  loaderReady: () => send('loaderReady'),
+  getSeason: () => invoke('getSeason'),
+  onSeason: listen('season'),
 
   getUpdateState: () => invoke('getUpdateState'),
   checkForUpdates: () => send('checkForUpdates'),

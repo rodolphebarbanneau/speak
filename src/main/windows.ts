@@ -1,11 +1,14 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, screen } from 'electron'
+import { app, BrowserWindow, ipcMain, screen, type IpcMainEvent } from 'electron'
 import type { MainSection } from '../shared/types'
+import { activePalette } from '../themes/shared'
+import { configStore } from './config'
+import { seasons } from './season'
 import { resource } from './paths'
 import { bringToFront, restoreMouseInput } from './platform/focus'
 import { isMac, isWin } from './util'
 
-type View = 'overlay' | 'preview' | 'main'
+type View = 'overlay' | 'preview' | 'main' | 'loader'
 
 let quitting = false
 app.on('before-quit', () => (quitting = true))
@@ -32,10 +35,8 @@ function webPreferences(): Electron.WebPreferences {
   }
 }
 
-// Tokyo Night (Omarchy default theme).
-const BACKGROUND = '#1a1b26'
-const FOREGROUND = '#a9b1d6'
-const ACCENT = '#7aa2f7'
+// Tokyo Night (Omarchy default theme), or the easter egg theme in season while it's on.
+const palette = () => activePalette(configStore.get().ui, seasons.current)
 export const TITLE_BAR_HEIGHT = 32
 /** Windows picks the right size from the multi-resolution .ico; elsewhere a PNG is used. */
 const APP_ICON = isWin ? 'icon.ico' : 'icon.png'
@@ -47,10 +48,11 @@ const APP_ICON = isWin ? 'icon.ico' : 'icon.png'
  * border follows the window shape and uses our accent while the window is active.
  */
 function nativeChrome(): Partial<Electron.BrowserWindowConstructorOptions> {
+  const { '--bg': background, '--fg': foreground } = palette()
   return {
-    backgroundColor: BACKGROUND,
+    backgroundColor: background,
     titleBarStyle: 'hidden',
-    titleBarOverlay: isMac ? true : { color: BACKGROUND, symbolColor: FOREGROUND, height: TITLE_BAR_HEIGHT },
+    titleBarOverlay: isMac ? true : { color: background, symbolColor: foreground, height: TITLE_BAR_HEIGHT },
     ...(isMac ? { trafficLightPosition: { x: 12, y: (TITLE_BAR_HEIGHT - 14) / 2 } } : {}),
     ...(isWin ? { accentColor: false } : {})
   }
@@ -59,8 +61,19 @@ function nativeChrome(): Partial<Electron.BrowserWindowConstructorOptions> {
 /** Windows convention: only the active window's border carries the accent color. */
 function followActivation(win: BrowserWindow): void {
   if (!isWin) return
-  win.on('focus', () => win.setAccentColor(ACCENT))
+  win.on('focus', () => win.setAccentColor(palette()['--accent']))
   win.on('blur', () => win.setAccentColor(false))
+}
+
+/** Repaint the native chrome (background, caption buttons, active border) after the palette changes. */
+export function applyChrome(): void {
+  const { '--bg': background, '--fg': foreground, '--accent': accent } = palette()
+  for (const win of [mainWindow, preview]) {
+    if (!win || win.isDestroyed()) continue
+    win.setBackgroundColor(background)
+    if (!isMac) win.setTitleBarOverlay({ color: background, symbolColor: foreground, height: TITLE_BAR_HEIGHT })
+    if (isWin && win.isFocused()) win.setAccentColor(accent)
+  }
 }
 
 function cursorDisplay(): Electron.Display {
@@ -73,6 +86,14 @@ function cursorDisplay(): Electron.Display {
  */
 export let overlay: BrowserWindow | null = null
 const OVERLAY_SIZE = { width: 640, height: 320 }
+
+/**
+ * Whether the pill follows the pointer. On Windows, Electron does it with a system-wide mouse hook
+ * run by the main thread: while that thread is busy (starting, quitting, installing an update),
+ * every mouse movement on the computer waits for it, up to half a second each. So only while the
+ * pill can be clicked; otherwise it lets every click through without watching.
+ */
+let tracking = false
 
 export function createOverlay(): BrowserWindow {
   overlay = new BrowserWindow({
@@ -103,8 +124,16 @@ export function createOverlay(): BrowserWindow {
   return overlay
 }
 
-export function showOverlay(): void {
+/**
+ * Show the pill. `clickable` (while recording) lets it notice the pointer, to take clicks while
+ * hovered: see setOverlayInteractive.
+ */
+export function showOverlay(clickable = false): void {
   if (!overlay) return
+  if (clickable !== tracking) {
+    tracking = clickable
+    setOverlayInteractive(false)
+  }
   const { workArea } = cursorDisplay()
   overlay.setBounds({
     x: Math.round(workArea.x + (workArea.width - OVERLAY_SIZE.width) / 2),
@@ -117,15 +146,59 @@ export function showOverlay(): void {
   }
 }
 
+/** Hide every window (the loading dialog aside): the app is about to go. */
+export function hideWindows(): void {
+  mainWindow?.hide()
+  preview?.hide()
+  hideOverlay()
+}
+
 export function hideOverlay(): void {
+  tracking = false
   setOverlayInteractive(false)
   overlay?.hide()
 }
 
-/** Catch clicks while the pointer is over the pill; otherwise pass them through (still reporting moves). */
+/** Catch clicks while the pointer is over the pill; otherwise pass them through (still reporting moves while recording). */
 export function setOverlayInteractive(interactive: boolean): void {
-  if (interactive) overlay?.setIgnoreMouseEvents(false)
-  else overlay?.setIgnoreMouseEvents(true, { forward: true })
+  if (interactive && tracking) overlay?.setIgnoreMouseEvents(false)
+  else overlay?.setIgnoreMouseEvents(true, tracking ? { forward: true } : undefined)
+}
+
+/**
+ * The loading dialog (see loading.ts): a small box in the middle of the screen, above everything,
+ * that never takes the focus. Shown once its page listens, with the progress so far.
+ */
+export function createLoader(onReady: () => void): BrowserWindow {
+  const size = { width: 460, height: 124 }
+  const { workArea } = cursorDisplay()
+  const win = new BrowserWindow({
+    ...size,
+    x: Math.round(workArea.x + (workArea.width - size.width) / 2),
+    y: Math.round(workArea.y + (workArea.height - size.height) / 2.4),
+    show: false,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    focusable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    title: 'Speak',
+    backgroundColor: palette()['--bg'],
+    webPreferences: webPreferences()
+  })
+  const listening = (e: IpcMainEvent) => {
+    if (e.sender !== win.webContents) return
+    ipcMain.off('speak:loaderReady', listening)
+    onReady()
+    if (!win.isDestroyed()) win.showInactive()
+  }
+  ipcMain.on('speak:loaderReady', listening)
+  win.on('closed', () => ipcMain.off('speak:loaderReady', listening))
+  load(win, 'loader')
+  return win
 }
 
 /** Preview dialog: created once, reused. Closing it means "cancel". */

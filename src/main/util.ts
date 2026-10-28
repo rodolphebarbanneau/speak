@@ -1,7 +1,8 @@
-import { execFile, spawn, type SpawnOptions } from 'node:child_process'
+import { execFile, spawn, type ChildProcess, type SpawnOptions } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { createServer } from 'node:net'
+import { constants, setPriority } from 'node:os'
 import { delimiter, join } from 'node:path'
 
 export const isWin = process.platform === 'win32'
@@ -21,13 +22,14 @@ export interface RunResult {
 export function run(
   cmd: string,
   args: string[],
-  opts: { timeoutMs?: number; input?: string; cwd?: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal } = {}
+  opts: { timeoutMs?: number; input?: string; cwd?: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal; lowPriority?: boolean } = {}
 ): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     const spawnOpts: SpawnOptions = { cwd: opts.cwd, env: opts.env ?? shellEnv(), windowsHide: true }
     // .cmd/.bat shims need a shell on Windows.
     const viaShell = isWin && /\.(cmd|bat)$/i.test(cmd)
     const child = viaShell ? spawn(`"${cmd}"`, args.map(quoteCmdArg), { ...spawnOpts, shell: true }) : spawn(cmd, args, spawnOpts)
+    if (opts.lowPriority) lowerPriority(child)
     let stdout = ''
     let stderr = ''
     let settled = false
@@ -57,6 +59,20 @@ export function run(
     if (opts.input !== undefined) child.stdin?.end(opts.input, 'utf8')
     else child.stdin?.end()
   })
+}
+
+/**
+ * Run heavy work (speech recognition: loading a model, transcribing) below normal priority. It
+ * goes just as fast on an idle computer, but yields to whatever the user is doing instead of
+ * making the whole system stutter.
+ */
+export function lowerPriority(child: ChildProcess): void {
+  if (!child.pid) return
+  try {
+    setPriority(child.pid, constants.priority.PRIORITY_BELOW_NORMAL)
+  } catch {
+    // not allowed: keep the default priority
+  }
 }
 
 function quoteCmdArg(arg: string): string {

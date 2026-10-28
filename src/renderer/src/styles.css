@@ -27,6 +27,7 @@
 
   /* layout */
   --edge: 14px; /* left edge of chrome text: title, nav, status line, lists */
+  --marker: 4px; /* the active item's bar in the nav and the history list */
   --inset: 10px; /* content inset under section headings */
   --label-w: 21ch; /* settings label column */
   --col-gap: var(--s4);
@@ -789,10 +790,10 @@ section + section {
   padding: var(--s3) 0;
   border-right: 1px solid var(--sel);
 }
-/* 12px + 2px marker = text on the 14px chrome edge */
+/* marker + padding = text on the 14px chrome edge */
 .nav > button {
-  padding: 3px var(--s3);
-  border-left: 2px solid transparent;
+  padding: 3px var(--s3) 3px calc(var(--edge) - var(--marker));
+  border-left: var(--marker) solid transparent;
   color: var(--dim);
 }
 .nav > button:hover {
@@ -856,8 +857,8 @@ section + section {
 .item {
   display: block;
   width: 100%;
-  padding: 6px var(--edge) 6px var(--s3);
-  border-left: 2px solid transparent;
+  padding: 6px var(--edge) 6px calc(var(--edge) - var(--marker));
+  border-left: var(--marker) solid transparent;
   white-space: normal;
 }
 .item:hover {
@@ -898,4 +899,44 @@ section + section {
 .empty .setup {
   display: block;
   margin-top: var(--s1);
+}
+
+/* ---------- loading dialog (starting, updating) ---------- */
+
+html[data-view='loader'] body {
+  border: 1px solid var(--muted);
+}
+.loader {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 var(--s5);
+  white-space: nowrap;
+}
+.loader .title {
+  margin-bottom: var(--s1);
+  color: var(--dim);
+}
+.loader .title b {
+  color: var(--accent);
+}
+.loader .progress {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+.loader .progress .fill {
+  transition: width 0.3s ease;
+}
+.loader .step {
+  color: var(--hi);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.loader .status {
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
