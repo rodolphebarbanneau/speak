@@ -96,8 +96,8 @@ export const DEFAULT_CONFIG: Config = {
     provider: 'claude-code',
     // Cheap yet effective defaults: dictation cleanup doesn't need frontier models. Compose writes
     // freely from a brief, and sonnet stays faithful to it where haiku sometimes embellishes.
-    claudeCode: { path: '', model: 'haiku', composeModel: 'sonnet', effort: 'medium' },
-    codex: { path: '', model: 'gpt-6-luna', composeModel: '', effort: 'medium' },
+    claudeCode: { path: '', home: '', model: 'haiku', composeModel: 'sonnet', effort: 'medium' },
+    codex: { path: '', home: '', model: 'gpt-6-luna', composeModel: '', effort: 'medium' },
     customInstructions: '',
     timeoutSeconds: 90
   },

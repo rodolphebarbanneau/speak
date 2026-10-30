@@ -5,13 +5,17 @@ import { CODEX_MODELS } from '../../shared/constants'
 import type { AgentConfig, AgentModel, AgentStatus } from '../../shared/types'
 import { log } from '../log'
 import { paths } from '../paths'
-import { isMac, isWin, run } from '../util'
-import { errorDetail, findCli, looksLikeAuthError, openInTerminal, promptFile } from './cli'
+import { configStore } from '../config'
+import { isMac, isWin, run, shellEnv } from '../util'
+import { cliPathProblem, errorDetail, expandHome, findCli, homeEnv, homeProblem, looksLikeAuthError, openInTerminal, promptFile } from './cli'
 import type { Completion } from './types'
 
 /** OpenAI Codex CLI (`codex exec`), with the user's own ChatGPT/OpenAI login. */
 
-const codexHome = () => process.env.CODEX_HOME || join(homedir(), '.codex')
+/** Codex's home (settings and sign-in), ~/.codex by default. */
+const HOME_VAR = 'CODEX_HOME'
+const codexHome = () => expandHome(configStore.get().ai.codex.home) || process.env.CODEX_HOME || join(homedir(), '.codex')
+const env = (cfg: AgentConfig) => ({ ...shellEnv(), ...homeEnv(HOME_VAR, cfg.home, '.codex') })
 
 function candidates(): string[] {
   const h = homedir()
@@ -32,13 +36,17 @@ function candidates(): string[] {
 const cliPath = (cfg: AgentConfig, refresh = false) => findCli('codex', cfg.path, candidates(), refresh)
 
 export async function codexStatus(cfg: AgentConfig, refresh: boolean): Promise<AgentStatus> {
+  const problem = cliPathProblem(cfg.path, 'codex', HOME_VAR)
+  if (problem) return { found: false, error: problem }
   const path = cliPath(cfg, refresh)
   if (!path) return { found: false, error: 'Codex not found. Install it from developers.openai.com/codex or set its path.' }
   const status: AgentStatus = { found: true, path }
+  const badHome = homeProblem(cfg.home)
+  if (badHome) return { ...status, error: badHome }
   try {
-    status.version = (await run(path, ['--version'], { timeoutMs: 15_000 })).stdout.trim().split('\n')[0]
+    status.version = (await run(path, ['--version'], { timeoutMs: 15_000, env: env(cfg) })).stdout.trim().split('\n')[0]
     // e.g. "Logged in using ChatGPT" / "Not logged in"
-    const a = await run(path, ['login', 'status'], { timeoutMs: 15_000 })
+    const a = await run(path, ['login', 'status'], { timeoutMs: 15_000, env: env(cfg) })
     const line =
       `${a.stdout}\n${a.stderr}`
         .trim()
@@ -57,8 +65,10 @@ export async function codexStatus(cfg: AgentConfig, refresh: boolean): Promise<A
 
 export function codexLogin(cfg: AgentConfig): Promise<void> {
   const path = cliPath(cfg)
-  if (!path) throw new Error('Codex not found')
-  return openInTerminal(path, ['login'], 'Codex sign-in')
+  if (!path) throw new Error(cliPathProblem(cfg.path, 'codex', HOME_VAR) ?? 'Codex not found')
+  const badHome = homeProblem(cfg.home)
+  if (badHome) throw new Error(badHome)
+  return openInTerminal(path, ['login'], 'Codex sign-in', homeEnv(HOME_VAR, cfg.home, '.codex'))
 }
 
 /** Models from Codex's own catalog (kept up to date by the CLI), else a built-in list. */
@@ -96,7 +106,7 @@ export async function codexComplete(system: string, user: string, cfg: AgentConf
     '-'
   ].flat()
   try {
-    const r = await run(path, args, { input: user, cwd: paths.tmp, timeoutMs: opts.timeoutMs, signal: opts.signal })
+    const r = await run(path, args, { input: user, cwd: paths.tmp, env: env(cfg), timeoutMs: opts.timeoutMs, signal: opts.signal })
     const text = await readFile(out, 'utf8').catch(() => '')
     if (r.code !== 0 || !text.trim()) {
       const detail = errorDetail(r.stderr, r.stdout) || `exit code ${r.code}`

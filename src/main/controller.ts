@@ -64,7 +64,7 @@ class Controller extends EventEmitter {
 
   constructor() {
     super()
-    onPreviewClose(() => void this.previewCancel())
+    onPreviewClose(() => void this.previewClose())
   }
 
   // ---------------------------------------------------------------- hotkeys
@@ -614,6 +614,18 @@ class Controller extends EventEmitter {
     if (!session) return hidePreview()
     await restoreFocus(this.target, hidePreview)
     await this.finish(session, 'cancelled')
+  }
+
+  /**
+   * The window was closed (✕, ⌘W): unlike Esc/cancel, nothing says the text was unwanted (it may
+   * have been copied by hand), so it stays in the history instead of being dropped later.
+   */
+  async previewClose(): Promise<void> {
+    const session = this.current
+    if (this.phase !== 'idle') this.cancel()
+    if (!session) return hidePreview()
+    await restoreFocus(this.target, hidePreview)
+    await this.finish(session, 'closed')
   }
 
   private async finish(session: Session, action: SessionAction): Promise<void> {

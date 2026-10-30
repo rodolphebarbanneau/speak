@@ -3,8 +3,8 @@ import { join } from 'node:path'
 import type { AgentConfig, AgentStatus } from '../../shared/types'
 import { log } from '../log'
 import { paths } from '../paths'
-import { isMac, isWin, run } from '../util'
-import { errorDetail, findCli, looksLikeAuthError, openInTerminal, promptFile } from './cli'
+import { isMac, isWin, run, shellEnv } from '../util'
+import { cliPathProblem, errorDetail, findCli, homeEnv, homeProblem, looksLikeAuthError, openInTerminal, promptFile } from './cli'
 import type { Completion } from './types'
 
 /** Claude Code (`claude -p`), with the user's own Claude account. */
@@ -34,13 +34,21 @@ function candidates(): string[] {
 
 const cliPath = (cfg: AgentConfig, refresh = false) => findCli('claude', cfg.path, candidates(), refresh)
 
+/** Claude Code's home (settings and sign-in), ~/.claude by default. */
+const HOME_VAR = 'CLAUDE_CONFIG_DIR'
+const env = (cfg: AgentConfig) => ({ ...shellEnv(), ...homeEnv(HOME_VAR, cfg.home, '.claude') })
+
 export async function claudeStatus(cfg: AgentConfig, refresh: boolean): Promise<AgentStatus> {
+  const problem = cliPathProblem(cfg.path, 'claude', HOME_VAR)
+  if (problem) return { found: false, error: problem }
   const path = cliPath(cfg, refresh)
   if (!path) return { found: false, error: 'Claude Code not found. Install it from claude.com/claude-code or set its path.' }
   const status: AgentStatus = { found: true, path }
+  const badHome = homeProblem(cfg.home)
+  if (badHome) return { ...status, error: badHome }
   try {
-    status.version = (await run(path, ['--version'], { timeoutMs: 15_000 })).stdout.trim().split('\n')[0]
-    const a = await run(path, ['auth', 'status', '--json'], { timeoutMs: 15_000 })
+    status.version = (await run(path, ['--version'], { timeoutMs: 15_000, env: env(cfg) })).stdout.trim().split('\n')[0]
+    const a = await run(path, ['auth', 'status', '--json'], { timeoutMs: 15_000, env: env(cfg) })
     const json = JSON.parse(a.stdout.slice(a.stdout.indexOf('{')))
     status.loggedIn = !!json.loggedIn
     status.account = [json.email, json.subscriptionType].filter(Boolean).join(' · ') || undefined
@@ -52,8 +60,10 @@ export async function claudeStatus(cfg: AgentConfig, refresh: boolean): Promise<
 
 export function claudeLogin(cfg: AgentConfig): Promise<void> {
   const path = cliPath(cfg)
-  if (!path) throw new Error('Claude Code not found')
-  return openInTerminal(path, ['auth', 'login'], 'Claude Code sign-in')
+  if (!path) throw new Error(cliPathProblem(cfg.path, 'claude', HOME_VAR) ?? 'Claude Code not found')
+  const badHome = homeProblem(cfg.home)
+  if (badHome) throw new Error(badHome)
+  return openInTerminal(path, ['auth', 'login'], 'Claude Code sign-in', homeEnv(HOME_VAR, cfg.home, '.claude'))
 }
 
 export async function claudeComplete(system: string, user: string, cfg: AgentConfig, opts: { timeoutMs: number; signal?: AbortSignal }): Promise<Completion> {
@@ -72,7 +82,7 @@ export async function claudeComplete(system: string, user: string, cfg: AgentCon
     '--no-session-persistence',
     ['--output-format', 'json']
   ].flat()
-  const r = await run(path, args, { input: user, cwd: paths.tmp, timeoutMs: opts.timeoutMs, signal: opts.signal })
+  const r = await run(path, args, { input: user, cwd: paths.tmp, env: env(cfg), timeoutMs: opts.timeoutMs, signal: opts.signal })
   let json: { result?: string; is_error?: boolean; modelUsage?: Record<string, unknown> } | null = null
   try {
     json = JSON.parse(r.stdout.slice(r.stdout.indexOf('{')))

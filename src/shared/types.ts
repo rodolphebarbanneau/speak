@@ -87,7 +87,8 @@ export interface Transcription {
   text: string
 }
 
-export type SessionAction = 'inserted' | 'pasted' | 'copied' | 'cancelled'
+/** closed: the preview window was closed (✕, ⌘W) without choosing an action; kept in the history. */
+export type SessionAction = 'inserted' | 'pasted' | 'copied' | 'cancelled' | 'closed'
 
 export interface Session {
   id: string
@@ -183,8 +184,13 @@ export interface DownloadProgress {
 }
 
 export interface AgentConfig {
-  /** Path to the CLI; empty = find it automatically. */
+  /** Path to the CLI executable; empty = find it automatically. */
   path: string
+  /**
+   * The CLI's home folder (settings and sign-in: CLAUDE_CONFIG_DIR / CODEX_HOME), to use another
+   * account, e.g. ~/.claude_ai; empty = the CLI's default (~/.claude, ~/.codex).
+   */
+  home: string
   /** Model for dictation (cleanup, translation, edits). */
   model: string
   /** Model for compose, where staying faithful to the brief matters most; empty = `model`. */

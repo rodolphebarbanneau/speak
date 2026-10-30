@@ -14,12 +14,16 @@ const PROVIDERS: Array<{ id: ProviderId; label: string; tag: string; hint: strin
   { id: 'none', label: 'none', tag: 'raw transcript', hint: 'no ai pass: verbatim style only, no translation' }
 ]
 
-const AGENTS: Record<AgentId, { name: string; configKey: 'claudeCode' | 'codex'; install: string; command: string; modelHint: string; composeHint: string }> = {
+const AGENTS: Record<
+  AgentId,
+  { name: string; configKey: 'claudeCode' | 'codex'; install: string; command: string; home: string; modelHint: string; composeHint: string }
+> = {
   'claude-code': {
     name: 'claude code',
     configKey: 'claudeCode',
     install: 'https://claude.com/claude-code',
     command: 'claude',
+    home: '~/.claude',
     modelHint: 'cleanup, translation and edits by voice · haiku is fast and cheap, and plenty for dictation',
     composeHint: 'writes from your briefs, where staying faithful matters most · sonnet adds nothing you did not say'
   },
@@ -28,6 +32,7 @@ const AGENTS: Record<AgentId, { name: string; configKey: 'claudeCode' | 'codex';
     configKey: 'codex',
     install: 'https://developers.openai.com/codex',
     command: 'codex',
+    home: '~/.codex',
     modelHint: 'cleanup, translation and edits by voice · luna is fast and cheap, and plenty for dictation',
     composeHint: 'writes from your briefs, where staying faithful matters most · a larger model embellishes less'
   }
@@ -54,7 +59,7 @@ function AgentSection({ id, config, update }: { id: AgentId; config: Config; upd
       .then(setStatus)
       .finally(() => setLoading(false))
   }
-  useEffect(() => refresh(false), [id, cfg.path]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => refresh(false), [id, cfg.path, cfg.home]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => void api.listAgentModels(id).then(setModels), [id])
 
   const set = (patch: Partial<Config['ai']['claudeCode']>) => update({ ai: { [agent.configKey]: patch } })
@@ -101,7 +106,7 @@ function AgentSection({ id, config, update }: { id: AgentId; config: Config; upd
           )}
         </Row>
       )}
-      {status?.error && status.found && <p className="under error">✗ {status.error}</p>}
+      {status?.error && <p className="under error">✗ {status.error}</p>}
       <Row label="dictation model" hint={agent.modelHint}>
         <Dropdown value={cfg.model} onChange={(model) => set({ model })} options={modelOptions} disabled={!modelOptions.length} />
       </Row>
@@ -111,7 +116,10 @@ function AgentSection({ id, config, update }: { id: AgentId; config: Config; upd
       <Row label="effort" hint="medium is a good balance · low is faster">
         <Dropdown<Effort> value={cfg.effort} onChange={(effort) => set({ effort })} options={EFFORTS} />
       </Row>
-      <Row label="cli path" hint={`leave empty to find ${agent.command} automatically`}>
+      <Row label="home path" hint={`${agent.command}'s settings and sign-in · another folder (e.g. ${agent.home}_work) uses another account`}>
+        <TextInput value={cfg.home} onCommit={(v) => set({ home: v.trim() })} placeholder={`auto (${agent.home})`} />
+      </Row>
+      <Row label="cli path" hint={`the ${agent.command} program · leave empty to find it automatically`}>
         <TextInput value={cfg.path} onCommit={(v) => set({ path: v.trim() })} placeholder="auto" />
       </Row>
       <p className="note">

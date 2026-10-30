@@ -39,14 +39,18 @@ const AGENTS: Record<AgentId, Agent> = {
   }
 }
 
-const statusCache = new Map<AgentId, { at: number; status: AgentStatus }>()
+const statusCache = new Map<AgentId, { at: number; key: string; status: AgentStatus }>()
 
 export async function agentStatus(id: AgentId, refresh = false): Promise<AgentStatus> {
-  const cached = statusCache.get(id)
-  if (!refresh && cached && Date.now() - cached.at < 60_000) return cached.status
   const agent = AGENTS[id]
-  const status = await agent.status(agent.config(), refresh)
-  statusCache.set(id, { at: Date.now(), status })
+  const cfg = agent.config()
+  // A changed cli path or home path means another CLI or account: check again.
+  const key = `${cfg.path}
+${cfg.home}`
+  const cached = statusCache.get(id)
+  if (!refresh && cached && cached.key === key && Date.now() - cached.at < 60_000) return cached.status
+  const status = await agent.status(cfg, refresh)
+  statusCache.set(id, { at: Date.now(), key, status })
   return status
 }
 

@@ -8,7 +8,7 @@ import { outputOptions, spokenOptions } from '../lib/languages'
 
 const api = window.speak
 
-const ACTION_TONE: Record<string, string> = { inserted: 'green', pasted: 'green', copied: 'acc', cancelled: 'dim' }
+const ACTION_TONE: Record<string, string> = { inserted: 'green', pasted: 'green', copied: 'acc', cancelled: 'dim', closed: 'dim' }
 const styleOptions = STYLES.map((s) => ({ value: s.id, label: s.label.toLowerCase() }))
 
 const pad = (n: number) => String(n).padStart(2, '0')
