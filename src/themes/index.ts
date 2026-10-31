@@ -1,10 +1,11 @@
 /**
  * Renderer side of the easter egg themes (see shared.ts): applies the theme in season while it's
- * on, plays its click sounds, and turns it off or back on from the title row.
+ * on, plays its click sounds (held for as long as the mouse button is), and turns it off or back
+ * on from the title row.
  */
 import { useSyncExternalStore } from 'react'
 import type { Config } from '@shared/types'
-import { setRecording, setSoundsAllowed } from './audio'
+import { hold, setRecording, setSoundsAllowed } from './audio'
 import { activePalette, themeShown, type Season } from './shared'
 import type { Theme } from './types'
 import './themes.css'
@@ -95,14 +96,44 @@ export function initThemes(view: string): void {
   api.onSeason(onSeason)
   if (view === 'overlay') return // the pill gets the palette and its decorations, no sounds
   api.onOverlay((s) => setRecording(s.phase === 'recording'))
+  window.addEventListener('pointerdown', onPress, true)
+  window.addEventListener('pointerup', onLetGo, true)
+  window.addEventListener('pointercancel', onLetGo, true)
+  window.addEventListener('blur', letGoAll)
   window.addEventListener('click', onClick, true)
 }
 
-function onClick(e: MouseEvent): void {
+/** The theme's sound for a button, option or slider (the danger one for destructive actions), while it's on. */
+function soundOf(target: EventTarget | null): (() => void) | null {
   const { theme, shown } = state
-  if (!shown || !theme) return
-  const el = (e.target as Element).closest('button, [role="option"], [role="slider"]')
-  if (!el || el.closest('.theme-toggle')) return
-  if (el.matches('.action.danger')) theme.sounds.danger()
-  else theme.sounds.click()
+  if (!shown || !theme || !(target instanceof Element)) return null
+  const el = target.closest('button, [role="option"], [role="slider"]')
+  if (!el || el.matches(':disabled') || el.closest('.theme-toggle')) return null
+  return el.matches('.action.danger') ? () => theme.sounds.danger() : () => theme.sounds.click()
+}
+
+/** Presses still down, by pointer, each letting its notes go. */
+const presses = new Map<number, () => void>()
+
+/** Pressed: the note starts, and rings for as long as the button is held. */
+function onPress(e: PointerEvent): void {
+  const sound = e.button === 0 && soundOf(e.target)
+  if (!sound) return
+  presses.get(e.pointerId)?.()
+  presses.set(e.pointerId, hold(sound))
+}
+
+function onLetGo(e: PointerEvent): void {
+  presses.get(e.pointerId)?.()
+  presses.delete(e.pointerId)
+}
+
+function letGoAll(): void {
+  presses.forEach((letGo) => letGo())
+  presses.clear()
+}
+
+/** A click from the keyboard (Enter, Space) has no press: it plays its note. A mouse click played on its press. */
+function onClick(e: MouseEvent): void {
+  if (e.detail === 0) soundOf(e.target)?.()
 }

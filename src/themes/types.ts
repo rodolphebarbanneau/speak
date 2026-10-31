@@ -2,9 +2,9 @@ import type { ComponentType } from 'react'
 
 /** Sounds a theme plays on clicks (never while recording, and only with sounds on). */
 export interface ThemeSounds {
-  /** A button, option or slider. */
+  /** A button, option or slider, pressed: its notes ring on for as long as it's held. */
   click(): void
-  /** A destructive action (delete…). */
+  /** A destructive action (delete…), pressed: held the same way. */
   danger(): void
   /** The theme turned back on, from "speak" in the title row. */
   on(): void
