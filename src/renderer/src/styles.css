@@ -709,6 +709,16 @@ section + section {
 .version + .version {
   margin-top: var(--s2);
 }
+/* meta line | [ copy ], the action lined up with the section tails */
+.version-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+}
+.version-head p {
+  flex: 1;
+  min-width: 0;
+}
 
 /* ---------- preview ---------- */
 

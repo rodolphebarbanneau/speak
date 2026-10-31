@@ -14,6 +14,22 @@ export interface AiResult {
   ms: number
 }
 
+/** The AI found nothing to write and said so, as the prompts ask, with a reply like "[Nothing intelligible to write]". */
+export class NothingToWrite extends Error {}
+
+/** "[Nothing intelligible to write]": words, not dictated code such as "[1, 2, 3]", "['a', 'b']" or "[x == y]". */
+function bracketedError(text: string): string | undefined {
+  const inner = text.match(/^\[([^[\]\n]{1,200})\]$/)?.[1].trim()
+  if (!inner || !/^\p{L}/u.test(inner) || !/\p{L}{3}/u.test(inner) || !/\s/.test(inner) || /["`=(){}<>;]/.test(inner)) return undefined
+  return inner
+}
+
+function written(result: AiResult): AiResult {
+  const error = bracketedError(result.text)
+  if (error) throw new NothingToWrite(error)
+  return result
+}
+
 interface Agent {
   config: () => AgentConfig
   status: (cfg: AgentConfig, refresh: boolean) => Promise<AgentStatus>
@@ -95,7 +111,7 @@ export async function processTranscript(
       custom: cfg.ai.customInstructions,
       context: opts.context
     })
-    const result = await complete(COMPOSE_SYSTEM, user, opts.signal, true)
+    const result = written(await complete(COMPOSE_SYSTEM, user, opts.signal, true))
     return { ...result, text: stripSubjectLine(result.text, transcript) }
   }
   const user = processMessage({
@@ -106,7 +122,7 @@ export async function processTranscript(
     vocabulary: cfg.vocabulary,
     custom: cfg.ai.customInstructions
   })
-  return complete(PROCESS_SYSTEM, user, opts.signal)
+  return written(await complete(PROCESS_SYSTEM, user, opts.signal))
 }
 
 export function editText(text: string, instruction: string, signal?: AbortSignal): Promise<AiResult> {

@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events'
 import { Notification, systemPreferences } from 'electron'
 import { languageName, needsAi, PARAKEET_LANGUAGES } from '../shared/constants'
 import type { OverlayState, Phase, PreviewState, RecordingAction, Session, SessionAction, SessionVersion, Style } from '../shared/types'
-import { aiConfigured, editText, processTranscript } from './ai'
+import { aiConfigured, editText, NothingToWrite, processTranscript } from './ai'
 import { cleanTranscript, decodeWav, encodeWav, prepareAudio } from './audio'
 import { configStore } from './config'
 import { history, newSessionId } from './history'
@@ -345,6 +345,7 @@ class Controller extends EventEmitter {
         log.warn(`Parakeet does not support "${language}"`)
       }
       const audio = encodeWav(raw)
+      let nothingToWrite = false
 
       if (needsAi(session.style, session.outputLanguage)) {
         if (!aiConfigured()) {
@@ -373,13 +374,17 @@ class Controller extends EventEmitter {
           } catch (err) {
             if (abort.signal.aborted) return
             session.error = (err as Error).message
-            log.warn('AI processing failed:', session.error)
+            nothingToWrite = err instanceof NothingToWrite
+            if (!nothingToWrite) log.warn('AI processing failed:', session.error)
           }
         }
       }
       await history.save(session, audio)
       void history.dropCancelled(session.id).catch((err) => log.warn('Could not drop cancelled dictations:', err))
       this.setPhase('idle')
+
+      // Nothing to insert or review: say why, and keep the transcript in the history.
+      if (nothingToWrite) return this.fail(session.error!)
 
       if (cfg.output.mode === 'paste' && !session.error) {
         this.overlayState({ phase: 'idle' })

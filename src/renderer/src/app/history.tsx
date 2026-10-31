@@ -8,7 +8,10 @@ import { outputOptions, spokenOptions } from '../lib/languages'
 
 const api = window.speak
 
-const ACTION_TONE: Record<string, string> = { inserted: 'green', pasted: 'green', copied: 'acc', cancelled: 'dim', closed: 'dim' }
+const ACTION_TONE: Record<string, string> = { inserted: 'green', pasted: 'green', copied: 'acc', cancelled: 'dim', closed: 'dim', error: 'red' }
+
+/** What became of a dictation; 'error' when it ended on one (e.g. the AI found nothing to write). */
+const outcome = (s: Session) => s.action ?? (s.error ? 'error' : undefined)
 const styleOptions = STYLES.map((s) => ({ value: s.id, label: s.label.toLowerCase() }))
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -197,6 +200,13 @@ function Detail({ session, engine, onChanged }: { session: Session; engine: Engi
             <span className={ACTION_TONE[session.action]}>{session.action}</span>
           </Row>
         )}
+        {session.error && (
+          <Row label="error">
+            <span className="red" title={session.error}>
+              {session.error}
+            </span>
+          </Row>
+        )}
       </section>
 
       <section>
@@ -237,14 +247,17 @@ function Detail({ session, engine, onChanged }: { session: Session; engine: Engi
           <Sep>versions ({session.versions.length})</Sep>
           {session.versions.map((v) => (
             <div key={v.id} className="version">
-              <p className="dim">
-                {hms(new Date(v.at))} · {v.kind}
-                {v.inputLanguage ? ` · from ${lang(v.inputLanguage)}` : ''}
-                {v.style ? ` · ${v.style}` : ''}
-                {v.outputLanguage ? ` · ${lang(v.outputLanguage)}` : ''}
-                {v.model ? ` · ${shortModel(v.model)}` : ''}
-                {v.instruction ? ` · “${v.instruction}”` : ''}
-              </p>
+              <div className="version-head">
+                <p className="dim">
+                  {hms(new Date(v.at))} · {v.kind}
+                  {v.inputLanguage ? ` · from ${lang(v.inputLanguage)}` : ''}
+                  {v.style ? ` · ${v.style}` : ''}
+                  {v.outputLanguage ? ` · ${lang(v.outputLanguage)}` : ''}
+                  {v.model ? ` · ${shortModel(v.model)}` : ''}
+                  {v.instruction ? ` · “${v.instruction}”` : ''}
+                </p>
+                <Action onClick={() => api.copyText(v.text)}>copy</Action>
+              </div>
               <p className="selectable">{v.text}</p>
             </div>
           ))}
@@ -290,15 +303,18 @@ export function History({ config, onSetup }: { config: Config; onSetup: () => vo
                 ))}
             </p>
           )}
-          {sessions.map((s) => (
-            <button key={s.id} className={`item ${selected?.id === s.id ? 'on' : ''}`} onClick={() => setSelectedId(s.id)}>
-              <span className="meta">
-                <span>{when(s.createdAt)}</span>
-                {s.action && <span className={ACTION_TONE[s.action]}>{s.action}</span>}
-              </span>
-              <span className="text">{s.text || s.transcription.text}</span>
-            </button>
-          ))}
+          {sessions.map((s) => {
+            const o = outcome(s)
+            return (
+              <button key={s.id} className={`item ${selected?.id === s.id ? 'on' : ''}`} onClick={() => setSelectedId(s.id)}>
+                <span className="meta">
+                  <span>{when(s.createdAt)}</span>
+                  {o && <span className={ACTION_TONE[o]}>{o}</span>}
+                </span>
+                <span className="text">{s.text || s.transcription.text}</span>
+              </button>
+            )
+          })}
         </div>
       </div>
       <div className="history-detail">
