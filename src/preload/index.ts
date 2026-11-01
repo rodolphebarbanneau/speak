@@ -18,6 +18,9 @@ const api: SpeakApi = {
   openMain: (section) => send('openMain', section),
   openDataDir: () => send('openDataDir'),
   openExternal: (url) => send('openExternal', url),
+  prepareBugReport: (req) => invoke('prepareBugReport', req),
+  cancelBugReport: () => send('cancelBugReport'),
+  windowError: (view, message) => send('windowError', view, message),
   openSoundSettings: () => send('openSoundSettings'),
   onNavigate: listen('navigate'),
   onLoading: listen('loading'),
@@ -53,6 +56,7 @@ const api: SpeakApi = {
 
   toggleRecording: () => send('toggleRecording'),
   cancel: () => send('cancel'),
+  getOverlayState: () => invoke('getOverlayState'),
   onOverlay: listen('overlay'),
 
   listSessions: (query, limit) => invoke('listSessions', query, limit),

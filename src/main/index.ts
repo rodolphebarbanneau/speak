@@ -17,7 +17,7 @@ import { startKeyboardHook, stopKeyboardHook } from './platform/keyboard'
 import { engine } from './stt/engine'
 import { createTray } from './tray'
 import { updater } from './updater'
-import { isMac, isWin, loadShellEnv } from './util'
+import { isLinux, isMac, isWayland, isWin, loadShellEnv } from './util'
 import { applyChrome, broadcast, createOverlay, createPreview, showMain } from './windows'
 
 /*
@@ -46,8 +46,28 @@ function handleArgs(argv: string[]): void {
   } else if (!has('--hidden')) showMain('history')
 }
 
+/**
+ * Linux, in a Wayland session: since Electron 38, Speak runs as a native Wayland client, and Wayland
+ * lets no ordinary window stay above the others, place itself, or show without taking the focus.
+ * The pill then opened behind the app being dictated into, or wherever the compositor put it
+ * (tiled, on Hyprland), if at all. Through XWayland it floats at the bottom of the screen, above
+ * everything, without the focus, as on X11. So start again there, unless the command line already
+ * chose (`--ozone-platform=wayland` keeps the native client) or there is no XWayland ($DISPLAY).
+ */
+function relaunchOnXWayland(): boolean {
+  if (!isLinux || !isWayland || !app.isPackaged || !process.env.DISPLAY) return false
+  if (process.argv.some((a) => a.startsWith('--ozone-platform'))) return false
+  if (app.commandLine.getSwitchValue('ozone-platform') === 'x11') return false
+  // An AppImage runs from a mount that goes away with this process: start the AppImage itself again.
+  app.relaunch({ execPath: process.env.APPIMAGE || process.execPath, args: [...process.argv.slice(1), '--ozone-platform=x11'] })
+  app.exit(0)
+  return true
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
+} else if (relaunchOnXWayland()) {
+  // Starting again through XWayland.
 } else {
   app.on('second-instance', (_e, argv) => handleArgs(argv))
   // Windows takes the taskbar icon from the Start menu shortcut registered for this ID (Electron
@@ -56,11 +76,21 @@ if (!app.requestSingleInstanceLock()) {
   if (isWin) app.setAppUserModelId(app.isPackaged ? 'io.github.rodolphebarbanneau.speak' : 'io.github.rodolphebarbanneau.speak.dev')
   // Tray app: keep running with no windows open.
   app.on('window-all-closed', () => undefined)
+  // A window's page, or Chromium's GPU process, gone: logged for bug reports (the pill's page reloads, see windows.ts).
+  app.on('render-process-gone', (_e, contents, d) => {
+    if (d.reason !== 'clean-exit') log.warn(`Page process gone (${contents.getURL().split('#')[1] || 'window'}): ${d.reason}, exit code ${d.exitCode}`)
+  })
+  app.on('child-process-gone', (_e, d) => {
+    if (d.reason !== 'clean-exit') log.warn(`${d.name ?? d.type} process gone: ${d.reason}, exit code ${d.exitCode}`)
+  })
 
   app.whenReady().then(async () => {
     ensureDirs()
     const version = app.getVersion()
-    log.info(`Speak ${version} starting (${process.platform}-${process.arch}, electron ${process.versions.electron})`)
+    const display = isLinux
+      ? `, ${process.env.XDG_SESSION_TYPE || 'unknown'} session, ${app.commandLine.getSwitchValue('ozone-platform') || 'default'} display`
+      : ''
+    log.info(`Speak ${version} starting (${process.platform}-${process.arch}, electron ${process.versions.electron}${display})`)
     const config = configStore.load()
     seasons.start() // the easter egg theme in season, before any window takes its colors
     if (isMac) app.dock?.hide()

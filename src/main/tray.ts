@@ -147,6 +147,7 @@ function buildMenu(phase: Phase): Menu {
     { label: 'History', click: () => showMain('history') },
     { label: 'Settings', click: () => showMain('general') },
     { label: 'Open data folder', click: () => void shell.openPath(paths.home) },
+    { label: 'Report a bug…', click: () => showMain('bug') },
     { type: 'separator' },
     { label: 'Quit Speak', click: () => app.quit() }
   ])

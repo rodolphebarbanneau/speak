@@ -1,7 +1,10 @@
 import type { AgentModel, Config, EngineId, Style } from './types'
 
+/** The project on GitHub: its releases, and its issues (where "report a bug" opens the bug form). */
+export const REPO_URL = 'https://github.com/rodolphebarbanneau/speak'
+
 /** Releases are published here; the updater reads them through electron-builder's update manifests. */
-export const RELEASES_URL = 'https://github.com/rodolphebarbanneau/speak/releases'
+export const RELEASES_URL = `${REPO_URL}/releases`
 
 export const LANGUAGES: Array<{ code: string; name: string }> = [
   { code: 'en', name: 'English' },

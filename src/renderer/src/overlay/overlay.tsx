@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { DICTATION_STYLES, LANGUAGES, spokenLanguages } from '@shared/constants'
 import type { Config, DeepPartial, OutputMode, OverlayState } from '@shared/types'
 import { PillDecor } from '@themes/components'
-import { Spinner } from '../components/ui'
+import { Boundary, Spinner } from '../components/ui'
 import { microphoneError } from '../lib/microphone'
 import { cancelCapture, pauseCapture, playSound, setLevelListener, startCapture, stopCapture } from './recorder'
 
@@ -125,7 +125,10 @@ export function Overlay() {
   const lastLevel = useRef(0)
   const [pill, setPill] = useState<HTMLDivElement | null>(null)
 
-  useEffect(() => api.onOverlay(setState), [])
+  useEffect(() => {
+    void api.getOverlayState().then(setState)
+    return api.onOverlay(setState)
+  }, [])
   useEffect(() => {
     void api.getConfig().then(setConfig)
     return api.onConfig(setConfig)
@@ -261,7 +264,11 @@ export function Overlay() {
   const interactive = state.phase === 'recording'
   return (
     <div className="overlay-root">
-      {state.phase === 'recording' && <PillDecor pill={pill} />}
+      {state.phase === 'recording' && (
+        <Boundary label="pill decoration">
+          <PillDecor pill={pill} />
+        </Boundary>
+      )}
       <div
         ref={setPill}
         className={`osd ${tone}`}

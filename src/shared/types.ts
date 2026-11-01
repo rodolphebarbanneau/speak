@@ -252,4 +252,5 @@ export type RecorderCommand =
   | { type: 'cancel' }
   | { type: 'sound'; name: 'start' | 'stop' | 'error' | 'done' }
 
-export type MainSection = 'history' | 'general' | 'transcription' | 'ai' | 'about'
+/** bug: "report a bug", from the title row's bug or the tray. */
+export type MainSection = 'history' | 'general' | 'transcription' | 'ai' | 'about' | 'bug'

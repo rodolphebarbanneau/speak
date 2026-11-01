@@ -1,7 +1,9 @@
 import { app, clipboard, dialog, ipcMain, shell, systemPreferences } from 'electron'
+import type { BugReportRequest } from '../shared/bug-report'
 import { RELEASES_URL } from '../shared/constants'
 import type { AgentId, BinaryVariant, Config, DeepPartial, MainSection, PermissionStatus, RecordingAction, Style } from '../shared/types'
 import { agentLogin, agentModels, agentStatus, testAi } from './ai'
+import { cancelBugReport, noteWindowError, prepareBugReport } from './bug-reporter'
 import { configStore } from './config'
 import { controller } from './controller'
 import { downloads } from './download'
@@ -40,6 +42,9 @@ export function registerIpc(): void {
   on('openExternal', (url: string) => {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url)
   })
+  handle('prepareBugReport', (req: BugReportRequest) => prepareBugReport(req))
+  on('cancelBugReport', () => cancelBugReport())
+  on('windowError', (view: string, message: string) => noteWindowError(view, message))
 
   // Updates
   handle('getUpdateState', () => updater.state)
@@ -80,6 +85,7 @@ export function registerIpc(): void {
 
   // Dictation
   on('toggleRecording', () => controller.toggle())
+  handle('getOverlayState', () => controller.overlayShown)
   on('cancel', () => controller.cancel())
 
   // History

@@ -5,6 +5,7 @@ import { activePalette } from '../themes/shared'
 import { configStore } from './config'
 import { seasons } from './season'
 import { resource } from './paths'
+import { log } from './log'
 import { bringToFront, restoreMouseInput } from './platform/focus'
 import { isMac, isWin } from './util'
 
@@ -95,6 +96,22 @@ const OVERLAY_SIZE = { width: 640, height: 320 }
  */
 let tracking = false
 
+/** What the pill did this session, for bug reports. */
+const pill = { shown: 0, last: '', reloads: [] as number[] }
+let overlayGoneHandler: () => void = () => undefined
+
+/** Called when the pill's page stopped (its recording, if any, is lost) and is being reloaded. */
+export function onOverlayGone(handler: () => void): void {
+  overlayGoneHandler = handler
+}
+
+/** Where a point of the virtual screen is: "display 2 of 2 (1.5x)". */
+function displayOf(bounds: Electron.Rectangle): string {
+  const all = screen.getAllDisplays()
+  const display = screen.getDisplayMatching(bounds)
+  return `display ${all.findIndex((d) => d.id === display.id) + 1} of ${all.length} (${display.scaleFactor}x)`
+}
+
 export function createOverlay(): BrowserWindow {
   overlay = new BrowserWindow({
     ...OVERLAY_SIZE,
@@ -120,6 +137,17 @@ export function createOverlay(): BrowserWindow {
   overlay.on('close', (e) => {
     if (!quitting) e.preventDefault()
   })
+  // The page holds the pill and the microphone: if it crashes or is killed (out of memory…), both
+  // would be gone until Speak restarts. Load it again, unless it keeps crashing.
+  overlay.webContents.on('render-process-gone', (_e, details) => {
+    if (quitting || details.reason === 'clean-exit' || !overlay || overlay.isDestroyed()) return
+    const now = Date.now()
+    pill.reloads = [...pill.reloads.filter((t) => now - t < 60_000), now]
+    overlayGoneHandler()
+    if (pill.reloads.length > 3) return log.error('The pill keeps crashing: not reloading it again. Restart Speak.')
+    log.warn('Reloading the pill')
+    load(overlay, 'overlay')
+  })
   load(overlay, 'overlay')
   return overlay
 }
@@ -135,15 +163,32 @@ export function showOverlay(clickable = false): void {
     setOverlayInteractive(false)
   }
   const { workArea } = cursorDisplay()
-  overlay.setBounds({
+  const bounds = {
     x: Math.round(workArea.x + (workArea.width - OVERLAY_SIZE.width) / 2),
     y: Math.round(workArea.y + workArea.height - OVERLAY_SIZE.height - 40),
     ...OVERLAY_SIZE
-  })
+  }
+  overlay.setBounds(bounds)
   if (!overlay.isVisible()) {
     overlay.showInactive()
     restoreMouseInput(overlay)
+    pill.shown++
+    pill.last = `at ${bounds.x},${bounds.y} on ${displayOf(bounds)}`
+    log.info(`Pill shown ${pill.last}`)
   }
+}
+
+/** The pill's state, for bug reports: shown or not, where, and how it went this session. */
+export function pillState(): string {
+  if (!overlay || overlay.isDestroyed()) return 'no window'
+  const b = overlay.getBounds()
+  return [
+    overlay.isVisible() ? `shown at ${b.x},${b.y} ${b.width}x${b.height} on ${displayOf(b)}` : 'hidden',
+    `shown ${pill.shown} time${pill.shown === 1 ? '' : 's'} this session${pill.last ? `, last ${pill.last}` : ''}`,
+    pill.reloads.length ? `reloaded after a crash ${pill.reloads.length} time${pill.reloads.length === 1 ? '' : 's'} in the last minute` : ''
+  ]
+    .filter(Boolean)
+    .join('; ')
 }
 
 /** Hide every window (the loading dialog aside): the app is about to go. */

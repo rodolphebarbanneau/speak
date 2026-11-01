@@ -1,0 +1,62 @@
+name: Bug report
+description: Something doesn't work, or not as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. This report is public: don't write anything personal here, and never paste what you dictated if it's private.
+
+        In Speak, the bug at the top right of the main window (or **Report a bug…** in the tray menu) fills this form in for you: your words, an analysis by your own AI provider, and Speak's diagnostics, with what is personal left out.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what Speak did instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Press the dictation shortcut in…
+        2. Say…
+  - type: textarea
+    id: analysis
+    attributes:
+      label: Analysis
+      description: Written in the app by the reporter's own AI provider, from their words and the diagnostics below. Expected, actual, evidence, likely cause.
+  # Text fields rather than lists: GitHub fills only those from the address the app opens.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: In Speak, settings › about.
+      placeholder: 0.2.11
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Operating system
+      placeholder: Windows 11, macOS 15 (Apple silicon), Ubuntu 24.04 (Wayland)…
+    validations:
+      required: true
+  - type: input
+    id: ai
+    attributes:
+      label: AI provider
+      description: Claude Code, Codex, or none.
+      placeholder: Claude Code (sonnet)
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Filled in by Speak with the environment, the settings, the recording pill, the windows' errors, the last dictations (never their words) and the end of the log.
+      render: text
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: If you can, with anything personal hidden.

@@ -21,6 +21,7 @@ import type {
   Style
 } from './types'
 import type { Season } from '../themes/shared'
+import type { BugReport, BugReportRequest } from './bug-report'
 
 /** API exposed to renderers as `window.speak` by the preload script. */
 export interface SpeakApi {
@@ -31,6 +32,12 @@ export interface SpeakApi {
   openMain(section?: MainSection): void
   openDataDir(): void
   openExternal(url: string): void
+  /** "report a bug": the report, scrubbed, analyzed by the AI provider if asked. Nothing is sent. */
+  prepareBugReport(req: BugReportRequest): Promise<BugReport>
+  /** Stop the analysis under way: the report comes without it. */
+  cancelBugReport(): void
+  /** A window's uncaught error, kept in memory for bug reports (never written to disk). */
+  windowError(view: string, message: string): void
   /** Open the OS sound/input settings (Windows, macOS). */
   openSoundSettings(): void
   onNavigate(cb: (section: MainSection) => void): () => void
@@ -76,6 +83,8 @@ export interface SpeakApi {
   // Dictation
   toggleRecording(): void
   cancel(): void
+  /** What the pill shows now (its page asks when it loads, or comes back from an error). */
+  getOverlayState(): Promise<OverlayState>
   onOverlay(cb: (s: OverlayState) => void): () => void
 
   // History

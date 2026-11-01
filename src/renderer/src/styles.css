@@ -420,6 +420,22 @@ html:not(.focused) .titlebar-area,
 html:not(.focused) .titlebar .title b {
   color: var(--muted);
 }
+/* A button drawn as an icon in the title row: the bug of "report a bug". */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  color: var(--dim);
+}
+.icon-button:hover,
+.icon-button.on {
+  color: var(--accent);
+}
+.bug-icon {
+  width: 14px;
+  height: auto;
+  fill: currentColor;
+}
 
 .statusline {
   flex: none;
@@ -783,6 +799,69 @@ section + section {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---------- report a bug ---------- */
+
+/* The page scrolls; its keys stay at the bottom, as in the preview. */
+.bug {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.bug .page {
+  flex: 1;
+}
+.bug .block-text,
+.bug .note {
+  margin-bottom: var(--s3);
+}
+.bug .field {
+  display: block;
+  padding: 0 var(--inset);
+  margin-bottom: var(--s3);
+}
+.bug .field-label {
+  display: block;
+  margin-bottom: var(--s1);
+  color: var(--dim);
+}
+/* Each field as tall as what it holds, up to a height where it scrolls. */
+.bug textarea {
+  field-sizing: content;
+  min-height: 4.8em;
+  max-height: 320px;
+}
+.bug textarea.words {
+  min-height: 9em;
+}
+.bug textarea.analysis {
+  min-height: 14em;
+  max-height: 420px;
+}
+/* The log's lines as they are, one a line: wider than the page, they scroll sideways. */
+.bug textarea.diagnostics {
+  min-height: 12em;
+  font-size: 12px;
+  color: var(--dim);
+  white-space: pre;
+  overflow: auto;
+}
+.bug .check-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  padding: 0 var(--inset) var(--s3);
+}
+.keys-bar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1) var(--s3);
+  padding: 6px var(--s3);
+  border-top: 1px solid var(--sel);
 }
 
 /* ---------- main window ---------- */

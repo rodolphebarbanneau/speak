@@ -98,7 +98,9 @@ Speak updates itself: new versions download in the background and install the ne
 
 **macOS**: allow Speak in **System Settings → Privacy & Security** for the microphone, and for Accessibility so it can paste and detect when you release the shortcut.
 
-**Linux on Wayland**: hold-to-talk isn't available, so tapping starts and stops. To paste, install `wtype` or `ydotool`. Your desktop can also bind a shortcut to `speak --toggle`.
+**Linux on Wayland**: hold-to-talk isn't available, so tapping starts and stops. To paste, install `wtype` or `ydotool`. Your desktop can also bind a shortcut to `speak --toggle`. Speak runs through XWayland so the recording pill can stay above other windows without taking the focus; start it with `--ozone-platform=wayland` to run it natively instead (the pill may then open behind your windows).
+
+**Something else**: click the bug at the top right of Speak's window (or **Report a bug…** in the tray menu) and say what happened. Your AI provider writes it up with Speak's diagnostics, and it opens as a filled-in issue on GitHub for you to read and submit. Nothing is sent until you do, and what Speak knows to be personal is taken out first; what you dictated is never included.
 
 ## For developers
 
@@ -162,6 +164,7 @@ speak --file=x.wav    process an audio file as if dictated
 src/
   main/            Electron main process
     controller.ts  pipeline: record → transcribe → AI → preview or paste
+    bug-report*.ts "report a bug": diagnostics, scrubbing, the AI's write-up
     hotkeys.ts     global shortcuts, hold-to-talk release detection
     stt/           whisper.cpp install and server, parakeet
     ai/            prompts, Claude Code and Codex CLIs

@@ -96,6 +96,21 @@ async function complete(system: string, user: string, signal?: AbortSignal, comp
   return { text, provider: ai.provider, model: result.model, ms }
 }
 
+/** The provider's name as people know it. */
+export const AGENT_NAMES: Record<AgentId, string> = { 'claude-code': 'Claude Code', codex: 'Codex' }
+
+/**
+ * Ask the AI provider anything else than a dictation (a bug report's analysis): the reply as it
+ * came, text only, with the dictation model and none of the dictation's clean-up.
+ */
+export async function askAgent(system: string, user: string, opts: { timeoutMs: number; signal?: AbortSignal }): Promise<AiResult> {
+  const ai = configStore.get().ai
+  if (ai.provider === 'none') throw new Error('AI processing is off.')
+  const started = Date.now()
+  const result = await AGENTS[ai.provider].complete(system, user, AGENTS[ai.provider].config(), opts)
+  return { text: result.text, provider: ai.provider, model: result.model, ms: Date.now() - started }
+}
+
 /** Rewrite a transcript in a style, or (compose) write the text its brief asks for, with `context` as material. */
 export async function processTranscript(
   transcript: string,

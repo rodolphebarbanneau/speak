@@ -14,7 +14,7 @@ import { copyToClipboard, pasteText } from './platform/paste'
 import { readSelection } from './platform/selection'
 import { engine } from './stt/engine'
 import { isMac } from './util'
-import { broadcast, hideOverlay, hidePreview, onPreviewClose, overlay, preview, previewVisible, showOverlay, showPreview } from './windows'
+import { broadcast, hideOverlay, hidePreview, onOverlayGone, onPreviewClose, overlay, preview, previewVisible, showOverlay, showPreview } from './windows'
 
 type Purpose = 'dictation' | 'edit'
 
@@ -53,6 +53,8 @@ class Controller extends EventEmitter {
   /** Label of the microphone used by the current/last recording. */
   private device = ''
   private overlayTimer: NodeJS.Timeout | null = null
+  /** What the pill shows, for its page when it (re)loads. */
+  overlayShown: OverlayState = { phase: 'idle' }
 
   /** Session currently shown in the preview dialog. */
   private current: Session | null = null
@@ -65,6 +67,7 @@ class Controller extends EventEmitter {
   constructor() {
     super()
     onPreviewClose(() => void this.previewClose())
+    onOverlayGone(() => this.recorderGone())
   }
 
   // ---------------------------------------------------------------- hotkeys
@@ -156,6 +159,7 @@ class Controller extends EventEmitter {
   private overlayState(state: OverlayState): void {
     if (this.overlayTimer) clearTimeout(this.overlayTimer)
     this.overlayTimer = null
+    this.overlayShown = state
     broadcast('overlay', state)
     if (!configStore.get().ui.showOverlay && state.phase !== 'error') return
     if (state.phase === 'idle') hideOverlay()
@@ -230,6 +234,19 @@ class Controller extends EventEmitter {
     const message = noSignalMessage(device)
     if (this.purpose === 'edit') this.updatePreviewBusy(null, message)
     this.fail(message, 7000)
+  }
+
+  /** The pill's page crashed and is reloading: the microphone it held is gone, and so is the recording. */
+  private recorderGone(): void {
+    const error = "Speak's recorder stopped unexpectedly and was restarted. Try again."
+    // Starting or stopping: they end the recording, as with any other microphone error.
+    if (this.pendingStart) return this.pendingStart({ ok: false, error })
+    if (this.pendingResult) return this.pendingResult({ samples: null, error })
+    if (this.phase !== 'recording') return
+    if (this.maxTimer) clearTimeout(this.maxTimer)
+    this.setPhase('idle')
+    if (this.purpose === 'edit') this.updatePreviewBusy(null, error)
+    this.fail(error)
   }
 
   recorderResult(reqId: number, samples: Float32Array | null, error?: string): void {

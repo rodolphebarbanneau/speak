@@ -1,8 +1,37 @@
-import { createContext, useContext, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
+import { Component, createContext, useContext, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
+import { describeError, noteError } from '../lib/errors'
 
 const api = window.speak
 const isMac = api.platform === 'darwin'
 export const MOD = isMac ? 'cmd' : 'ctrl'
+
+/**
+ * Keeps an error in a part of a window from blanking the whole window: the part shows nothing,
+ * the error goes to the bug reports' diagnostics, and with `retry` the part is drawn again a
+ * second later (its state starts over).
+ */
+export class Boundary extends Component<{ children: ReactNode; label: string; retry?: boolean }, { failed: boolean }> {
+  state = { failed: false }
+  private timer: ReturnType<typeof setTimeout> | null = null
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  componentDidCatch(error: Error) {
+    console.error(`[${this.props.label}]`, error)
+    noteError(this.props.label, describeError(error))
+    if (this.props.retry) this.timer = setTimeout(() => this.setState({ failed: false }), 1000)
+  }
+
+  componentWillUnmount() {
+    if (this.timer) clearTimeout(this.timer)
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children
+  }
+}
 
 /** Track window focus so the title row dims when inactive, like native title bars. */
 export function useWindowFocus(): void {
