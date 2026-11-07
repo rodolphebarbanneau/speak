@@ -83,7 +83,7 @@ export const DEFAULT_CONFIG: Config = {
   language: { input: 'auto', output: 'same' },
   style: 'clean',
   vocabulary: '',
-  compose: { useSelection: true },
+  context: { current: '', recent: [] },
   audio: { deviceId: 'default', deviceLabel: '', maxSeconds: 600, sounds: true },
   transcription: {
     engine: 'whisper',

@@ -6,7 +6,9 @@ import type {
   AiTestResult,
   AppInfo,
   BinaryVariant,
+  ClipboardInfo,
   Config,
+  ContextSource,
   DeepPartial,
   DownloadProgress,
   EngineStatus,
@@ -86,6 +88,25 @@ export interface SpeakApi {
   /** What the pill shows now (its page asks when it loads, or comes back from an error). */
   getOverlayState(): Promise<OverlayState>
   onOverlay(cb: (s: OverlayState) => void): () => void
+
+  // Context (read-only: a folder, a git repository, a web page, or the clipboard for one recording)
+  /** '' for none, a recent context's location, or 'clipboard' (the recording in progress only). */
+  chooseContext(choice: string): void
+  /** Add a folder path, or a git or web address, as the context. `check`: read it first, and fail when that fails. */
+  addContext(input: string, check?: boolean): Promise<ContextSource>
+  /** The folder or address on the clipboard, made the context; null when there's none. */
+  addContextFromClipboard(): Promise<ContextSource | null>
+  /**
+   * The pill takes the keyboard to type an address into it (the recording pauses meanwhile), or
+   * gives it back to the app being dictated into.
+   */
+  contextKeyboard(on: boolean): Promise<void>
+  /** Pick a folder with the system dialog and make it the context; null when cancelled. */
+  browseContextFolder(): Promise<ContextSource | null>
+  /** Forget a recent context, and delete Speak's copy of it (a clone, a page). */
+  removeContext(location: string): Promise<void>
+  /** What's on the clipboard, for the pill's context list. */
+  clipboardInfo(): Promise<ClipboardInfo>
 
   // History
   listSessions(query?: string, limit?: number): Promise<Session[]>

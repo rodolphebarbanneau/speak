@@ -8,7 +8,7 @@ import { paths } from '../paths'
 import { configStore } from '../config'
 import { isMac, isWin, run, shellEnv } from '../util'
 import { cliPathProblem, errorDetail, expandHome, findCli, homeEnv, homeProblem, looksLikeAuthError, openInTerminal, promptFile } from './cli'
-import type { Completion } from './types'
+import type { CompleteOptions, Completion } from './types'
 
 /** OpenAI Codex CLI (`codex exec`), with the user's own ChatGPT/OpenAI login. */
 
@@ -83,19 +83,26 @@ export async function codexModels(): Promise<AgentModel[]> {
   return CODEX_MODELS
 }
 
-export async function codexComplete(system: string, user: string, cfg: AgentConfig, opts: { timeoutMs: number; signal?: AbortSignal }): Promise<Completion> {
+export async function codexComplete(system: string, user: string, cfg: AgentConfig, opts: CompleteOptions): Promise<Completion> {
   const path = cliPath(cfg)
   if (!path) throw new Error('Codex not found. Install it or pick another provider in Speak → settings → ai.')
   const instructions = await promptFile('codex-system', system)
   const out = join(paths.tmp, `codex-out-${process.pid}-${Date.now()}.txt`)
   // Text only: our instructions replace the coding-agent prompt; no user config (MCP servers,
-  // plugins), no rules, read-only sandbox, no saved session.
+  // plugins), no rules, no AGENTS.md, read-only sandbox, no saved session.
+  // With a folder to read (compose with a context), it is the working root, and the read-only
+  // sandbox lets commands read but never write (nor go online). On Windows that takes Codex's own
+  // sandbox ("unelevated", no setup needed): without it, every command is refused, reads too.
+  const read = opts.readDir
   const args = [
     'exec',
     ['-m', cfg.model],
     ['-c', `model_reasoning_effort="${cfg.effort}"`],
     // TOML string; forward slashes keep Windows paths free of escapes.
     ['-c', `model_instructions_file="${instructions.replace(/\\/g, '/')}"`],
+    ['-c', 'project_doc_max_bytes=0'],
+    read ? ['-C', read] : [],
+    read && isWin ? ['-c', 'windows.sandbox="unelevated"'] : [],
     '--ignore-user-config',
     '--ignore-rules',
     ['--sandbox', 'read-only'],
@@ -106,7 +113,7 @@ export async function codexComplete(system: string, user: string, cfg: AgentConf
     '-'
   ].flat()
   try {
-    const r = await run(path, args, { input: user, cwd: paths.tmp, env: env(cfg), timeoutMs: opts.timeoutMs, signal: opts.signal })
+    const r = await run(path, args, { input: user, cwd: read ?? paths.tmp, env: env(cfg), timeoutMs: opts.timeoutMs, signal: opts.signal })
     const text = await readFile(out, 'utf8').catch(() => '')
     if (r.code !== 0 || !text.trim()) {
       const detail = errorDetail(r.stderr, r.stdout) || `exit code ${r.code}`

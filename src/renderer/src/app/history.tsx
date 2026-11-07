@@ -3,7 +3,7 @@ import { languageName, shortModel, STYLES } from '@shared/constants'
 import type { Config, EngineId, Session, Style } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
 import { Action, displayShortcut, Row, Sep, Spinner, Track } from '../components/ui'
-import { ipcError } from '../lib/format'
+import { CONTEXT_KINDS, ipcError } from '../lib/format'
 import { outputOptions, spokenOptions } from '../lib/languages'
 
 const api = window.speak
@@ -200,6 +200,14 @@ function Detail({ session, engine, onChanged }: { session: Session; engine: Engi
             <span className={ACTION_TONE[session.action]}>{session.action}</span>
           </Row>
         )}
+        {session.source && (
+          <Row label="context" hint={session.source.kind === 'clipboard' ? 'the clipboard, for this dictation' : session.source.location}>
+            <span title={session.source.location}>
+              {session.source.label} <span className="dim">· {CONTEXT_KINDS[session.source.kind]}</span>
+              {session.contextError && <span className="yellow"> · not used: {session.contextError}</span>}
+            </span>
+          </Row>
+        )}
         {session.error && (
           <Row label="error">
             <span className="red" title={session.error}>
@@ -221,7 +229,7 @@ function Detail({ session, engine, onChanged }: { session: Session; engine: Engi
 
       {session.context && (
         <section>
-          <Sep tail={<Action onClick={() => api.copyText(session.context!)}>copy</Action>}>selected text</Sep>
+          <Sep tail={<Action onClick={() => api.copyText(session.context!)}>copy</Action>}>{session.source ? 'clipboard' : 'selected text'}</Sep>
           <p className="block-text dim selectable">{session.context}</p>
         </section>
       )}

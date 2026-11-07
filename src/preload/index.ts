@@ -59,6 +59,14 @@ const api: SpeakApi = {
   getOverlayState: () => invoke('getOverlayState'),
   onOverlay: listen('overlay'),
 
+  chooseContext: (choice) => send('chooseContext', choice),
+  addContext: (input, check) => invoke('addContext', input, check),
+  addContextFromClipboard: () => invoke('addContextFromClipboard'),
+  contextKeyboard: (on) => invoke('contextKeyboard', on),
+  browseContextFolder: () => invoke('browseContextFolder'),
+  removeContext: (location) => invoke('removeContext', location),
+  clipboardInfo: () => invoke('clipboardInfo'),
+
   listSessions: (query, limit) => invoke('listSessions', query, limit),
   getSessionAudio: (id) => invoke('getSessionAudio', id),
   deleteSession: (id) => invoke('deleteSession', id),

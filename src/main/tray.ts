@@ -2,6 +2,7 @@ import { app, Menu, nativeImage, nativeTheme, shell, Tray } from 'electron'
 import { DICTATION_STYLES, LANGUAGES, languageName, spokenLanguages, STYLES } from '../shared/constants'
 import type { OutputMode, Phase } from '../shared/types'
 import { configStore } from './config'
+import { currentSource, recentSources } from './context'
 import { controller } from './controller'
 import { paths, resource } from './paths'
 import { copyToClipboard } from './platform/paste'
@@ -120,8 +121,40 @@ function choices(): Item[] {
         ],
         (mode) => configStore.update({ output: { mode } })
       )
-    }
+    },
+    context()
   ]
+}
+
+/**
+ * The context, as on the pill: none, a recent one (it stays), or the clipboard for the recording
+ * in progress. The labels are the user's own folder and page names: no "&" shortcut markers.
+ */
+function context(): Item {
+  const recording = controller.recording
+  const clipboard = !!recording?.clipboard
+  const current = currentSource()
+  const label = (text: string) => text.replace(/&/g, '&&')
+  return {
+    label: `Context: ${clipboard ? 'Clipboard' : label(current?.label ?? 'None')}`,
+    submenu: [
+      { label: 'None', type: 'radio', checked: !clipboard && !current, click: () => controller.chooseContext('') },
+      ...recentSources().map<Item>((s) => ({
+        label: label(s.label),
+        sublabel: s.kind === 'folder' ? undefined : s.kind,
+        toolTip: s.location,
+        type: 'radio',
+        checked: !clipboard && current?.location === s.location,
+        click: () => controller.chooseContext(s.location)
+      })),
+      ...(recording && recording.purpose !== 'edit'
+        ? [{ label: 'Clipboard (this recording)', type: 'radio', checked: clipboard, click: () => controller.chooseContext('clipboard') } as Item]
+        : []),
+      { type: 'separator' },
+      { label: 'Choose a folder…', click: () => void controller.browseContextFolder(null) },
+      { label: 'Manage contexts…', click: () => showMain('context') }
+    ]
+  }
 }
 
 function buildMenu(phase: Phase): Menu {

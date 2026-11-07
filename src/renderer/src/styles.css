@@ -472,7 +472,7 @@ html[data-view='overlay'] body {
   display: flex;
   align-items: center;
   gap: var(--s3);
-  max-width: 620px;
+  max-width: 740px;
   padding: 5px var(--s3);
   background: var(--bg);
   border: 2px solid var(--accent);
@@ -515,6 +515,10 @@ html[data-view='overlay'] body {
 }
 .osd .choices > button {
   color: var(--fg);
+}
+/* "no context" */
+.osd .choices > button.dim {
+  color: var(--dim);
 }
 .osd .choices > button:hover,
 .osd .choices > button.open {
@@ -580,6 +584,31 @@ html[data-view='overlay'] body {
 }
 .overlay-menu > button.on {
   color: var(--accent);
+}
+/* The context list's field to type an address into. */
+/* url › https://github.com/…▌ — a prompt line, like the rest of the pill, not a box in the box. */
+.overlay-field {
+  width: 400px;
+  padding: 2px var(--s3);
+}
+.overlay-field > label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+}
+.overlay-field input,
+.overlay-field input:focus,
+.overlay-field input:focus-visible {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  caret-color: var(--accent);
+}
+.overlay-field > p {
+  margin-top: 2px;
+  white-space: normal;
 }
 
 /* ---------- sections, rows, lists ---------- */
@@ -867,9 +896,47 @@ section + section {
 /* ---------- main window ---------- */
 
 .main {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
+}
+
+/* Settings: a dialog over history or the bug report, which stay behind it, dimmed. */
+.dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  padding: max(var(--s4), 4vh) max(var(--s5), 5vw);
+  background: rgba(0, 0, 0, 0.55);
+}
+.settings {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  max-width: 1040px;
+  margin: 0 auto;
+  display: flex;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+}
+.settings:focus {
+  outline: none;
+}
+.settings > .nav {
+  width: 150px;
+}
+.settings .nav-title {
+  padding: 0 var(--s3) var(--s2) var(--edge);
+  color: var(--hi);
+  font-weight: 600;
+}
+/* esc close, at the bottom of the list. */
+.settings .nav-close {
+  margin-top: auto;
+  padding: var(--s2) var(--s3) 0 var(--edge);
 }
 .nav {
   width: 170px;

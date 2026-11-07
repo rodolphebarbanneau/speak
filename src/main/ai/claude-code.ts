@@ -5,7 +5,7 @@ import { log } from '../log'
 import { paths } from '../paths'
 import { isMac, isWin, run, shellEnv } from '../util'
 import { cliPathProblem, errorDetail, findCli, homeEnv, homeProblem, looksLikeAuthError, openInTerminal, promptFile } from './cli'
-import type { Completion } from './types'
+import type { CompleteOptions, Completion } from './types'
 
 /** Claude Code (`claude -p`), with the user's own Claude account. */
 
@@ -66,23 +66,43 @@ export function claudeLogin(cfg: AgentConfig): Promise<void> {
   return openInTerminal(path, ['auth', 'login'], 'Claude Code sign-in', homeEnv(HOME_VAR, cfg.home, '.claude'))
 }
 
-export async function claudeComplete(system: string, user: string, cfg: AgentConfig, opts: { timeoutMs: number; signal?: AbortSignal }): Promise<Completion> {
+/** Whether this Claude Code has `--restricted` (file tools kept inside the working directory), by CLI path. */
+const restrictedSupport = new Map<string, Promise<boolean>>()
+
+function supportsRestricted(path: string, cfg: AgentConfig): Promise<boolean> {
+  let known = restrictedSupport.get(path)
+  if (!known) {
+    known = run(path, ['--help'], { timeoutMs: 15_000, env: env(cfg) })
+      .then((r) => r.stdout.includes('--restricted'))
+      .catch(() => false)
+    restrictedSupport.set(path, known)
+  }
+  return known
+}
+
+export async function claudeComplete(system: string, user: string, cfg: AgentConfig, opts: CompleteOptions): Promise<Completion> {
   const path = cliPath(cfg)
   if (!path) throw new Error('Claude Code not found. Install it or pick another provider in Speak → settings → ai.')
   // Text only: no tools, no MCP servers, no user/project settings or CLAUDE.md, no saved session.
+  // With a folder to read (compose with a context), the tools that read files and nothing else:
+  // none writes, runs a command or goes online; the folder is the working directory, and reading
+  // outside it is refused (by --restricted where the CLI has it, else by -p's default permissions).
+  const read = opts.readDir
+  const restricted = read && (await supportsRestricted(path, cfg)) ? ['--restricted'] : []
   const args = [
     '-p',
     ['--model', cfg.model],
     ['--effort', cfg.effort],
     ['--system-prompt-file', await promptFile('claude-system', system)],
-    ['--tools', ''],
+    ['--tools', read ? 'Read,Grep,Glob' : ''],
+    restricted,
     ['--setting-sources', ''],
     '--strict-mcp-config',
     '--disable-slash-commands',
     '--no-session-persistence',
     ['--output-format', 'json']
   ].flat()
-  const r = await run(path, args, { input: user, cwd: paths.tmp, env: env(cfg), timeoutMs: opts.timeoutMs, signal: opts.signal })
+  const r = await run(path, args, { input: user, cwd: read ?? paths.tmp, env: env(cfg), timeoutMs: opts.timeoutMs, signal: opts.signal })
   let json: { result?: string; is_error?: boolean; modelUsage?: Record<string, unknown> } | null = null
   try {
     json = JSON.parse(r.stdout.slice(r.stdout.indexOf('{')))

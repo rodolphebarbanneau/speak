@@ -29,7 +29,7 @@ It's made for people who write a lot: messages, emails, notes, and prompts for A
 2. Hold **Ctrl+Shift+Space** (**⌘⇧Space** on a Mac) and talk. Let go when you're done. You can also tap it once to start and again to stop.
 3. Your text appears. Speak can paste it straight away, or show it to you first: change the style or the language, fix it by voice ("make it shorter"), then insert it.
 
-While you talk, a small bar at the bottom of the screen shows the recording. Click the style, the languages or the mode on it to change them, and use its buttons to pause, finish or cancel.
+While you talk, a small bar at the bottom of the screen shows the recording. Click the style, the languages, the mode or the context on it to change them, and use its buttons to pause, finish or cancel.
 
 <p align="center">
   <img src="docs/preview.png" alt="The preview: spoken in French, written in English, ready to insert" width="720">
@@ -43,7 +43,7 @@ When you want Speak to _write_ something for you, add **Alt** to the shortcut: p
 
 > Write a short email to Sarah. Tell her the release moves to Thursday because we found a bug in the export, and ask if we can push the demo to Friday. Keep it friendly.
 
-Speak writes the email using only what you said. It doesn't invent facts or promises, keeps your doubts as doubts, and leaves a `[placeholder]` for anything missing, such as a name. If you've selected text, like the email you're answering, Speak uses it too, and writes the reply in that email's language.
+Speak writes the email using only what you said. It doesn't invent facts or promises, keeps your doubts as doubts, and leaves a `[placeholder]` for anything missing, such as a name. To answer an email, copy it, then pick **clipboard** as the [context](#context) on the bar while you talk: Speak writes the reply in that email's language.
 
 ### Styles
 
@@ -55,6 +55,16 @@ Speak writes the email using only what you said. It doesn't invent facts or prom
 | **Summary**    | The key points, condensed.                                       |
 
 Every dictation is saved in your history, with its recording, so you can find it again or redo it in another style or language.
+
+### Context
+
+Give Speak something to know what you're talking about: a **folder** on your computer, a **git repository** or a **web page** (an issue, a spec, documentation). Pick it on the bar while you talk (the last choice: your recent ones are listed; add a folder, or type or paste an address), or in **settings → context**. It stays until you change it.
+
+- **When you dictate**, Speak only uses it to spell things right: file names, functions and terms as your project writes them ("the use auth hook" becomes `useAuth`). Nothing is added to what you said.
+- **When you compose**, the AI can read the folder's files to write what you ask: "write the release notes for the export fix", "answer this issue".
+- **The clipboard** is for one dictation only: copy the message you're replying to, then pick it on the bar.
+
+Context is read-only. Speak and the AI never change anything in your folders: Claude Code gets only its file-reading tools, kept inside the folder, and Codex runs in its read-only sandbox. Git repositories and web pages are copied into `.speak/context`, and updated when you use them.
 
 ## Get started
 
@@ -81,7 +91,7 @@ Hold a shortcut while you speak, or tap it to start and again to stop. You can c
 ## Privacy
 
 - **Your voice stays on your computer.** Recordings are transcribed locally and never uploaded.
-- **Only text goes to the AI**, through your own Claude Code or Codex: the transcript and, when you compose, the text you selected. Speak has no servers, no account and no analytics. Otherwise it only goes online to download the speech engine and model (GitHub, Hugging Face) and to check for updates.
+- **Only text goes to the AI**, through your own Claude Code or Codex: the transcript and, when you choose a context, what Speak reads from it (an overview of the folder, the page, the clipboard), plus the files the AI reads when you compose. Speak has no servers, no account and no analytics. Otherwise it only goes online to download the speech engine and model (GitHub, Hugging Face), to check for updates, and to fetch the git repositories and web pages you choose as context.
 - **Your history is yours.** It's stored in a `.speak` folder in your home directory. Turn it off, or choose how long it's kept, in **settings → general**.
 
 ## Updates

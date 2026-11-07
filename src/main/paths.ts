@@ -13,11 +13,13 @@ export const paths = {
   models: join(home, 'models'),
   bin: join(home, 'bin'),
   logs: join(home, 'logs'),
-  tmp: join(home, 'tmp')
+  tmp: join(home, 'tmp'),
+  /** Speak's own copies of the contexts it reads: git clones, web pages. */
+  context: join(home, 'context')
 }
 
 export function ensureDirs(): void {
-  for (const dir of [paths.home, paths.history, paths.models, paths.bin, paths.logs, paths.tmp]) {
+  for (const dir of [paths.home, paths.history, paths.models, paths.bin, paths.logs, paths.tmp, paths.context]) {
     mkdirSync(dir, { recursive: true })
   }
 }

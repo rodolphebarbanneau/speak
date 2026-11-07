@@ -97,6 +97,22 @@ export function About({ config, update }: { config: Config; update: (patch: Deep
       </section>
 
       <section>
+        <Sep>context</Sep>
+        <Row label="dictation">
+          <span className="dim">spells names as the project does · adds nothing</span>
+        </Row>
+        <Row label="compose">
+          <span className="dim">reads the folder's files when it needs them</span>
+        </Row>
+        <Row label="clipboard">
+          <span className="dim">one dictation only · pick it on the pill</span>
+        </Row>
+        <Row label="read-only">
+          <span className="dim">nothing is ever changed · repositories and pages are copied to ~/.speak/context</span>
+        </Row>
+      </section>
+
+      <section>
         <Sep>command line</Sep>
         <Row label="--toggle">
           <span className="dim">start / stop dictation · bind it to a desktop shortcut on wayland</span>

@@ -1,10 +1,11 @@
-import { app, clipboard, dialog, ipcMain, shell, systemPreferences } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, systemPreferences } from 'electron'
 import type { BugReportRequest } from '../shared/bug-report'
 import { RELEASES_URL } from '../shared/constants'
-import type { AgentId, BinaryVariant, Config, DeepPartial, MainSection, PermissionStatus, RecordingAction, Style } from '../shared/types'
+import type { AgentId, BinaryVariant, ClipboardInfo, Config, DeepPartial, MainSection, PermissionStatus, RecordingAction, Style } from '../shared/types'
 import { agentLogin, agentModels, agentStatus, testAi } from './ai'
 import { cancelBugReport, noteWindowError, prepareBugReport } from './bug-reporter'
 import { configStore } from './config'
+import { addSource, parseSource, removeSource } from './context'
 import { controller } from './controller'
 import { downloads } from './download'
 import { history } from './history'
@@ -87,6 +88,25 @@ export function registerIpc(): void {
   on('toggleRecording', () => controller.toggle())
   handle('getOverlayState', () => controller.overlayShown)
   on('cancel', () => controller.cancel())
+
+  // Context
+  on('chooseContext', (choice: string) => controller.chooseContext(choice))
+  handle('addContext', async (input: string, check?: boolean) => {
+    const source = await addSource(input, !!check)
+    controller.chooseContext(source.location)
+    return source
+  })
+  handle('addContextFromClipboard', () => controller.addContextFromClipboard())
+  handle('contextKeyboard', (on: boolean) => controller.contextKeyboard(on))
+  // The window that asked owns the dialog.
+  ipcMain.handle('speak:browseContextFolder', (e) => controller.browseContextFolder(BrowserWindow.fromWebContents(e.sender)))
+  handle('removeContext', (location: string) => removeSource(location))
+  handle('clipboardInfo', async (): Promise<ClipboardInfo> => {
+    const text = await clipboard.readText()
+    // A path or an address is one short line.
+    const source = text.length < 2048 ? parseSource(text) : null
+    return { chars: text.trim().length, source: source ?? undefined }
+  })
 
   // History
   handle('listSessions', (query?: string, limit?: number) => history.list(query, limit))

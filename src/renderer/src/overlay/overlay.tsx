@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { DICTATION_STYLES, LANGUAGES, spokenLanguages } from '@shared/constants'
-import type { Config, DeepPartial, OutputMode, OverlayState } from '@shared/types'
+import type { ClipboardInfo, Config, DeepPartial, OutputMode, OverlayState } from '@shared/types'
 import { PillDecor } from '@themes/components'
 import { Boundary, Spinner } from '../components/ui'
+import { CONTEXT_KINDS, ipcError, shorten } from '../lib/format'
 import { microphoneError } from '../lib/microphone'
 import { cancelCapture, pauseCapture, playSound, setLevelListener, startCapture, stopCapture } from './recorder'
 
@@ -16,7 +17,19 @@ function formatTime(ms: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
-type Menu = 'style' | 'spoken' | 'output' | 'mode'
+/** url: the field to type an address into, opened from the context list. */
+type Menu = 'style' | 'spoken' | 'output' | 'mode' | 'context' | 'url'
+
+interface Option {
+  key: string
+  label: string
+  /** Dim, after the label. */
+  note?: string
+  /** On hover: the full path or address. */
+  title?: string
+  on?: boolean
+  apply: () => void
+}
 const OUTPUTS = [{ code: 'same', name: 'as spoken' }, ...LANGUAGES.map((l) => ({ code: l.code, name: l.name.toLowerCase() }))]
 const MODES: OutputMode[] = ['preview', 'paste']
 
@@ -37,17 +50,116 @@ function Icon({ name }: { name: keyof typeof ICONS }) {
 }
 
 /**
- * The settings this dictation will use, on the pill while recording. Clicking one opens a list
- * above the pill: a style, language or mode becomes the new default and applies to the recording
- * in progress; compose (which has its own shortcut) switches only this recording. Languages show
- * as codes (fr → en) to keep the pill short; their lists spell them out.
+ * The context list: none, the recent ones (a choice stays for the next dictations), the clipboard
+ * for this dictation only, and to add: the folder or address on the clipboard, an address to type,
+ * or a folder picked with the system dialog.
  */
-function Choices({ config, compose }: { config: Config; compose: boolean }) {
+function contextOptions(config: Config, clipboard: boolean, clip: ClipboardInfo | null, typeAddress: () => void): Option[] {
+  const { current, recent } = config.context
+  const options: Option[] = [
+    { key: 'none', label: 'none', on: !clipboard && !current, apply: () => api.chooseContext('') },
+    ...recent.map((s) => ({
+      key: s.location,
+      label: shorten(s.label, 40),
+      note: s.kind === 'folder' ? undefined : s.kind === 'url' ? 'page' : 'git',
+      title: s.location,
+      on: !clipboard && current === s.location,
+      apply: () => api.chooseContext(s.location)
+    }))
+  ]
+  const found = clip?.source
+  // A path or an address on the clipboard is something to add, not text to give.
+  if (found && !recent.some((s) => s.location === found.location)) {
+    options.push({
+      key: 'add',
+      label: `+ ${shorten(found.label, 38)}`,
+      note: `${found.kind === 'url' ? 'page' : found.kind} from the clipboard`,
+      title: found.location,
+      apply: () => void api.addContextFromClipboard()
+    })
+  } else if (clip?.chars || clipboard) {
+    options.push({
+      key: 'clipboard',
+      label: 'clipboard',
+      note: `${clip?.chars ?? 0} characters · this dictation only`,
+      on: clipboard,
+      apply: () => api.chooseContext('clipboard')
+    })
+  }
+  options.push({ key: 'url', label: '+ url…', note: 'git or web', apply: typeAddress })
+  options.push({ key: 'browse', label: '+ folder…', apply: () => void api.browseContextFolder() })
+  return options
+}
+
+/**
+ * A field to type a git or web address (or a folder path) into. The pill takes the keyboard while
+ * it's open, and the recording pauses; then the focus goes back to the app being dictated into.
+ * Enter adds it as the context, Esc or a click elsewhere closes the field.
+ */
+function AddressField({ onDone }: { onDone: () => void }) {
+  const input = useRef<HTMLInputElement>(null)
+  const busy = useRef(false)
+  const [value, setValue] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    let open = true
+    void api.contextKeyboard(true).then(() => open && input.current?.focus())
+    return () => {
+      open = false
+      void api.contextKeyboard(false)
+    }
+  }, [])
+  const add = () => {
+    if (!value.trim()) return onDone()
+    busy.current = true
+    api
+      .addContext(value.trim())
+      .then(onDone)
+      .catch((e: Error) => {
+        busy.current = false
+        setError(ipcError(e))
+        input.current?.focus()
+      })
+  }
+  return (
+    <div className="overlay-field">
+      <label>
+        <span className="acc">url ›</span>
+        <input
+          ref={input}
+          value={value}
+          placeholder="https://…"
+          spellCheck={false}
+          onChange={(e) => {
+            setValue(e.target.value)
+            setError(null)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') add()
+            else if (e.key === 'Escape') onDone()
+          }}
+          onBlur={() => !busy.current && onDone()}
+        />
+      </label>
+      <p className={error ? 'red' : 'dim'}>{error ?? 'a git repository or a web page · enter to add · esc to close'}</p>
+    </div>
+  )
+}
+
+/**
+ * The settings this dictation will use, on the pill while recording. Clicking one opens a list
+ * above the pill: a style, language, mode or context becomes the new default and applies to the
+ * recording in progress; compose (which has its own shortcut) and the clipboard switch only this
+ * recording. Languages show as codes (fr → en) to keep the pill short; their lists spell them out.
+ */
+function Choices({ config, compose, clipboard }: { config: Config; compose: boolean; clipboard: boolean }) {
   const [open, setOpen] = useState<Menu | null>(null)
   const [left, setLeft] = useState(0)
+  const [clip, setClip] = useState<ClipboardInfo | null>(null)
   const toggle = (menu: Menu) => (e: MouseEvent<HTMLButtonElement>) => {
     setLeft(e.currentTarget.offsetLeft)
     setOpen(open === menu ? null : menu)
+    if (menu === 'context' && open !== menu) void api.clipboardInfo().then(setClip)
   }
   const setDefault = (patch: DeepPartial<Config>) => void api.setConfig(patch)
   const styles = [
@@ -66,22 +178,25 @@ function Choices({ config, compose }: { config: Config; compose: boolean }) {
     { code: 'auto', name: 'auto-detect' },
     ...spokenLanguages(config.transcription.engine).map((l) => ({ code: l.code, name: l.name.toLowerCase() }))
   ]
-  const options =
-    open === 'style'
-      ? styles
-      : open === 'spoken'
-        ? spoken.map((o) => ({ key: o.code, label: o.name, on: config.language.input === o.code, apply: () => setDefault({ language: { input: o.code } }) }))
-        : open === 'output'
-          ? OUTPUTS.map((o) => ({
-              key: o.code,
-              label: o.name,
-              on: config.language.output === o.code,
-              apply: () => setDefault({ language: { output: o.code } })
-            }))
-          : open === 'mode'
-            ? MODES.map((m) => ({ key: m, label: m, on: config.output.mode === m, apply: () => setDefault({ output: { mode: m } }) }))
-            : []
+  const options: Option[] =
+    open === 'context'
+      ? contextOptions(config, clipboard, clip, () => setOpen('url'))
+      : open === 'style'
+        ? styles
+        : open === 'spoken'
+          ? spoken.map((o) => ({ key: o.code, label: o.name, on: config.language.input === o.code, apply: () => setDefault({ language: { input: o.code } }) }))
+          : open === 'output'
+            ? OUTPUTS.map((o) => ({
+                key: o.code,
+                label: o.name,
+                on: config.language.output === o.code,
+                apply: () => setDefault({ language: { output: o.code } })
+              }))
+            : open === 'mode'
+              ? MODES.map((m) => ({ key: m, label: m, on: config.output.mode === m, apply: () => setDefault({ output: { mode: m } }) }))
+              : []
   const style = compose ? 'compose' : DICTATION_STYLES.find((s) => s.id === config.style)?.label.toLowerCase()
+  const context = clipboard ? 'clipboard' : config.context.recent.find((s) => s.location === config.context.current)
 
   const choice = (menu: Menu, label: string | undefined, title: string) => (
     <button className={open === menu ? 'open' : ''} title={title} onClick={toggle(menu)}>
@@ -97,18 +212,30 @@ function Choices({ config, compose }: { config: Config; compose: boolean }) {
       {choice('output', config.language.output, 'output language')}
       <span className="dim">·</span>
       {choice('mode', config.output.mode, 'after dictation')}
+      <span className="dim">·</span>
+      <button
+        className={`${open === 'context' ? 'open' : ''} ${context ? '' : 'dim'}`}
+        title={typeof context === 'object' ? `context: ${CONTEXT_KINDS[context.kind]}, ${context.location}` : 'context'}
+        onClick={toggle('context')}
+      >
+        {typeof context === 'object' ? shorten(context.label, 20) : (context ?? 'no context')}
+      </button>
       {open && (
-        <div className="overlay-menu" style={{ left }}>
+        // The context list is wide, and its choice the rightmost: it opens leftward.
+        <div className="overlay-menu" style={open === 'context' || open === 'url' ? { right: 0 } : { left }}>
+          {open === 'url' && <AddressField onDone={() => setOpen(null)} />}
           {options.map((o) => (
             <button
               key={o.key}
               className={o.on ? 'on' : ''}
+              title={o.title}
               onClick={() => {
                 o.apply()
-                setOpen(null)
+                if (o.key !== 'url') setOpen(null)
               }}
             >
               {o.label}
+              {o.note && <span className="dim"> {o.note}</span>}
             </button>
           ))}
         </div>
@@ -203,7 +330,7 @@ export function Overlay() {
           <span className={`levels ${paused ? 'paused' : ''}`}>
             {paused ? 'paused' : levels.map((l, i) => <i key={i} style={{ height: `${((Math.min(STEPS - 1, Math.floor(l * STEPS)) + 1) / STEPS) * 100}%` }} />)}
           </span>
-          {!edit && config && <Choices config={config} compose={compose} />}
+          {!edit && config && <Choices config={config} compose={compose} clipboard={!!state.clipboard} />}
           <span className="controls">
             {!edit && (
               <button

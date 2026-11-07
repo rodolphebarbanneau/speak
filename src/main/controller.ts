@@ -1,20 +1,32 @@
 import { randomBytes } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { Notification, systemPreferences } from 'electron'
+import { app, clipboard, dialog, Notification, systemPreferences, type BrowserWindow } from 'electron'
 import { languageName, needsAi, PARAKEET_LANGUAGES } from '../shared/constants'
-import type { OverlayState, Phase, PreviewState, RecordingAction, Session, SessionAction, SessionVersion, Style } from '../shared/types'
-import { aiConfigured, editText, NothingToWrite, processTranscript } from './ai'
+import type { ContextSource, OverlayState, Phase, PreviewState, RecordingAction, Session, SessionAction, SessionVersion, Style } from '../shared/types'
+import { aiConfigured, editText, NothingToWrite, processTranscript, type AiContext } from './ai'
 import { cleanTranscript, decodeWav, encodeWav, prepareAudio } from './audio'
 import { configStore } from './config'
+import { CLIPBOARD, contextFor, currentSource, MAX_CONTEXT_CHARS, parseSource, selectSource, useSource, warm, type ReadContext } from './context'
 import { history, newSessionId } from './history'
 import { hotkeys, type RecordAction } from './hotkeys'
 import { log } from './log'
 import { captureFocus, restoreFocus, type FocusTarget } from './platform/focus'
 import { copyToClipboard, pasteText } from './platform/paste'
-import { readSelection } from './platform/selection'
 import { engine } from './stt/engine'
 import { isMac } from './util'
-import { broadcast, hideOverlay, hidePreview, onOverlayGone, onPreviewClose, overlay, preview, previewVisible, showOverlay, showPreview } from './windows'
+import {
+  broadcast,
+  hideOverlay,
+  hidePreview,
+  onOverlayGone,
+  onPreviewClose,
+  overlay,
+  preview,
+  previewVisible,
+  setOverlayKeyboard,
+  showOverlay,
+  showPreview
+} from './windows'
 
 type Purpose = 'dictation' | 'edit'
 
@@ -27,6 +39,14 @@ function noSignalMessage(device: string): string {
   return `No signal from ${name}. Pick your microphone in Speak → settings → general → input.`
 }
 
+/** A context as the AI gets it. */
+function forAi(read: ReadContext): AiContext {
+  return { kind: read.source.kind, name: read.source.label, text: read.text, dir: read.dir }
+}
+
+/** The context a dictation took when its recording stopped: the chosen source, or the clipboard's text. */
+type TakenContext = { source: ContextSource; clipboard?: Promise<string> } | null
+
 function aiOffMessage(style: Style): string {
   return `${style === 'compose' ? 'Compose needs an AI provider' : 'AI processing is off'} (Speak → settings → ai). Showing the raw transcript.`
 }
@@ -37,8 +57,10 @@ class Controller extends EventEmitter {
   private purpose: Purpose = 'dictation'
   /** The dictation is a brief to compose from (compose shortcut), not text to clean up. */
   private compose = false
-  /** Compose: the selection read from the target app, pending while transcription runs. */
-  private selection: Promise<string> | null = null
+  /** This recording takes the clipboard as its context (picked on the pill), instead of the chosen one. */
+  private useClipboard = false
+  /** An address is being typed into the pill: it has the keyboard. `resume`: it paused the recording for that. */
+  private typing: { resume: boolean } | null = null
   private target: FocusTarget | null = null
   private recordStartedAt = 0
   /** While paused, since when (0 = recording). */
@@ -102,8 +124,8 @@ class Controller extends EventEmitter {
   }
 
   /** The recording in progress (for the tray): paused or not, and what it's for. */
-  get recording(): { paused: boolean; purpose: OverlayState['purpose'] } | null {
-    return this.phase === 'recording' ? { paused: !!this.pausedAt, purpose: this.overlayPurpose } : null
+  get recording(): { paused: boolean; purpose: OverlayState['purpose']; clipboard: boolean } | null {
+    return this.phase === 'recording' ? { paused: !!this.pausedAt, purpose: this.overlayPurpose, clipboard: this.useClipboard } : null
   }
 
   /**
@@ -147,12 +169,20 @@ class Controller extends EventEmitter {
   }
 
   private recordingState(): OverlayState {
-    return { phase: 'recording', purpose: this.overlayPurpose, startedAt: this.recordStartedAt + this.pausedMs, pausedAt: this.pausedAt || undefined }
+    return {
+      phase: 'recording',
+      purpose: this.overlayPurpose,
+      startedAt: this.recordStartedAt + this.pausedMs,
+      pausedAt: this.pausedAt || undefined,
+      clipboard: this.useClipboard || undefined
+    }
   }
 
   private setPhase(phase: Phase): void {
     this.phase = phase
     hotkeys.setCancelActive(phase !== 'idle')
+    // The recording ended (finished, cancelled) while an address was being typed into the pill.
+    if (phase !== 'recording' && this.typing) void this.contextKeyboard(false)
     this.emit('phase', phase)
   }
 
@@ -195,9 +225,13 @@ class Controller extends EventEmitter {
     }
     this.purpose = purpose
     this.compose = purpose === 'dictation' && compose
-    this.selection = null
+    this.useClipboard = false
     this.setPhase('recording')
-    if (purpose === 'dictation') this.target = await captureFocus()
+    if (purpose === 'dictation') {
+      // Read the context while the user speaks: it's ready when the transcript is.
+      warm(currentSource())
+      this.target = await captureFocus()
+    }
     this.recordStartedAt = Date.now()
     this.pausedAt = 0
     this.pausedMs = 0
@@ -261,9 +295,6 @@ class Controller extends EventEmitter {
     const loading = configStore.get().transcription.engine === 'whisper' && !engine.modelLoaded
     this.overlayState({ phase: 'transcribing', purpose: this.overlayPurpose, message: loading ? 'loading the speech model' : undefined })
     if (this.purpose === 'edit') this.updatePreviewBusy('transcribing')
-    // Compose: copy the selection now that the shortcut is (being) released and the target app
-    // still has focus. It runs alongside transcription.
-    if (this.compose && configStore.get().compose.useSelection && this.target) this.selection = readSelection()
     const reqId = ++this.recorderReq
     const result = await new Promise<{ samples: Float32Array | null; error?: string }>((resolve) => {
       this.pendingResult = resolve
@@ -310,8 +341,7 @@ class Controller extends EventEmitter {
     this.abort = abort
     const purpose = this.purpose
     const compose = this.compose
-    const selection = this.selection
-    this.selection = null
+    const taken = this.takeContext()
     try {
       const prepared = prepareAudio(raw)
       log.info(`Audio: ${(prepared.durationMs / 1000).toFixed(1)}s, peak ${prepared.peak.toFixed(4)}, speech ${(prepared.speechMs / 1000).toFixed(1)}s`)
@@ -353,11 +383,6 @@ class Controller extends EventEmitter {
         versions: [],
         text: transcript
       }
-      const context = selection ? await selection : ''
-      if (context) {
-        session.context = context
-        log.info(`Composing with ${context.length} characters of selected text`)
-      }
       if (t.engine === 'parakeet' && language !== 'auto' && !PARAKEET_LANGUAGES.has(language)) {
         log.warn(`Parakeet does not support "${language}"`)
       }
@@ -369,13 +394,25 @@ class Controller extends EventEmitter {
           session.error = aiOffMessage(session.style)
         } else {
           this.setPhase('processing')
-          this.overlayState({ phase: 'processing', purpose: compose ? 'compose' : purpose, message: context ? 'with selected text' : undefined })
+          // The context only matters to the AI: read (or waited for) only when it runs.
+          if (taken) this.overlayState({ phase: 'processing', purpose: compose ? 'compose' : purpose, message: `reading ${taken.source.label}` })
+          const context = await this.readTaken(taken)
+          if (abort.signal.aborted) return
+          if (taken) session.source = taken.source
+          if (context.clipboard) session.context = context.clipboard
+          if (context.error) {
+            session.contextError = context.error
+            log.warn('Context not used:', context.error)
+          }
+          const ai = context.ai
+          const message = ai ? (compose && ai.dir ? `reading ${ai.name}` : `with ${ai.name}`) : undefined
+          this.overlayState({ phase: 'processing', purpose: compose ? 'compose' : purpose, message })
           try {
             const r = await processTranscript(transcript, {
               inputLanguage: language,
               style: session.style,
               outputLanguage: session.outputLanguage,
-              context: session.context,
+              context: ai,
               signal: abort.signal
             })
             if (abort.signal.aborted) return
@@ -420,6 +457,128 @@ class Controller extends EventEmitter {
       this.fail((err as Error).message)
     } finally {
       if (this.abort === abort) this.abort = null
+    }
+  }
+
+  // ---------------------------------------------------------------- context
+
+  /**
+   * The context of the dictation whose recording just stopped: the clipboard's text, read now,
+   * when it was picked for this recording; else the chosen source.
+   */
+  private takeContext(): TakenContext {
+    if (this.purpose !== 'dictation') return null
+    if (this.useClipboard) {
+      this.useClipboard = false
+      return { source: CLIPBOARD, clipboard: clipboard.readText().then((text) => text.trim().slice(0, MAX_CONTEXT_CHARS)) }
+    }
+    const source = currentSource()
+    warm(source)
+    return source && { source }
+  }
+
+  /** What the AI gets from a dictation's context (and the clipboard's text, to keep), or why it went on without it. */
+  private async readTaken(taken: TakenContext): Promise<{ ai?: AiContext; error?: string; clipboard?: string }> {
+    if (!taken) return {}
+    if (taken.clipboard) {
+      const text = await taken.clipboard.catch(() => '')
+      return text ? { ai: { kind: 'clipboard', name: 'clipboard', text }, clipboard: text } : { error: 'The clipboard had no text.' }
+    }
+    const r = await contextFor(taken.source)
+    return r.context ? { ai: forAi(r.context) } : { error: r.error }
+  }
+
+  /** A saved dictation's context, to process it again: its source read again, or the text it kept. */
+  private async sessionContext(session: Session): Promise<AiContext | undefined> {
+    const { source } = session
+    if (source && source.kind !== 'clipboard') {
+      const r = await contextFor(source)
+      if (r.error) log.warn(`Context "${source.label}" not read again:`, r.error)
+      return r.context && forAi(r.context)
+    }
+    // The clipboard's text, or (dictations from before contexts) the text that was selected.
+    return session.context ? { kind: 'clipboard', name: source ? 'clipboard' : 'selected text', text: session.context } : undefined
+  }
+
+  /** Choose the context: none (''), a recent source's location, or the clipboard for this recording. */
+  chooseContext(choice: string): void {
+    const recording = this.phase === 'recording' && this.purpose === 'dictation'
+    if (choice === 'clipboard') {
+      if (!recording) return
+      this.useClipboard = true
+    } else {
+      this.useClipboard = false
+      selectSource(choice)
+    }
+    if (recording) {
+      this.overlayState(this.recordingState())
+      this.emit('phase', this.phase) // refresh tray
+    }
+  }
+
+  /** Make a new source the context (it then stays, unlike the clipboard). */
+  chooseSource(source: ContextSource): void {
+    useSource(source)
+    if (this.useClipboard) this.chooseContext(source.location)
+  }
+
+  /** The folder or address on the clipboard, made the context (the pill's "add …"). */
+  async addContextFromClipboard(): Promise<ContextSource | null> {
+    const source = parseSource(await clipboard.readText())
+    if (source) this.chooseSource(source)
+    return source
+  }
+
+  /**
+   * The pill takes the keyboard, to type an address into it (on), or gives it back (off). Meanwhile
+   * the recording pauses, the shortcuts are released (Esc closes the field instead of cancelling),
+   * and then the focus goes back to the app being dictated into.
+   */
+  async contextKeyboard(on: boolean): Promise<void> {
+    if (on) {
+      if (this.typing || this.phase !== 'recording' || this.purpose !== 'dictation') return
+      this.typing = { resume: !this.pausedAt }
+      if (this.typing.resume) this.setPaused(true)
+      hotkeys.suspend(true)
+      setOverlayKeyboard(true)
+      return
+    }
+    const typing = this.typing
+    if (!typing) return
+    this.typing = null
+    hotkeys.suspend(false)
+    await restoreFocus(this.target, () => undefined)
+    setOverlayKeyboard(false)
+    if (this.phase === 'recording') {
+      if (typing.resume) this.setPaused(false)
+      this.overlayState(this.recordingState())
+    }
+  }
+
+  /**
+   * Pick a folder with the system dialog and make it the context. From the pill, while recording:
+   * the recording pauses while the dialog is open, and the focus then goes back to the app being
+   * dictated into. `from`: the window that asked, to own the dialog (not the pill: it never takes
+   * the focus).
+   */
+  async browseContextFolder(from: BrowserWindow | null): Promise<ContextSource | null> {
+    const recording = this.phase === 'recording' && this.purpose === 'dictation'
+    const pause = recording && !this.pausedAt
+    if (pause) this.setPaused(true)
+    const options: Electron.OpenDialogOptions = { title: 'Context folder (read only)', buttonLabel: 'Use this folder', properties: ['openDirectory'] }
+    const parent = from && from !== overlay && !from.isDestroyed() ? from : null
+    try {
+      if (!parent && isMac) app.focus({ steal: true })
+      const r = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options)
+      const source = !r.canceled && r.filePaths[0] ? parseSource(r.filePaths[0]) : null
+      if (source) this.chooseSource(source)
+      return source
+    } finally {
+      if (recording && this.phase === 'recording') {
+        await restoreFocus(this.target, () => undefined)
+        if (pause) this.setPaused(false)
+        this.overlayState(this.recordingState())
+      }
     }
   }
 
@@ -510,7 +669,7 @@ class Controller extends EventEmitter {
         inputLanguage: session.transcription.language,
         style,
         outputLanguage,
-        context: session.context,
+        context: await this.sessionContext(session),
         signal: abort.signal
       })
       if (abort.signal.aborted) return
@@ -577,7 +736,7 @@ class Controller extends EventEmitter {
       if (!aiConfigured()) warning = aiOffMessage(style)
       else {
         opts.onProcessing?.()
-        result = await processTranscript(text, { inputLanguage: language, style, outputLanguage, context: session.context, signal })
+        result = await processTranscript(text, { inputLanguage: language, style, outputLanguage, context: await this.sessionContext(session), signal })
         if (signal?.aborted) return
       }
     }
@@ -686,11 +845,10 @@ class Controller extends EventEmitter {
     if (this.phase !== 'idle') return
     this.purpose = previewVisible() && this.current ? 'edit' : 'dictation'
     this.compose = this.purpose === 'dictation' && !!opts.compose
-    this.selection = null
+    this.useClipboard = false
     this.device = ''
     if (this.purpose === 'edit') return this.handleAudio(samples)
     const target = await captureFocus()
-    if (this.compose && configStore.get().compose.useSelection && target) this.selection = readSelection()
     await this.handleAudio(samples, { target })
   }
 
@@ -717,7 +875,7 @@ class Controller extends EventEmitter {
         inputLanguage: session.transcription.language,
         style,
         outputLanguage,
-        context: session.context
+        context: await this.sessionContext(session)
       })
       this.addVersion(session, { kind: 'processed', text: r.text, style, outputLanguage, provider: r.provider, model: r.model, ms: r.ms })
     }

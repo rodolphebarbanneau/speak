@@ -154,7 +154,8 @@ function settings(): string {
     `sounds ${onOff(c.audio.sounds)}`,
     `max ${c.audio.maxSeconds}s`,
     `microphone ${c.audio.deviceId ? 'chosen' : 'default'}`,
-    `compose with selection ${onOff(c.compose.useSelection)}`,
+    // The kind only: a folder's path or a page's address is the user's business.
+    `context ${c.context.recent.find((s) => s.location === c.context.current)?.kind ?? 'none'} (${c.context.recent.length} recent)`,
     `history ${onOff(c.history.enabled)}${c.history.keepAudio ? ' with audio' : ''}`,
     `shortcuts ${shortcuts}`,
     `theme ${seasons.current && themeShown(c.ui, seasons.current) ? seasons.current.id : 'none'}`,

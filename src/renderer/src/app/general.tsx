@@ -191,9 +191,6 @@ export function General(props: Props) {
           <ShortcutInput value={config.shortcuts.compose} onChange={(v) => update({ shortcuts: { compose: v } })} />
         </Row>
         {shortcutError && /compose/.test(shortcutError) && <p className="line error">✗ {shortcutError}</p>}
-        <Row label="selected text" hint="the text selected when you compose (a message to reply to, a draft to rework) goes to the ai with your instructions">
-          <Check checked={config.compose.useSelection} onChange={(v) => update({ compose: { useSelection: v } })} />
-        </Row>
       </section>
 
       <section>

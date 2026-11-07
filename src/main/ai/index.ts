@@ -4,14 +4,32 @@ import { configStore } from '../config'
 import { log } from '../log'
 import { claudeComplete, claudeLogin, claudeStatus } from './claude-code'
 import { codexComplete, codexLogin, codexModels, codexStatus } from './codex'
-import { cleanOutput, COMPOSE_SYSTEM, composeMessage, EDIT_SYSTEM, editMessage, PROCESS_SYSTEM, processMessage, stripSubjectLine } from './prompts'
-import type { Completion } from './types'
+import {
+  cleanOutput,
+  COMPOSE_SYSTEM,
+  composeMessage,
+  EDIT_SYSTEM,
+  editMessage,
+  PROCESS_SYSTEM,
+  processMessage,
+  stripSubjectLine,
+  type PromptContext
+} from './prompts'
+import type { CompleteOptions, Completion } from './types'
 
 export interface AiResult {
   text: string
   provider: string
   model: string
   ms: number
+}
+
+/**
+ * A dictation's context, for the AI. `dir`: a folder compose may read (read-only), the working
+ * directory of the CLI; dictation only gets `text`, to spell names the way the project does.
+ */
+export interface AiContext extends PromptContext {
+  dir?: string
 }
 
 /** The AI found nothing to write and said so, as the prompts ask, with a reply like "[Nothing intelligible to write]". */
@@ -35,7 +53,7 @@ interface Agent {
   status: (cfg: AgentConfig, refresh: boolean) => Promise<AgentStatus>
   login: (cfg: AgentConfig) => Promise<void>
   models: () => Promise<AgentModel[]>
-  complete: (system: string, user: string, cfg: AgentConfig, opts: { timeoutMs: number; signal?: AbortSignal }) => Promise<Completion>
+  complete: (system: string, user: string, cfg: AgentConfig, opts: CompleteOptions) => Promise<Completion>
 }
 
 const AGENTS: Record<AgentId, Agent> = {
@@ -81,18 +99,20 @@ export function aiConfigured(): boolean {
   return configStore.get().ai.provider !== 'none'
 }
 
-async function complete(system: string, user: string, signal?: AbortSignal, compose = false): Promise<AiResult> {
+async function complete(system: string, user: string, signal?: AbortSignal, compose = false, readDir?: string): Promise<AiResult> {
   const ai = configStore.get().ai
   if (ai.provider === 'none') throw new Error('AI processing is off. Pick Claude Code or Codex in Speak → settings → ai, or use the verbatim style.')
   const agent = AGENTS[ai.provider]
   const base = agent.config()
   const cfg = compose && base.composeModel ? { ...base, model: base.composeModel } : base
   const started = Date.now()
-  const result = await agent.complete(system, user, cfg, { timeoutMs: Math.max(10, ai.timeoutSeconds) * 1000, signal })
+  // Reading files takes a few more round trips: twice the time.
+  const timeoutMs = Math.max(10, ai.timeoutSeconds) * 1000 * (readDir ? 2 : 1)
+  const result = await agent.complete(system, user, cfg, { timeoutMs, signal, readDir })
   const text = cleanOutput(result.text)
   if (!text) throw new Error('The AI returned an empty result.')
   const ms = Date.now() - started
-  log.info(`AI ${ai.provider}/${result.model} took ${ms}ms`)
+  log.info(`AI ${ai.provider}/${result.model} took ${ms}ms${readDir ? ' (reading the context folder)' : ''}`)
   return { text, provider: ai.provider, model: result.model, ms }
 }
 
@@ -111,10 +131,13 @@ export async function askAgent(system: string, user: string, opts: { timeoutMs: 
   return { text: result.text, provider: ai.provider, model: result.model, ms: Date.now() - started }
 }
 
-/** Rewrite a transcript in a style, or (compose) write the text its brief asks for, with `context` as material. */
+/**
+ * Rewrite a transcript in a style, spelling names as `context` does; or (compose) write the text
+ * its brief asks for, with `context` as material, and its folder to read.
+ */
 export async function processTranscript(
   transcript: string,
-  opts: { inputLanguage: string; style: Style; outputLanguage: string; context?: string; signal?: AbortSignal }
+  opts: { inputLanguage: string; style: Style; outputLanguage: string; context?: AiContext; signal?: AbortSignal }
 ): Promise<AiResult> {
   const cfg = configStore.get()
   if (opts.style === 'compose') {
@@ -124,9 +147,10 @@ export async function processTranscript(
       outputLanguage: opts.outputLanguage,
       vocabulary: cfg.vocabulary,
       custom: cfg.ai.customInstructions,
-      context: opts.context
+      context: opts.context,
+      canRead: !!opts.context?.dir
     })
-    const result = written(await complete(COMPOSE_SYSTEM, user, opts.signal, true))
+    const result = written(await complete(COMPOSE_SYSTEM, user, opts.signal, true, opts.context?.dir))
     return { ...result, text: stripSubjectLine(result.text, transcript) }
   }
   const user = processMessage({
@@ -135,7 +159,8 @@ export async function processTranscript(
     style: opts.style,
     outputLanguage: opts.outputLanguage,
     vocabulary: cfg.vocabulary,
-    custom: cfg.ai.customInstructions
+    custom: cfg.ai.customInstructions,
+    context: opts.context
   })
   return written(await complete(PROCESS_SYSTEM, user, opts.signal))
 }

@@ -10,6 +10,20 @@ export type PasteKeys = 'auto' | 'ctrl+v' | 'ctrl+shift+v' | 'shift+insert'
 export type BinaryVariant = 'cuda12' | 'cuda11' | 'cpu'
 export type Effort = 'low' | 'medium' | 'high'
 
+/**
+ * Where a dictation's context comes from: a folder, a git repository (cloned by Speak), a web
+ * page (copied by Speak) or the clipboard. The AI only ever reads it: nothing is written there.
+ */
+export type ContextKind = 'folder' | 'git' | 'url' | 'clipboard'
+
+export interface ContextSource {
+  kind: ContextKind
+  /** folder: its absolute path · git, url: the address · clipboard: "clipboard". */
+  location: string
+  /** Short name: the folder's, the repository's (owner/name), the page's address without https://. */
+  label: string
+}
+
 export interface Config {
   onboarded: boolean
   /** record: dictate · compose: dictate a brief the AI writes from (empty = off). */
@@ -21,8 +35,12 @@ export interface Config {
   style: Style
   /** Preferred spellings of names and technical terms, one per line or comma separated. */
   vocabulary: string
-  /** Compose sends the text selected in the target app along with the brief. */
-  compose: { useSelection: boolean }
+  /**
+   * The context the AI reads along with what you say. current: the location of a recent source,
+   * '' = none; it stays until changed. recent: the sources used, most recent first. The clipboard
+   * is never stored: it is picked for one recording at a time.
+   */
+  context: { current: string; recent: ContextSource[] }
   /** deviceId differs between origins (dev server vs packaged app), so the label is kept to find the device again. */
   audio: { deviceId: string; deviceLabel: string; maxSeconds: number; sounds: boolean }
   transcription: {
@@ -102,8 +120,15 @@ export interface Session {
   versions: SessionVersion[]
   /** Current text (latest version, or the raw transcript when no AI processing ran). */
   text: string
-  /** Compose: the text that was selected in the target app, given to the AI as material. */
+  /** The context the AI was given: where it came from. */
+  source?: ContextSource
+  /**
+   * Text given to the AI as context: the clipboard's, when it was the source. Dictations made
+   * before contexts existed have the text that was selected when composing, and no source.
+   */
   context?: string
+  /** Why the context could not be read: the dictation went on without it. */
+  contextError?: string
   error?: string
   action?: SessionAction
 }
@@ -121,6 +146,16 @@ export interface OverlayState {
   startedAt?: number
   /** Recording: set while paused, since when. */
   pausedAt?: number
+  /** Recording: this dictation takes the clipboard as its context, instead of the chosen one. */
+  clipboard?: boolean
+}
+
+/** What is on the clipboard, for the pill's context list. */
+export interface ClipboardInfo {
+  /** Characters of text (0: none). */
+  chars: number
+  /** The text is a folder path, or a git or web address, that can be added as a context. */
+  source?: ContextSource
 }
 
 /** The loading dialog: a few steps (starting, updating), the one in progress under the bar. */
@@ -253,4 +288,4 @@ export type RecorderCommand =
   | { type: 'sound'; name: 'start' | 'stop' | 'error' | 'done' }
 
 /** bug: "report a bug", from the title row's bug or the tray. */
-export type MainSection = 'history' | 'general' | 'transcription' | 'ai' | 'about' | 'bug'
+export type MainSection = 'history' | 'general' | 'transcription' | 'ai' | 'context' | 'about' | 'bug'

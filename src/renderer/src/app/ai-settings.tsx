@@ -122,9 +122,6 @@ function AgentSection({ id, config, update }: { id: AgentId; config: Config; upd
       <Row label="cli path" hint={`the ${agent.command} program · leave empty to find it automatically`}>
         <TextInput value={cfg.path} onCommit={(v) => set({ path: v.trim() })} placeholder="auto" />
       </Row>
-      <p className="note">
-        runs your unmodified {agent.command} non-interactively, with no tools, no plugins and no project settings. usage counts toward your plan limits.
-      </p>
     </section>
   )
 }

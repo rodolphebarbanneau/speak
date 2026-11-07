@@ -4,6 +4,7 @@ import type { EngineId, PreviewState, Style } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
 import { AppName } from '@themes/components'
 import { Action, displayShortcut, Key, MOD, Sep, Spinner, TitleBar, useWindowFocus } from '../components/ui'
+import { CONTEXT_KINDS } from '../lib/format'
 import { outputOptions, spokenOptions } from '../lib/languages'
 
 const api = window.speak
@@ -111,12 +112,21 @@ export function Preview() {
         <textarea ref={editorRef} className="editor" value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} disabled={working} />
         <Sep tail={text !== session.transcription.text && <Action onClick={() => setText(session.transcription.text)}>use original</Action>}>transcript</Sep>
         <div className="transcript">{session.transcription.text}</div>
+        {session.source && session.source.kind !== 'clipboard' && (
+          <>
+            <Sep>context</Sep>
+            <div className="transcript" title={session.source.location}>
+              {session.source.label} <span className="muted">· {CONTEXT_KINDS[session.source.kind]}</span>
+            </div>
+          </>
+        )}
         {session.context && (
           <>
-            <Sep>selected text</Sep>
+            <Sep>{session.source ? 'context · clipboard' : 'selected text'}</Sep>
             <div className="transcript">{session.context}</div>
           </>
         )}
+        {session.contextError && <div className="line yellow">! context not used: {session.contextError}</div>}
       </div>
 
       <div className="preview-meta">

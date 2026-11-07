@@ -86,7 +86,7 @@ function cursorDisplay(): Electron.Display {
  * leaves room above the pill for its settings list, and lets clicks through except over the pill.
  */
 export let overlay: BrowserWindow | null = null
-const OVERLAY_SIZE = { width: 640, height: 320 }
+const OVERLAY_SIZE = { width: 760, height: 320 }
 
 /**
  * Whether the pill follows the pointer. On Windows, Electron does it with a system-wide mouse hook
@@ -205,6 +205,16 @@ export function hideOverlay(): void {
 }
 
 /** Catch clicks while the pointer is over the pill; otherwise pass them through (still reporting moves while recording). */
+/**
+ * Let the pill take the keyboard, to type an address into it, or give it back. It normally never
+ * takes the focus, which stays in the app being dictated into.
+ */
+export function setOverlayKeyboard(on: boolean): void {
+  if (!overlay || overlay.isDestroyed()) return
+  overlay.setFocusable(on)
+  if (on) bringToFront(overlay)
+}
+
 export function setOverlayInteractive(interactive: boolean): void {
   if (interactive && tracking) overlay?.setIgnoreMouseEvents(false)
   else overlay?.setIgnoreMouseEvents(true, tracking ? { forward: true } : undefined)
