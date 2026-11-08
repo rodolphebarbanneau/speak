@@ -14,6 +14,10 @@ let started = false
 const pressed = new Set<number>()
 const releaseListeners = new Set<(keycode: number) => void>()
 
+/** A key pressed, a click, a wheel turn or the pointer moving, from anyone (Speak's own input included). */
+export type UserInput = { kind: 'key'; keycode: number; modifiers: boolean } | { kind: 'mouse'; x: number; y: number } | { kind: 'move'; x: number; y: number }
+const inputListeners = new Set<(e: UserInput) => void>()
+
 function load(): Uiohook | null {
   if (mod) return mod
   try {
@@ -40,7 +44,19 @@ export function startKeyboardHook(): boolean {
   const m = load()
   if (!m) return false
   try {
-    m.uIOhook.on('keydown', (e) => pressed.add(e.keycode))
+    m.uIOhook.on('keydown', (e) => {
+      pressed.add(e.keycode)
+      if (inputListeners.size) for (const l of inputListeners) l({ kind: 'key', keycode: e.keycode, modifiers: e.ctrlKey || e.altKey || e.metaKey })
+    })
+    m.uIOhook.on('mousedown', (e) => {
+      if (inputListeners.size) for (const l of inputListeners) l({ kind: 'mouse', x: e.x, y: e.y })
+    })
+    m.uIOhook.on('mousemove', (e) => {
+      if (inputListeners.size) for (const l of inputListeners) l({ kind: 'move', x: e.x, y: e.y })
+    })
+    m.uIOhook.on('wheel', (e) => {
+      if (inputListeners.size) for (const l of inputListeners) l({ kind: 'mouse', x: e.x, y: e.y })
+    })
     m.uIOhook.on('keyup', (e) => {
       pressed.delete(e.keycode)
       for (const l of releaseListeners) l(e.keycode)
@@ -63,6 +79,12 @@ export function stopKeyboardHook(): void {
     }
   }
   started = false
+}
+
+/** Every key press, click, wheel turn and pointer move (control mode shares the mouse and the keyboard with the user). */
+export function onUserInput(cb: (e: UserInput) => void): () => void {
+  inputListeners.add(cb)
+  return () => inputListeners.delete(cb)
 }
 
 export function onKeyRelease(cb: (keycode: number) => void): () => void {

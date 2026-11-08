@@ -16,7 +16,16 @@ const PROVIDERS: Array<{ id: ProviderId; label: string; tag: string; hint: strin
 
 const AGENTS: Record<
   AgentId,
-  { name: string; configKey: 'claudeCode' | 'codex'; install: string; command: string; home: string; modelHint: string; composeHint: string }
+  {
+    name: string
+    configKey: 'claudeCode' | 'codex'
+    install: string
+    command: string
+    home: string
+    modelHint: string
+    composeHint: string
+    controlHint: string
+  }
 > = {
   'claude-code': {
     name: 'claude code',
@@ -25,7 +34,8 @@ const AGENTS: Record<
     command: 'claude',
     home: '~/.claude',
     modelHint: 'cleanup, translation and edits by voice · haiku is fast and cheap, and plenty for dictation',
-    composeHint: 'writes from your briefs, where staying faithful matters most · sonnet adds nothing you did not say'
+    composeHint: 'writes from your briefs, where staying faithful matters most · sonnet adds nothing you did not say',
+    controlHint: 'acts on the computer: sees the screen, clicks, types · sonnet is reliable, opus for long tasks'
   },
   codex: {
     name: 'codex',
@@ -34,7 +44,8 @@ const AGENTS: Record<
     command: 'codex',
     home: '~/.codex',
     modelHint: 'cleanup, translation and edits by voice · luna is fast and cheap, and plenty for dictation',
-    composeHint: 'writes from your briefs, where staying faithful matters most · a larger model embellishes less'
+    composeHint: 'writes from your briefs, where staying faithful matters most · a larger model embellishes less',
+    controlHint: 'acts on the computer: sees the screen, clicks, types · a larger model is more reliable'
   }
 }
 
@@ -67,6 +78,7 @@ function AgentSection({ id, config, update }: { id: AgentId; config: Config; upd
   const withModel = (list: AgentModel[], id: string) => (!id || list.some((m) => m.id === id) ? list : [{ id, label: id }, ...list])
   const modelOptions = withModel(models, cfg.model).map((m) => ({ value: m.id, label: m.label }))
   const composeOptions = [{ value: '', label: 'same as dictation' }, ...withModel(models, cfg.composeModel).map((m) => ({ value: m.id, label: m.label }))]
+  const controlOptions = [{ value: '', label: 'same as compose' }, ...withModel(models, cfg.controlModel).map((m) => ({ value: m.id, label: m.label }))]
 
   return (
     <section>
@@ -112,6 +124,9 @@ function AgentSection({ id, config, update }: { id: AgentId; config: Config; upd
       </Row>
       <Row label="compose model" hint={agent.composeHint}>
         <Dropdown value={cfg.composeModel} onChange={(composeModel) => set({ composeModel })} options={composeOptions} />
+      </Row>
+      <Row label="control model" hint={agent.controlHint}>
+        <Dropdown value={cfg.controlModel} onChange={(controlModel) => set({ controlModel })} options={controlOptions} />
       </Row>
       <Row label="effort" hint="medium is a good balance · low is faster">
         <Dropdown<Effort> value={cfg.effort} onChange={(effort) => set({ effort })} options={EFFORTS} />

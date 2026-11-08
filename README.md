@@ -19,6 +19,7 @@ It's made for people who write a lot: messages, emails, notes, and prompts for A
 - **Writes what you meant.** Hesitations, repetitions and self-corrections disappear, and punctuation is fixed. "the sum, no sorry, the average" becomes "the average".
 - **Speaks your language.** Dictate in English, French or dozens of other languages, and translate as you speak: talk in French, get English.
 - **Writes for you.** In compose mode, describe what you need ("reply to this email, politely say no") and get the text written.
+- **Acts for you.** In control mode, say what to do ("tidy my desktop", "reply to Marc that Thursday works") and the AI does it on your computer, asking first as you choose.
 - **Private by design.** Speech recognition runs on your own computer. Your voice is never uploaded.
 - **No new subscription.** The AI cleanup uses the Claude Code or Codex you already have, signed in with your own account. No API keys to manage.
 - **Free and open source**, under the MIT license.
@@ -27,9 +28,11 @@ It's made for people who write a lot: messages, emails, notes, and prompts for A
 
 1. Click into any text field.
 2. Hold **Ctrl+Shift+Space** (**⌘⇧Space** on a Mac) and talk. Let go when you're done. You can also tap it once to start and again to stop.
-3. Your text appears. Speak can paste it straight away, or show it to you first: change the style or the language, fix it by voice ("make it shorter"), then insert it.
+3. Your text appears. Speak can paste it straight away, or show it to you first: change the format or the language, fix it by voice ("make it shorter"), then insert it.
 
-While you talk, a small bar at the bottom of the screen shows the recording. Click the style, the languages, the mode or the context on it to change them, and use its buttons to pause, finish or cancel.
+Speak has three modes, each with its own shortcut: **dictate** writes what you said, **compose** writes what you ask for, and **control** does what you ask, on the computer.
+
+While you talk, a small bar at the bottom of the screen shows the recording. Click the mode, the format, the languages, what happens then (preview or paste) or the context on it to change them, and use its buttons to pause, finish or cancel.
 
 <p align="center">
   <img src="docs/preview.png" alt="The preview: spoken in French, written in English, ready to insert" width="720">
@@ -45,16 +48,16 @@ When you want Speak to _write_ something for you, add **Alt** to the shortcut: p
 
 Speak writes the email using only what you said. It doesn't invent facts or promises, keeps your doubts as doubts, and leaves a `[placeholder]` for anything missing, such as a name. To answer an email, copy it, then pick **clipboard** as the [context](#context) on the bar while you talk: Speak writes the reply in that email's language.
 
-### Styles
+### Formats
 
-| Style          | What you get                                                     |
+| Format         | What you get                                                     |
 | -------------- | ---------------------------------------------------------------- |
 | **Clean**      | Your words, minus the hesitations and false starts. The default. |
 | **Verbatim**   | Exactly what you said, with punctuation.                         |
 | **Structured** | Organized into a clear message, with lists when it helps.        |
 | **Summary**    | The key points, condensed.                                       |
 
-Every dictation is saved in your history, with its recording, so you can find it again or redo it in another style or language.
+Every dictation is saved in your history, with its recording, so you can find it again or redo it in another format or language.
 
 ### Context
 
@@ -64,7 +67,29 @@ Give Speak something to know what you're talking about: a **folder** on your com
 - **When you compose**, the AI can read the folder's files to write what you ask: "write the release notes for the export fix", "answer this issue".
 - **The clipboard** is for one dictation only: copy the message you're replying to, then pick it on the bar.
 
-Context is read-only. Speak and the AI never change anything in your folders: Claude Code gets only its file-reading tools, kept inside the folder, and Codex runs in its read-only sandbox. Git repositories and web pages are copied into `.speak/context`, and updated when you use them.
+Context is read-only. Speak and the AI never change anything in your folders: Claude Code gets only its file-reading tools, kept inside the folder, and Codex runs in its read-only sandbox. Git repositories and web pages are copied into `.speak/context`, and updated when you use them. Context isn't used by control mode, which acts on apps and the screen.
+
+### Control
+
+Press **Ctrl+Shift+Alt+Enter** (**⌘⇧⌥Enter** on a Mac) and say what to do: "reply to Marc's last email, tell him Thursday works", "put the PDFs of my desktop in a folder", "turn on dark mode in this app". A panel opens and stays on top. It shows what the AI says and does, asks for your approval, and lets you **pause**, **stop**, **restart** or **end** control. Keep talking to it with the same shortcut, or type in it.
+
+**What it may touch** (the scope, on the bar or the panel):
+
+| Scope      | What the AI can do                                                                    |
+| ---------- | ------------------------------------------------------------------------------------- |
+| **app**    | Look at the app that was in front when you pressed the shortcut, click and type in it |
+| **screen** | Any window: look, click, type, open apps. No files, no commands                       |
+| **full**   | Everything: any window, any file, any command                                         |
+
+Speak enforces the scope itself: the AI acts through Speak's tools, which refuse anything outside it. In the app scope, it asks you before it uses another app.
+
+**When it asks first** (the approval): **every step**, **the plan** (you approve its plan once; it asks again for a risky step or one off the plan), **when risky** or **never**. Paying, passwords, deleting for good and sending messages as you always ask, unless you turn them off in **settings → control**. Answer in the panel, or by voice: "yes", "always", "no", or say what to do instead.
+
+- **Keep working meanwhile.** It looks at windows without bringing them forward, and presses buttons, fills fields and scrolls in the background, even in a window behind yours or on another screen. What needs the real mouse or keyboard (clicking a point, typing into a document, a shortcut) waits until your hands have been still for a moment, acts, then gives them back: the pointer where it was, the focus to your window. Touch them meanwhile and that action stops there. **[go now]** in the panel, or "go", skips the wait.
+- **The panel shows where it will act**: an approval comes with a picture of the spot, boxed, and the spot is boxed on the screen too when it's in sight.
+- **Undo.** Files it moves, writes or trashes can be put back from the panel. Its trash is `.speak/control`.
+- **Speak's panel stays out of its screenshots**, and a frame shows when it has the mouse and the keyboard.
+- What it looks at goes to your AI provider: an app scope sends only that app. Control works on Windows for now.
 
 ## Get started
 
@@ -84,6 +109,7 @@ Speak runs on any recent computer (on a Mac, macOS 13.5 or later). An NVIDIA gra
 | ------- | -------------------- | -------- |
 | Dictate | Ctrl+Shift+Space     | ⌘⇧Space  |
 | Compose | Ctrl+Shift+Alt+Space | ⌘⇧⌥Space |
+| Control | Ctrl+Shift+Alt+Enter | ⌘⇧⌥Enter |
 | Cancel  | Esc                  | Esc      |
 
 Hold a shortcut while you speak, or tap it to start and again to stop. You can change all of them in **settings → general**.
@@ -91,7 +117,7 @@ Hold a shortcut while you speak, or tap it to start and again to stop. You can c
 ## Privacy
 
 - **Your voice stays on your computer.** Recordings are transcribed locally and never uploaded.
-- **Only text goes to the AI**, through your own Claude Code or Codex: the transcript and, when you choose a context, what Speak reads from it (an overview of the folder, the page, the clipboard), plus the files the AI reads when you compose. Speak has no servers, no account and no analytics. Otherwise it only goes online to download the speech engine and model (GitHub, Hugging Face), to check for updates, and to fetch the git repositories and web pages you choose as context.
+- **Only text goes to the AI**, through your own Claude Code or Codex: the transcript and, when you choose a context, what Speak reads from it (an overview of the folder, the page, the clipboard), plus the files the AI reads when you compose. In control mode, the screenshots of what it acts on go too. Speak has no servers, no account and no analytics. Otherwise it only goes online to download the speech engine and model (GitHub, Hugging Face), to check for updates, and to fetch the git repositories and web pages you choose as context.
 - **Your history is yours.** It's stored in a `.speak` folder in your home directory. Turn it off, or choose how long it's kept, in **settings → general**.
 
 ## Updates
@@ -144,6 +170,7 @@ To test an update without publishing, serve a newer build's `dist/` folder over 
 - **AI**: the user's own, unmodified CLI, run non-interactively without tools, plugins, MCP servers or project settings. Speak never reads or stores credentials.
   - Claude Code: `claude -p --model haiku --effort medium --system-prompt-file … --tools "" --setting-sources "" --strict-mcp-config --disable-slash-commands --no-session-persistence --output-format json`. Compose uses sonnet.
   - Codex: `codex exec -m gpt-6-luna -c model_reasoning_effort="medium" -c model_instructions_file="…" --ignore-user-config --ignore-rules --sandbox read-only --ephemeral --skip-git-repo-check -o … -`.
+  - Control runs a live session: Claude Code with `--input-format stream-json --output-format stream-json --permission-prompt-tool stdio` (its permission prompts come to Speak), Codex through `codex app-server` (approvals as JSON-RPC requests; its own computer use, browser, plugins and the user's MCP servers turned off). Speak serves its tools (screen, undoable file changes, plan, questions) as an MCP server on 127.0.0.1 with a token, and checks the scope and the approval level in each one. The screen: window list and focus through Win32; windows pictured with `PrintWindow` (in the background), the display with `desktopCapturer` (Speak's windows excluded from capture); controls listed and acted on through UI Automation (invoke, toggle, select, expand, value, scroll), by a PowerShell bridge kept for the session; real input through `SendInput`, only once the user's hands are still (libuiohook), and given back after.
 - **Insertion**: the text goes on the clipboard and Speak sends the paste keystroke (Windows: `SendInput` with scan codes). The text stays on the clipboard so a manual Ctrl+V works if the app ignored it, unless **restore clipboard** is on. Compose reads the selection with Ctrl+Insert, which never interrupts a terminal.
 
 ### Command line
@@ -153,6 +180,8 @@ Flags are forwarded to the running instance, for desktop shortcuts (e.g. on Wayl
 ```
 speak --toggle        start / stop dictation
 speak --compose       start / stop a compose dictation
+speak --control       start control (an order by voice), or talk to the session under way
+speak --order="…"     give control a typed order (a new session on the app in front, or the one under way)
 speak --cancel        cancel the current dictation
 speak --show          open the main window
 speak --file=x.wav    process an audio file as if dictated
@@ -166,6 +195,7 @@ speak --file=x.wav    process an audio file as if dictated
 | `history/YYYY-MM-DD/<id>/session.json` | Transcript, every version of the text, timings, the outcome |
 | `history/YYYY-MM-DD/<id>/audio.wav`    | The recording (optional)                                    |
 | `models/`, `bin/`                      | Speech models and the whisper.cpp engine                    |
+| `control/<id>/`                        | Control's trash and the backups its undo restores           |
 | `logs/speak.log`                       | Diagnostics                                                 |
 
 ### Source layout
@@ -178,9 +208,10 @@ src/
     hotkeys.ts     global shortcuts, hold-to-talk release detection
     stt/           whisper.cpp install and server, parakeet
     ai/            prompts, Claude Code and Codex CLIs
+    control/       control mode: session, approvals, AI sessions, Speak's tools (MCP), screen
     platform/      focus, paste, selection, keyboard, autostart
   preload/         typed window.speak bridge
-  renderer/src/    overlay (recording pill), preview dialog, main window
+  renderer/src/    overlay (recording pill), preview dialog, main window, control panel
   shared/          types, constants, API contract
 ```
 

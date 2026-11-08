@@ -1,4 +1,4 @@
-import type { AgentModel, Config, EngineId, Style } from './types'
+import type { AgentModel, Config, ControlApproval, ControlScope, EngineId, Mode, Style } from './types'
 
 /** The project on GitHub: its releases, and its issues (where "report a bug" opens the bug form). */
 export const REPO_URL = 'https://github.com/rodolphebarbanneau/speak'
@@ -56,8 +56,27 @@ export const STYLES: Array<{ id: Style; label: string; description: string }> = 
   { id: 'summary', label: 'Summary', description: 'Condensed to the key points.' },
   { id: 'compose', label: 'Compose', description: 'Follows your spoken instructions: writes the text you ask for from the context you give.' }
 ]
-/** Styles for plain dictation; compose has its own shortcut. */
-export const DICTATION_STYLES = STYLES.filter((s) => s.id !== 'compose')
+/** A dictation's formats: compose is a mode of its own. */
+export const FORMATS = STYLES.filter((s) => s.id !== 'compose')
+
+export const MODES: Array<{ id: Mode; label: string; description: string }> = [
+  { id: 'dictate', label: 'dictate', description: 'writes what you said' },
+  { id: 'compose', label: 'compose', description: 'writes what you ask for' },
+  { id: 'control', label: 'control', description: 'does what you ask, on the computer' }
+]
+
+export const CONTROL_SCOPES: Array<{ id: ControlScope; label: string; description: string }> = [
+  { id: 'app', label: 'app', description: 'the windows of the app in front when it starts: look, click, type' },
+  { id: 'screen', label: 'screen', description: 'any window: look, click, type · no files, no commands' },
+  { id: 'full', label: 'full', description: 'everything: any window, any file, any command' }
+]
+
+export const CONTROL_APPROVALS: Array<{ id: ControlApproval; label: string; description: string }> = [
+  { id: 'step', label: 'every step', description: 'each action waits for you' },
+  { id: 'plan', label: 'the plan', description: 'you approve its plan once: it asks again for a risky step or one off the plan' },
+  { id: 'risky', label: 'when risky', description: 'it acts, and asks before what is hard to take back' },
+  { id: 'never', label: 'never', description: 'full autonomy: only the always-ask list still asks' }
+]
 
 /** Claude Code model aliases always resolve to the latest model of each family. */
 export const CLAUDE_CODE_MODELS: AgentModel[] = [
@@ -75,8 +94,14 @@ export const CODEX_MODELS: AgentModel[] = [
 
 export const DEFAULT_CONFIG: Config = {
   onboarded: false,
-  // Compose is the dictation shortcut plus Alt (⌥).
-  shortcuts: { record: 'CommandOrControl+Shift+Space', compose: 'CommandOrControl+Shift+Alt+Space', cancel: 'Escape' },
+  // The same on every system (Ctrl is ⌘ on a Mac): Ctrl+Shift for all, Alt for the AI modes; Space
+  // for the modes that write, Enter for the one that acts. macOS keeps the other Space chords.
+  shortcuts: {
+    record: 'CommandOrControl+Shift+Space',
+    compose: 'CommandOrControl+Shift+Alt+Space',
+    control: 'CommandOrControl+Shift+Alt+Enter',
+    cancel: 'Escape'
+  },
   recordMode: 'hybrid',
   // The result stays on the clipboard, so Ctrl+V pastes it again if the app ignored Speak's paste.
   output: { mode: 'preview', restoreClipboard: false, pasteKeys: 'auto' },
@@ -99,12 +124,21 @@ export const DEFAULT_CONFIG: Config = {
     provider: 'claude-code',
     // Cheap yet effective defaults: dictation cleanup doesn't need frontier models. Compose writes
     // freely from a brief, and sonnet stays faithful to it where haiku sometimes embellishes.
-    claudeCode: { path: '', home: '', model: 'haiku', composeModel: 'sonnet', effort: 'medium' },
-    codex: { path: '', home: '', model: 'gpt-6-luna', composeModel: '', effort: 'medium' },
+    // Control sees the screen and acts on it: the compose model unless set.
+    claudeCode: { path: '', home: '', model: 'haiku', composeModel: 'sonnet', controlModel: '', effort: 'medium' },
+    codex: { path: '', home: '', model: 'gpt-6-luna', composeModel: '', controlModel: '', effort: 'medium' },
     customInstructions: '',
     timeoutSeconds: 90
   },
   history: { enabled: true, keepAudio: true, retentionDays: 90 },
+  control: {
+    scope: 'app',
+    approval: 'plan',
+    alwaysAsk: { money: true, secrets: true, delete: true, send: true },
+    speak: false,
+    idleMinutes: 30,
+    handsSeconds: 2
+  },
   ui: { showOverlay: true, launchAtLogin: false, easterEggs: true, themeOff: '', lastVersion: '' },
   updates: { auto: true }
 }

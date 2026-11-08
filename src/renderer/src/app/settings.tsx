@@ -4,6 +4,7 @@ import { Boundary, Key } from '../components/ui'
 import { About } from './about'
 import { AiSettings } from './ai-settings'
 import { ContextSettings } from './context-settings'
+import { ControlSettings } from './control-settings'
 import { General } from './general'
 import { Transcription } from './transcription'
 
@@ -14,6 +15,7 @@ export const SETTINGS: Array<{ id: SettingsSection; label: string }> = [
   { id: 'transcription', label: 'speech' },
   { id: 'ai', label: 'ai' },
   { id: 'context', label: 'context' },
+  { id: 'control', label: 'control' },
   { id: 'about', label: 'about' }
 ]
 
@@ -87,6 +89,7 @@ export function SettingsDialog({
               {section === 'transcription' && <Transcription config={config} update={update} />}
               {section === 'ai' && <AiSettings config={config} update={update} />}
               {section === 'context' && <ContextSettings config={config} />}
+              {section === 'control' && <ControlSettings config={config} update={update} />}
               {section === 'about' && <About config={config} update={update} />}
             </Boundary>
           </div>

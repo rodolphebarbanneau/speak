@@ -1,6 +1,14 @@
 export type RecordMode = 'hybrid' | 'toggle' | 'hold'
 export type OutputMode = 'preview' | 'paste'
-/** compose: the dictation is a brief (what to write + material), not text to clean up. */
+/**
+ * What Speak does with what you say. dictate: writes what you said (in a format) · compose: writes
+ * what you ask for · control: does what you ask, on the computer. Each has its own shortcut.
+ */
+export type Mode = 'dictate' | 'compose' | 'control'
+/**
+ * A dictation's format (verbatim, clean, prompt = structured, summary), or compose for a brief the
+ * AI writes from: dictations saved with it keep it, and history can redo one as the other.
+ */
 export type Style = 'verbatim' | 'clean' | 'prompt' | 'summary' | 'compose'
 export type EngineId = 'whisper' | 'parakeet'
 /** Coding-agent CLIs Speak can drive with the user's own login. */
@@ -26,8 +34,8 @@ export interface ContextSource {
 
 export interface Config {
   onboarded: boolean
-  /** record: dictate · compose: dictate a brief the AI writes from (empty = off). */
-  shortcuts: { record: string; compose: string; cancel: string }
+  /** record: dictate · compose: dictate a brief the AI writes from · control: an order the AI carries out (empty = off). */
+  shortcuts: { record: string; compose: string; control: string; cancel: string }
   recordMode: RecordMode
   output: { mode: OutputMode; restoreClipboard: boolean; pasteKeys: PasteKeys }
   /** input: 'auto' or an ISO 639-1 code. output: 'same' or an ISO 639-1 code. */
@@ -62,6 +70,8 @@ export interface Config {
     timeoutSeconds: number
   }
   history: { enabled: boolean; keepAudio: boolean; retentionDays: number }
+  /** Control mode: what a new control session may touch, and when it asks first (both can change during it). */
+  control: ControlConfig
   /**
    * easterEggs: allow the seasonal themes (src/themes/schedule.ts). themeOff: the season of the
    * theme the user turned off by clicking its logo ("christmas-2026"), off until the next season.
@@ -131,16 +141,23 @@ export interface Session {
   contextError?: string
   error?: string
   action?: SessionAction
+  /** A control session (text: what you asked first; the steps are here). */
+  control?: ControlRecord
 }
 
 export type Phase = 'idle' | 'recording' | 'transcribing' | 'processing'
 
-/** What the pill's buttons do to the recording in progress. */
-export type RecordingAction = 'finish' | 'cancel' | 'pause' | 'resume' | 'compose' | 'dictate'
+/** What the pill's buttons do to the recording in progress: dictate, compose and control switch its mode. */
+export type RecordingAction = 'finish' | 'cancel' | 'pause' | 'resume' | Mode
 
 export interface OverlayState {
   phase: Phase | 'done' | 'error' | 'info'
-  purpose?: 'dictation' | 'compose' | 'edit'
+  /** control: an order for control mode, or (talk) something said to the control session under way. */
+  purpose?: 'dictation' | 'compose' | 'edit' | 'control'
+  /** Recording for the control session under way: what's said goes to it. */
+  talk?: boolean
+  /** Recording an order for a new control session: the app it would act on (app scope). */
+  target?: string
   message?: string
   /** Recording: when it started, moved forward by the time spent paused. */
   startedAt?: number
@@ -230,6 +247,8 @@ export interface AgentConfig {
   model: string
   /** Model for compose, where staying faithful to the brief matters most; empty = `model`. */
   composeModel: string
+  /** Model for control sessions, which see the screen and act; empty = the compose model. */
+  controlModel: string
   effort: Effort
 }
 
@@ -288,4 +307,120 @@ export type RecorderCommand =
   | { type: 'sound'; name: 'start' | 'stop' | 'error' | 'done' }
 
 /** bug: "report a bug", from the title row's bug or the tray. */
-export type MainSection = 'history' | 'general' | 'transcription' | 'ai' | 'context' | 'about' | 'bug'
+export type MainSection = 'history' | 'general' | 'transcription' | 'ai' | 'context' | 'control' | 'about' | 'bug'
+
+// ------------------------------------------------------------------ control mode
+
+/**
+ * What a control session may touch. app: the windows of one app (the one in front when it
+ * started) · screen: any window, no files or commands · full: everything, files and commands included.
+ */
+export type ControlScope = 'app' | 'screen' | 'full'
+
+/**
+ * When it asks first. step: before every action · plan: once, for its plan, then again only for
+ * a risky step or one off the plan · risky: only before risky actions · never: never, except for
+ * the always-ask list.
+ */
+export type ControlApproval = 'step' | 'plan' | 'risky' | 'never'
+
+/** Actions that ask first whatever the approval level, while on. */
+export interface ControlAlwaysAsk {
+  /** Paying, buying, ordering, transferring money. */
+  money: boolean
+  /** Passwords, security and account settings. */
+  secrets: boolean
+  /** Deleting for good (Speak's own trash can be undone and doesn't count). */
+  delete: boolean
+  /** Sending, posting or publishing as you: emails, messages, comments. */
+  send: boolean
+}
+
+export interface ControlConfig {
+  scope: ControlScope
+  approval: ControlApproval
+  alwaysAsk: ControlAlwaysAsk
+  /** Read the AI's answers and questions aloud. */
+  speak: boolean
+  /** The session ends after this long with nothing to do. */
+  idleMinutes: number
+  /**
+   * What needs the real mouse or keyboard waits until the user's hands have been still this long
+   * (seconds), then gives them back.
+   */
+  handsSeconds: number
+}
+
+/**
+ * listening: you're speaking to it · thinking, acting: it works · waiting: it waits for your answer ·
+ * hands: it waits for your hands to be still, to borrow the mouse or the keyboard · idle: done.
+ */
+export type ControlStatus = 'starting' | 'listening' | 'thinking' | 'acting' | 'waiting' | 'hands' | 'paused' | 'idle' | 'ended'
+
+/** look: only looks or reads · change: changes something that can be undone or redone · risky: hard to take back. */
+export type ControlRisk = 'look' | 'change' | 'risky'
+
+export interface ControlStep {
+  id: string
+  at: number
+  /** you: what you said · ai: what it says · action: something it does · info, error: from Speak. */
+  who: 'you' | 'ai' | 'action' | 'info' | 'error'
+  text: string
+  /** More: a command, a path, the text typed, a plan's steps. */
+  detail?: string
+  risk?: ControlRisk
+  state?: 'running' | 'done' | 'failed' | 'rejected' | 'undone'
+  /** It can be undone from the panel (a file moved, written or put in Speak's trash). */
+  undoable?: boolean
+  /** What it saw (a small screenshot), for [see]. */
+  image?: string
+}
+
+/** Something it waits for you on: an action to approve, its plan, a wider scope, or a question. */
+export interface ControlAsk {
+  id: string
+  kind: 'action' | 'plan' | 'question' | 'scope'
+  title: string
+  detail?: string
+  /** plan: its steps. */
+  steps?: string[]
+  risk?: ControlRisk
+  /** Why it asks although the level wouldn't: an always-ask item. */
+  because?: string
+  /** "always" is offered: approve this kind of action for the rest of the session. */
+  always?: boolean
+  /** Where it will act, boxed on its latest look (a data URL). */
+  image?: string
+}
+
+export interface ControlState {
+  active: boolean
+  id: string
+  status: ControlStatus
+  scope: ControlScope
+  /** The app, "screen" or "everything". */
+  scopeLabel: string
+  approval: ControlApproval
+  /** The AI driving it: "claude code · sonnet". */
+  agent: string
+  startedAt: number
+  steps: ControlStep[]
+  ask?: ControlAsk
+  /** What waits for your hands to be still (it needs the real mouse or keyboard): "click Send". */
+  hands?: string
+  /** You're speaking to it (the pill records). */
+  listening: boolean
+  /** The panel is reduced to its title row. */
+  collapsed: boolean
+  /** Why it stopped, or can't start (no AI provider, no app in front…). */
+  error?: string
+}
+
+/** A control session, as the history keeps it. */
+export interface ControlRecord {
+  scope: ControlScope
+  scopeLabel: string
+  approval: ControlApproval
+  agent: string
+  steps: ControlStep[]
+}

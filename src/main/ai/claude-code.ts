@@ -80,6 +80,13 @@ function supportsRestricted(path: string, cfg: AgentConfig): Promise<boolean> {
   return known
 }
 
+/** How to start this Claude Code for a session of its own (control mode). */
+export function claudeLaunch(cfg: AgentConfig): { path: string; env: NodeJS.ProcessEnv } {
+  const path = cliPath(cfg)
+  if (!path) throw new Error('Claude Code not found. Install it or pick another provider in Speak → settings → ai.')
+  return { path, env: env(cfg) }
+}
+
 export async function claudeComplete(system: string, user: string, cfg: AgentConfig, opts: CompleteOptions): Promise<Completion> {
   const path = cliPath(cfg)
   if (!path) throw new Error('Claude Code not found. Install it or pick another provider in Speak → settings → ai.')

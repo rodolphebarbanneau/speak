@@ -66,6 +66,12 @@ export function run(
  * goes just as fast on an idle computer, but yields to whatever the user is doing instead of
  * making the whole system stutter.
  */
+/** A long-running child with pipes (a CLI session): .cmd/.bat shims go through a shell, quoted. */
+export function spawnPiped(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): ChildProcess {
+  const spawnOpts: SpawnOptions = { cwd: opts.cwd, env: opts.env ?? shellEnv(), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }
+  return isWin && /\.(cmd|bat)$/i.test(cmd) ? spawn(`"${cmd}"`, args.map(quoteCmdArg), { ...spawnOpts, shell: true }) : spawn(cmd, args, spawnOpts)
+}
+
 export function lowerPriority(child: ChildProcess): void {
   if (!child.pid) return
   try {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
-import { languageName, shortModel, STYLES } from '@shared/constants'
-import type { Config, EngineId, Session, Style } from '@shared/types'
+import { CONTROL_APPROVALS, CONTROL_SCOPES, languageName, shortModel, STYLES } from '@shared/constants'
+import type { Config, ControlStep, EngineId, Session, Style } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
 import { Action, displayShortcut, Row, Sep, Spinner, Track } from '../components/ui'
 import { CONTEXT_KINDS, ipcError } from '../lib/format'
@@ -275,6 +275,81 @@ function Detail({ session, engine, onChanged }: { session: Session; engine: Engi
   )
 }
 
+/** A control session: what was asked, and what it did, step by step. */
+function ControlDetail({ session, onChanged }: { session: Session; onChanged: (s: Session | null) => void }) {
+  const c = session.control!
+  const created = new Date(session.createdAt)
+  const scope = CONTROL_SCOPES.find((s) => s.id === c.scope)?.label ?? c.scope
+  const approval = CONTROL_APPROVALS.find((a) => a.id === c.approval)?.label ?? c.approval
+  const actions = c.steps.filter((s) => s.who === 'action' && s.risk !== 'look')
+  const mark = (s: ControlStep) =>
+    s.who === 'you'
+      ? ['you', 'acc']
+      : s.who === 'ai'
+        ? [' ai', 'green']
+        : s.who === 'error'
+          ? ['  ✗', 'red']
+          : s.who === 'info' || s.risk === 'look'
+            ? ['  ·', 'dim']
+            : s.state === 'rejected'
+              ? ['  ⊘', 'red']
+              : s.state === 'failed'
+                ? ['  ✗', 'red']
+                : s.state === 'undone'
+                  ? ['  ↶', 'dim']
+                  : ['  ✓', 'green']
+  return (
+    <>
+      <section>
+        <Sep
+          tail={
+            <Action danger onClick={() => void api.deleteSession(session.id).then(() => onChanged(null))}>
+              delete
+            </Action>
+          }
+        >
+          {ymd(created)} {hms(created)}
+        </Sep>
+        <Row label="control">
+          <span>
+            {scope} <span className="dim">· {c.scopeLabel}</span>
+          </span>
+        </Row>
+        <Row label="asks first">{approval}</Row>
+        <Row label="ai">{c.agent}</Row>
+        <Row label="length">
+          {Math.round(session.durationMs / 60000)} min <span className="dim">· {actions.length} actions</span>
+        </Row>
+      </section>
+      <section>
+        <Sep
+          tail={
+            <Action onClick={() => api.copyText(c.steps.map((s) => `${mark(s)[0].trim()} ${s.text}${s.detail ? `\n    ${s.detail}` : ''}`).join('\n'))}>
+              copy
+            </Action>
+          }
+        >
+          steps
+        </Sep>
+        <div className="control-steps">
+          {c.steps.map((s) => {
+            const [m, tone] = mark(s)
+            return (
+              <div key={s.id} className="cstep">
+                <span className={`cmark ${tone}`}>{m}</span>
+                <div className="cbody">
+                  <span className={s.who === 'you' ? 'hi' : s.who === 'info' || s.risk === 'look' ? 'dim' : s.who === 'error' ? 'red' : ''}>{s.text}</span>
+                  {s.detail && <p className="cdetail dim selectable">{s.detail}</p>}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </section>
+    </>
+  )
+}
+
 /** `onSetup` opens settings → general, where a new install finishes its setup. */
 export function History({ config, onSetup }: { config: Config; onSetup: () => void }) {
   const [sessions, setSessions] = useState<Session[]>([])
@@ -317,7 +392,7 @@ export function History({ config, onSetup }: { config: Config; onSetup: () => vo
               <button key={s.id} className={`item ${selected?.id === s.id ? 'on' : ''}`} onClick={() => setSelectedId(s.id)}>
                 <span className="meta">
                   <span>{when(s.createdAt)}</span>
-                  {o && <span className={ACTION_TONE[o]}>{o}</span>}
+                  {s.control ? <span className="acc">control</span> : o && <span className={ACTION_TONE[o]}>{o}</span>}
                 </span>
                 <span className="text">{s.text || s.transcription.text}</span>
               </button>
@@ -327,7 +402,10 @@ export function History({ config, onSetup }: { config: Config; onSetup: () => vo
       </div>
       <div className="history-detail">
         <div className="page-inner">
-          {selected && (
+          {selected?.control && (
+            <ControlDetail session={selected} onChanged={(s) => (s ? setSessions((list) => list.map((x) => (x.id === s.id ? s : x))) : load())} />
+          )}
+          {selected && !selected.control && (
             <Detail
               session={selected}
               engine={config.transcription.engine}

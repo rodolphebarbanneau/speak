@@ -508,20 +508,28 @@ html[data-view='overlay'] body {
   justify-content: center;
   color: var(--yellow);
 }
-/* Settings on the pill while recording: click one to change it. */
+/* The pill's settings: the mode and what changes the result; a click opens the sheet. */
 .osd .choices {
+  position: static;
   display: flex;
-  gap: var(--s1);
 }
-.osd .choices > button {
+.osd .summary {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
   color: var(--fg);
 }
-/* "no context" */
-.osd .choices > button.dim {
-  color: var(--dim);
+.osd .summary .mode {
+  color: var(--hi);
+  font-weight: 600;
 }
-.osd .choices > button:hover,
-.osd .choices > button.open {
+.osd .chev {
+  color: var(--dim);
+  font-size: 11px;
+}
+.osd .summary:hover .mode,
+.osd .summary:hover .chev,
+.osd .summary.open .chev {
   color: var(--accent);
 }
 /* pause or resume · done: stop and process the recording · cancel it */
@@ -561,28 +569,87 @@ html[data-view='overlay'] body {
 .osd .controls .esc:hover {
   color: var(--red);
 }
-.overlay-menu {
+/* The sheet: above the pill, as wide as its longest row, every row on one line. */
+.pill-sheet {
   position: absolute;
   bottom: calc(100% + 6px);
-  min-width: 150px;
-  max-height: 240px;
-  overflow-y: auto;
-  padding: var(--s1) 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  min-width: 280px;
+  padding: var(--s2) 0 var(--s1);
   background: var(--bg);
   border: 2px solid var(--accent);
+  white-space: nowrap;
 }
-.overlay-menu > button {
+.pill-sheet .srow {
+  display: grid;
+  grid-template-columns: 9ch max-content;
+  column-gap: var(--s2);
+  align-items: center;
+  padding: 1px var(--s3);
+}
+.pill-sheet .k {
+  color: var(--dim);
+}
+.pill-sheet .v,
+.pill-sheet .seg {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.pill-sheet .seg > button,
+.pill-sheet .chip {
+  padding: 0 var(--s2);
+  color: var(--fg);
+}
+.pill-sheet .seg > button:hover,
+.pill-sheet .chip:hover {
+  background: var(--hover);
+  color: var(--hi);
+}
+.pill-sheet .seg > button.on {
+  background: var(--sel);
+  color: var(--accent);
+}
+.pill-sheet .v > .dim {
+  padding: 0 var(--s1);
+}
+.pill-sheet .sfoot {
+  margin-top: var(--s1);
+  padding: var(--s1) var(--s3) 0;
+  border-top: 1px solid var(--sel);
+  color: var(--dim);
+  font-size: 11px;
+}
+/* A long list (languages, contexts), in place of the rows. */
+.pill-sheet .slist-head {
+  display: flex;
+  gap: var(--s3);
+  padding: 0 var(--s3) var(--s1);
+}
+.pill-sheet .sback {
+  color: var(--dim);
+}
+.pill-sheet .sback:hover {
+  color: var(--accent);
+}
+.pill-sheet .slist {
+  max-height: 200px;
+  overflow-y: auto;
+}
+.pill-sheet .slist > button {
   display: block;
   width: 100%;
-  padding: 2px var(--s3);
+  padding: 1px var(--s3);
   text-align: left;
   color: var(--fg);
 }
-.overlay-menu > button:hover {
+.pill-sheet .slist > button:hover {
   background: var(--sel);
   color: var(--hi);
 }
-.overlay-menu > button.on {
+.pill-sheet .slist > button.on {
   color: var(--accent);
 }
 /* The context list's field to type an address into. */
@@ -1095,4 +1162,249 @@ html[data-view='loader'] body {
   color: var(--dim);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ---------- control mode: the panel ---------- */
+
+html[data-view='control'] body {
+  background: var(--bg);
+}
+.cpanel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  border: 2px solid var(--accent);
+  background: var(--bg);
+}
+.chead {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 40px;
+  padding: 0 var(--s3);
+  border-bottom: 1px solid var(--muted);
+  white-space: nowrap;
+  -webkit-app-region: drag;
+}
+.cpanel.collapsed .chead {
+  border-bottom: 0;
+  min-height: 0;
+  padding-top: 2px;
+}
+.chead button {
+  -webkit-app-region: no-drag;
+}
+.cdot {
+  display: inline-flex;
+  width: 1.2ch;
+  justify-content: center;
+}
+.cgrow {
+  flex: 1;
+}
+.cchoice {
+  color: var(--fg);
+}
+.cchoice:hover,
+.cchoice.open {
+  color: var(--accent);
+}
+.cicon {
+  padding: 0 var(--s1);
+  color: var(--dim);
+}
+.cicon:hover {
+  color: var(--hi);
+}
+.cmenu {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: var(--s3);
+  right: var(--s3);
+  z-index: 5;
+  padding: var(--s1) 0;
+  background: var(--bg);
+  border: 2px solid var(--accent);
+  -webkit-app-region: no-drag;
+}
+.cmenu > button {
+  display: block;
+  width: 100%;
+  padding: 2px var(--s3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg);
+}
+.cmenu > button:hover {
+  background: var(--sel);
+  color: var(--hi);
+}
+.cmenu > button.on {
+  color: var(--accent);
+}
+.cline {
+  padding: 0 var(--s3) var(--s1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.csteps {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s2) var(--s3);
+}
+.cstep {
+  display: flex;
+  gap: var(--s2);
+  margin-bottom: 2px;
+}
+.cstep.is-you {
+  margin-top: var(--s2);
+}
+.cmark {
+  flex: none;
+  width: 3ch;
+  white-space: pre;
+}
+.cbody {
+  min-width: 0;
+  flex: 1;
+  user-select: text;
+  word-break: break-word;
+}
+.cdetail {
+  white-space: pre-wrap;
+  font-size: 12px;
+}
+.cdetail.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: pointer;
+}
+.strike {
+  text-decoration: line-through;
+}
+.clink {
+  margin-left: var(--s2);
+  color: var(--accent);
+}
+.clink:hover {
+  color: var(--hi);
+}
+.cshot {
+  display: block;
+  max-width: 100%;
+  margin-top: var(--s1);
+  border: 1px solid var(--muted);
+}
+.cstep-note {
+  margin-top: var(--s2);
+}
+.cask {
+  margin: var(--s2) 0;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--yellow);
+  background: var(--bg-dark);
+}
+.cask-head {
+  font-size: 12px;
+}
+.cplan {
+  margin: var(--s1) 0;
+  padding-left: 3ch;
+}
+.cask-keys {
+  margin-top: var(--s1);
+}
+.ckey {
+  margin-right: var(--s2);
+  color: var(--fg);
+}
+.ckey:hover:not(:disabled) {
+  color: var(--hi);
+}
+.ckey.green {
+  color: var(--green);
+}
+.ckey.acc {
+  color: var(--accent);
+}
+.ckey.red {
+  color: var(--red);
+}
+.ckey.yellow {
+  color: var(--yellow);
+}
+.corder {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  padding: var(--s1) var(--s3);
+  border-top: 1px solid var(--muted);
+}
+.corder input,
+.corder input:focus {
+  all: unset;
+  flex: 1;
+  color: var(--hi);
+  caret-color: var(--accent);
+}
+.corder input::placeholder {
+  color: var(--muted);
+}
+.cfoot {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: var(--s1) var(--s3) var(--s2);
+  white-space: nowrap;
+}
+.cfoot .ckey {
+  margin-right: 0;
+}
+
+/* ---------- control mode: the frame around where it acts ---------- */
+
+html[data-view='frame'],
+html[data-view='frame'] body {
+  background: transparent;
+}
+.cframe {
+  position: fixed;
+  inset: 0;
+  border: 3px solid var(--accent);
+}
+.cframe.waiting {
+  border-color: var(--yellow);
+}
+.cframe-tag {
+  position: absolute;
+  top: 0;
+  left: 12px;
+  padding: 0 var(--s2);
+  font-size: 11px;
+  background: var(--accent);
+  color: var(--bg);
+}
+.cframe.waiting .cframe-tag {
+  background: var(--yellow);
+}
+
+/* A control session's steps, in the history. */
+.control-steps {
+  padding: var(--s1) var(--inset);
+}
+/* Where it will act, boxed on its latest look, with the approval. */
+.cspot {
+  display: block;
+  max-width: 100%;
+  margin: var(--s1) 0;
+  border: 1px solid var(--muted);
+}
+.cask.hands {
+  border-color: var(--accent);
 }

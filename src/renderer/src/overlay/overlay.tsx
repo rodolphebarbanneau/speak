@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react'
-import { DICTATION_STYLES, LANGUAGES, spokenLanguages } from '@shared/constants'
-import type { ClipboardInfo, Config, DeepPartial, OutputMode, OverlayState } from '@shared/types'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { CONTROL_APPROVALS, CONTROL_SCOPES, FORMATS, LANGUAGES, MODES, spokenLanguages } from '@shared/constants'
+import type { ClipboardInfo, Config, DeepPartial, Mode, OutputMode, OverlayState } from '@shared/types'
 import { PillDecor } from '@themes/components'
 import { Boundary, Spinner } from '../components/ui'
 import { CONTEXT_KINDS, ipcError, shorten } from '../lib/format'
@@ -17,9 +17,6 @@ function formatTime(ms: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
-/** url: the field to type an address into, opened from the context list. */
-type Menu = 'style' | 'spoken' | 'output' | 'mode' | 'context' | 'url'
-
 interface Option {
   key: string
   label: string
@@ -31,7 +28,7 @@ interface Option {
   apply: () => void
 }
 const OUTPUTS = [{ code: 'same', name: 'as spoken' }, ...LANGUAGES.map((l) => ({ code: l.code, name: l.name.toLowerCase() }))]
-const MODES: OutputMode[] = ['preview', 'paste']
+const THEN: OutputMode[] = ['preview', 'paste']
 
 /** The pill's buttons, drawn in SVG: the ⏸ ▶ ✓ ✕ characters come from fallback fonts of uneven size. */
 const ICONS = {
@@ -146,98 +143,223 @@ function AddressField({ onDone }: { onDone: () => void }) {
   )
 }
 
+/** The formats in the sheet: the default first. */
+const SHEET_FORMATS = ['clean', 'verbatim', 'prompt', 'summary'].map((id) => FORMATS.find((s) => s.id === id)!).filter(Boolean)
+
+/** What the sheet shows: its rows, or one long list (languages, contexts), or the field for an address. */
+type View = 'main' | 'spoken' | 'output' | 'context' | 'url'
+
+/** A choice of the sheet: every option on one line, the current one highlighted. */
+function Seg<T extends string>({ options, value, onPick }: { options: Array<{ id: T; label: string; title?: string }>; value: T; onPick: (v: T) => void }) {
+  return (
+    <span className="seg">
+      {options.map((o) => (
+        <button key={o.id} className={o.id === value ? 'on' : ''} title={o.title} onClick={() => onPick(o.id)}>
+          {o.label}
+        </button>
+      ))}
+    </span>
+  )
+}
+
+function SheetRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="srow">
+      <span className="k">{label}</span>
+      <span className="v">{children}</span>
+    </div>
+  )
+}
+
+/** A value that opens its list: "auto ▾". */
+function Chip({ children, title, onClick }: { children: ReactNode; title?: string; onClick: () => void }) {
+  return (
+    <button className="chip" title={title} onClick={onClick}>
+      {children} <span className="chev">▾</span>
+    </button>
+  )
+}
+
 /**
- * The settings this dictation will use, on the pill while recording. Clicking one opens a list
- * above the pill: a style, language, mode or context becomes the new default and applies to the
- * recording in progress; compose (which has its own shortcut) and the clipboard switch only this
- * recording. Languages show as codes (fr → en) to keep the pill short; their lists spell them out.
+ * The pill's settings: on the pill, the mode and only what changes the result (a format other than
+ * clean, a translation, a context; for control, what it acts on and when it asks); one click opens
+ * the sheet with every choice of that mode. The mode switches only this recording; the rest becomes
+ * the new default and applies to it too. The pill can't take the focus, so nothing tells a click
+ * elsewhere: the sheet closes once the pointer has left it a moment.
  */
-function Choices({ config, compose, clipboard }: { config: Config; compose: boolean; clipboard: boolean }) {
-  const [open, setOpen] = useState<Menu | null>(null)
-  const [left, setLeft] = useState(0)
+function Choices({ config, mode, clipboard, target }: { config: Config; mode: Mode; clipboard: boolean; target?: string }) {
+  const [open, setOpen] = useState(false)
+  const [view, setView] = useState<View>('main')
   const [clip, setClip] = useState<ClipboardInfo | null>(null)
-  const toggle = (menu: Menu) => (e: MouseEvent<HTMLButtonElement>) => {
-    setLeft(e.currentTarget.offsetLeft)
-    setOpen(open === menu ? null : menu)
-    if (menu === 'context' && open !== menu) void api.clipboardInfo().then(setClip)
+  const closing = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(
+    () => () => {
+      if (closing.current) clearTimeout(closing.current)
+    },
+    []
+  )
+  const close = () => {
+    setOpen(false)
+    setView('main')
+  }
+  const toggle = () => {
+    if (open) return close()
+    setOpen(true)
+    setView('main')
+    void api.clipboardInfo().then(setClip)
+  }
+  const leave = () => {
+    if (view === 'url') return // typing an address: the field closes it
+    closing.current = setTimeout(close, 600)
+  }
+  const enter = () => {
+    if (closing.current) clearTimeout(closing.current)
+    closing.current = null
   }
   const setDefault = (patch: DeepPartial<Config>) => void api.setConfig(patch)
-  const styles = [
-    ...DICTATION_STYLES.map((s) => ({
-      key: s.id,
-      label: s.label.toLowerCase(),
-      on: !compose && config.style === s.id,
-      apply: () => {
-        setDefault({ style: s.id })
-        if (compose) api.recordingAction('dictate')
-      }
-    })),
-    { key: 'compose', label: 'compose', on: compose, apply: () => api.recordingAction('compose') }
-  ]
+
+  const context = clipboard ? 'clipboard' : config.context.recent.find((s) => s.location === config.context.current)
+  const contextLabel = typeof context === 'object' ? shorten(context.label, 18) : context
+  const approval = CONTROL_APPROVALS.find((a) => a.id === config.control.approval)
+  const scope = config.control.scope
+  const summary =
+    mode === 'control'
+      ? [scope === 'app' ? target || 'app' : scope, approval?.label ?? '']
+      : [
+          ...(mode === 'dictate' && config.style !== 'clean' ? [FORMATS.find((s) => s.id === config.style)?.label.toLowerCase() ?? config.style] : []),
+          ...(config.language.output !== 'same' ? [`→ ${config.language.output}`] : []),
+          ...(contextLabel ? [contextLabel] : [])
+        ]
+
   const spoken = [
     { code: 'auto', name: 'auto-detect' },
     ...spokenLanguages(config.transcription.engine).map((l) => ({ code: l.code, name: l.name.toLowerCase() }))
   ]
-  const options: Option[] =
-    open === 'context'
-      ? contextOptions(config, clipboard, clip, () => setOpen('url'))
-      : open === 'style'
-        ? styles
-        : open === 'spoken'
-          ? spoken.map((o) => ({ key: o.code, label: o.name, on: config.language.input === o.code, apply: () => setDefault({ language: { input: o.code } }) }))
-          : open === 'output'
-            ? OUTPUTS.map((o) => ({
-                key: o.code,
-                label: o.name,
-                on: config.language.output === o.code,
-                apply: () => setDefault({ language: { output: o.code } })
-              }))
-            : open === 'mode'
-              ? MODES.map((m) => ({ key: m, label: m, on: config.output.mode === m, apply: () => setDefault({ output: { mode: m } }) }))
-              : []
-  const style = compose ? 'compose' : DICTATION_STYLES.find((s) => s.id === config.style)?.label.toLowerCase()
-  const context = clipboard ? 'clipboard' : config.context.recent.find((s) => s.location === config.context.current)
+  const back = () => setView('main')
+  const lists: Partial<Record<View, { title: string; options: Option[] }>> = {
+    spoken: {
+      title: 'spoken language',
+      options: spoken.map((o) => ({
+        key: o.code,
+        label: o.name,
+        on: config.language.input === o.code,
+        apply: () => setDefault({ language: { input: o.code } })
+      }))
+    },
+    output: {
+      title: 'write in',
+      options: OUTPUTS.map((o) => ({
+        key: o.code,
+        label: o.name,
+        on: config.language.output === o.code,
+        apply: () => setDefault({ language: { output: o.code } })
+      }))
+    },
+    context: { title: 'context', options: contextOptions(config, clipboard, clip, () => setView('url')) }
+  }
+  const list = lists[view]
 
-  const choice = (menu: Menu, label: string | undefined, title: string) => (
-    <button className={open === menu ? 'open' : ''} title={title} onClick={toggle(menu)}>
-      {label}
-    </button>
+  const contextRow = (label: string, empty: string) => (
+    <SheetRow label={label}>
+      <Chip title={typeof context === 'object' ? context.location : undefined} onClick={() => setView('context')}>
+        {contextLabel ?? empty}
+      </Chip>
+      {typeof context === 'object' && <span className="dim">{CONTEXT_KINDS[context.kind]}</span>}
+    </SheetRow>
   )
+
   return (
-    <span className="choices">
-      {choice('style', style, 'style')}
-      <span className="dim">·</span>
-      {choice('spoken', config.language.input, 'spoken language')}
-      <span className="dim">→</span>
-      {choice('output', config.language.output, 'output language')}
-      <span className="dim">·</span>
-      {choice('mode', config.output.mode, 'after dictation')}
-      <span className="dim">·</span>
-      <button
-        className={`${open === 'context' ? 'open' : ''} ${context ? '' : 'dim'}`}
-        title={typeof context === 'object' ? `context: ${CONTEXT_KINDS[context.kind]}, ${context.location}` : 'context'}
-        onClick={toggle('context')}
-      >
-        {typeof context === 'object' ? shorten(context.label, 20) : (context ?? 'no context')}
+    <span className="choices" onMouseLeave={open ? leave : undefined} onMouseEnter={open ? enter : undefined}>
+      <button className={`summary ${open ? 'open' : ''}`} title="settings for this recording" onClick={toggle}>
+        <span className="mode">{mode}</span>
+        {summary.length > 0 && <span className="dim">{summary.join(' · ')}</span>}
+        <span className="chev">{open ? '▴' : '▾'}</span>
       </button>
       {open && (
-        // The context list is wide, and its choice the rightmost: it opens leftward.
-        <div className="overlay-menu" style={open === 'context' || open === 'url' ? { right: 0 } : { left }}>
-          {open === 'url' && <AddressField onDone={() => setOpen(null)} />}
-          {options.map((o) => (
-            <button
-              key={o.key}
-              className={o.on ? 'on' : ''}
-              title={o.title}
-              onClick={() => {
-                o.apply()
-                if (o.key !== 'url') setOpen(null)
-              }}
-            >
-              {o.label}
-              {o.note && <span className="dim"> {o.note}</span>}
-            </button>
-          ))}
+        <div className="pill-sheet">
+          {view === 'url' ? (
+            <AddressField onDone={back} />
+          ) : list ? (
+            <>
+              <div className="slist-head">
+                <button className="sback" onClick={back}>
+                  ‹ back
+                </button>
+                <span className="dim">{list.title}</span>
+              </div>
+              <div className="slist">
+                {list.options.map((o) => (
+                  <button
+                    key={o.key}
+                    className={o.on ? 'on' : ''}
+                    title={o.title}
+                    onClick={() => {
+                      o.apply()
+                      if (o.key !== 'url') back()
+                    }}
+                  >
+                    {o.label}
+                    {o.note && <span className="dim"> {o.note}</span>}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <SheetRow label="mode">
+                <Seg options={MODES.map((m) => ({ id: m.id, label: m.label, title: m.description }))} value={mode} onPick={(m) => api.recordingAction(m)} />
+              </SheetRow>
+              {mode === 'control' ? (
+                <>
+                  <SheetRow label="scope">
+                    <Seg
+                      options={CONTROL_SCOPES.map((s) => ({ id: s.id, label: s.label, title: s.description }))}
+                      value={scope}
+                      onPick={(v) => setDefault({ control: { scope: v } })}
+                    />
+                  </SheetRow>
+                  <SheetRow label="asks">
+                    <Seg
+                      options={CONTROL_APPROVALS.map((a) => ({ id: a.id, label: a.label, title: a.description }))}
+                      value={config.control.approval}
+                      onPick={(v) => setDefault({ control: { approval: v } })}
+                    />
+                  </SheetRow>
+                  <p className="sfoot">
+                    {scope === 'app'
+                      ? `app: ${target ? `${target}, the one` : 'the one'} in front when you pressed the shortcut`
+                      : CONTROL_SCOPES.find((s) => s.id === scope)?.description}
+                  </p>
+                </>
+              ) : (
+                <>
+                  {mode === 'dictate' && (
+                    <SheetRow label="format">
+                      <Seg
+                        options={SHEET_FORMATS.map((s) => ({ id: s.id, label: s.label.toLowerCase(), title: s.description.toLowerCase() }))}
+                        value={config.style}
+                        onPick={(v) => setDefault({ style: v })}
+                      />
+                    </SheetRow>
+                  )}
+                  <SheetRow label="language">
+                    <Chip title="spoken language" onClick={() => setView('spoken')}>
+                      {config.language.input}
+                    </Chip>
+                    <span className="dim">→</span>
+                    <Chip title="write in" onClick={() => setView('output')}>
+                      {config.language.output === 'same' ? 'as spoken' : config.language.output}
+                    </Chip>
+                  </SheetRow>
+                  <SheetRow label="then">
+                    <Seg options={THEN.map((t) => ({ id: t, label: t }))} value={config.output.mode} onPick={(v) => setDefault({ output: { mode: v } })} />
+                  </SheetRow>
+                  {contextRow('context', 'none')}
+                  <p className="sfoot">mode: this recording only · the rest becomes your default</p>
+                </>
+              )}
+            </>
+          )}
         </div>
       )}
     </span>
@@ -315,6 +437,8 @@ export function Overlay() {
 
   const edit = state.purpose === 'edit'
   const compose = state.purpose === 'compose'
+  const ctrl = state.purpose === 'control'
+  const mode: Mode = ctrl ? 'control' : compose ? 'compose' : 'dictate'
   const paused = state.pausedAt !== undefined
   let content
   let tone = ''
@@ -323,14 +447,18 @@ export function Overlay() {
       // Paused, the word takes the meter's place: the pill keeps its width, so the button stays under the pointer.
       content = (
         <>
-          <span className={paused ? 'yellow' : 'red'}>
-            <span className={paused ? undefined : 'blink'}>●</span> rec
+          <span className={paused ? 'yellow' : 'red'} title={paused ? 'paused' : 'recording'}>
+            <span className={paused ? undefined : 'blink'}>●</span>
           </span>
           <span className="hi">{formatTime((state.pausedAt ?? now) - (state.startedAt ?? now))}</span>
           <span className={`levels ${paused ? 'paused' : ''}`}>
             {paused ? 'paused' : levels.map((l, i) => <i key={i} style={{ height: `${((Math.min(STEPS - 1, Math.floor(l * STEPS)) + 1) / STEPS) * 100}%` }} />)}
           </span>
-          {!edit && config && <Choices config={config} compose={compose} clipboard={!!state.clipboard} />}
+          {state.talk ? (
+            <span className="acc">talking to control</span>
+          ) : (
+            !edit && config && <Choices config={config} mode={mode} clipboard={!!state.clipboard} target={state.target} />
+          )}
           <span className="controls">
             {!edit && (
               <button
@@ -364,7 +492,7 @@ export function Overlay() {
       content = (
         <>
           <Spinner />
-          <span>{edit ? 'applying edit' : compose ? 'composing' : 'processing'}</span>
+          <span>{edit ? 'applying edit' : compose ? 'composing' : ctrl ? 'control' : 'processing'}</span>
           {state.message && <span className="dim">· {state.message}</span>}
         </>
       )

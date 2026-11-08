@@ -92,6 +92,25 @@ const api: SpeakApi = {
   recorderNoSignal: (device) => send('recorderNoSignal', device),
   overlayInteractive: (interactive) => send('overlayInteractive', interactive),
   recordingAction: (action) => send('recordingAction', action),
+
+  getControlState: () => invoke('getControlState'),
+  onControl: listen('control'),
+  controlAnswer: (id, decision, message) => send('controlAnswer', id, decision, message),
+  controlPause: () => send('controlPause'),
+  controlResume: () => send('controlResume'),
+  controlStop: () => send('controlStop'),
+  controlRestart: () => send('controlRestart'),
+  controlEnd: () => send('controlEnd'),
+  controlSend: (text) => send('controlSend', text),
+  controlTalk: () => send('controlTalk'),
+  controlUndo: (stepId) => send('controlUndo', stepId),
+  controlGoNow: () => send('controlGoNow'),
+  controlCollapse: (collapsed) => send('controlCollapse', collapsed),
+  controlSetScope: (scope) => send('controlSetScope', scope),
+  controlSetApproval: (approval) => send('controlSetApproval', approval),
+  controlKeyboard: (on) => send('controlKeyboard', on),
+  onControlSay: listen('controlSay'),
+  onFrame: listen('frame'),
   recorderResult: (reqId, samples, error) => send('recorderResult', reqId, samples, error)
 }
 

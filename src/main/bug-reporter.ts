@@ -7,6 +7,7 @@ import { themeShown } from '../themes/shared'
 import { AGENT_NAMES, agentStatus, askAgent } from './ai'
 import { ANALYSIS_PROMPT, analysisMessage, diagnosticsText, dictationsCourse, logTail, parseAnalysis, scrub, titleFrom, type Machine } from './bug-report'
 import { configStore } from './config'
+import { control } from './control'
 import { controller } from './controller'
 import { history } from './history'
 import { hotkeys } from './hotkeys'
@@ -156,6 +157,12 @@ function settings(): string {
     `microphone ${c.audio.deviceId ? 'chosen' : 'default'}`,
     // The kind only: a folder's path or a page's address is the user's business.
     `context ${c.context.recent.find((s) => s.location === c.context.current)?.kind ?? 'none'} (${c.context.recent.length} recent)`,
+    `control ${c.control.scope}, asks ${c.control.approval}, always-ask ${
+      Object.entries(c.control.alwaysAsk)
+        .filter(([, on]) => on)
+        .map(([k]) => k)
+        .join('+') || 'none'
+    }`,
     `history ${onOff(c.history.enabled)}${c.history.keepAudio ? ' with audio' : ''}`,
     `shortcuts ${shortcuts}`,
     `theme ${seasons.current && themeShown(c.ui, seasons.current) ? seasons.current.id : 'none'}`,
@@ -188,7 +195,7 @@ async function diagnostics(req: BugReportRequest): Promise<string> {
     ai,
     settings: settings(),
     permissions: permissions(),
-    pill: `${pillState()}; dictation ${controller.phase}`,
+    pill: `${pillState()}; dictation ${controller.phase}; ${control.summary()}`,
     screen: String(req.screen ?? '').slice(0, 120) || 'unknown',
     errors: windowErrors,
     dictations: dictationsCourse(sessions),

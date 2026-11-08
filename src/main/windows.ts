@@ -9,7 +9,7 @@ import { log } from './log'
 import { bringToFront, restoreMouseInput } from './platform/focus'
 import { isMac, isWin } from './util'
 
-type View = 'overlay' | 'preview' | 'main' | 'loader'
+type View = 'overlay' | 'preview' | 'main' | 'loader' | 'control' | 'frame'
 
 let quitting = false
 app.on('before-quit', () => (quitting = true))
@@ -344,6 +344,163 @@ export function showMain(section?: MainSection): void {
   if (section) mainWindow.webContents.send('speak:navigate', section)
   if (isMac) void app.dock?.show()
   bringToFront(mainWindow)
+}
+
+// ---------------------------------------------------------------- control mode
+
+/** Speak's control windows stay out of screenshots (SPEAK_DEBUG_CAPTURE=1 lets them in, to take pictures of them). */
+const excludeFromCapture = process.env.SPEAK_DEBUG_CAPTURE !== '1'
+
+/**
+ * The control panel: a session's conversation, its approvals and controls. Always on top, never
+ * takes the focus (the AI's typing goes to the app it acts on), and left out of screenshots (the
+ * AI never sees nor clicks it). It sits in the corner of the screen the app it acts on covers least.
+ */
+export let controlPanel: BrowserWindow | null = null
+const PANEL = { width: 540, height: 420, collapsed: 46 }
+let panelCollapsed = false
+
+function panelWindow(): BrowserWindow {
+  if (controlPanel && !controlPanel.isDestroyed()) return controlPanel
+  controlPanel = new BrowserWindow({
+    width: PANEL.width,
+    height: PANEL.height,
+    show: false,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    focusable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    title: 'Speak control',
+    backgroundColor: palette()['--bg'],
+    // Square, like the pill: Windows 11 rounds frameless windows, which cuts the panel's border at the corners.
+    roundedCorners: false,
+    ...(isMac ? { type: 'panel', acceptFirstMouse: true } : {}),
+    webPreferences: webPreferences()
+  })
+  controlPanel.setAlwaysOnTop(true, 'screen-saver')
+  controlPanel.setContentProtection(excludeFromCapture)
+  controlPanel.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  controlPanel.on('close', (e) => {
+    if (!quitting) e.preventDefault()
+  })
+  load(controlPanel, 'control')
+  return controlPanel
+}
+
+/** Physical screen rect → DIPs (Windows); elsewhere they're the same. */
+function toDip(r: { x: number; y: number; w: number; h: number }): Electron.Rectangle {
+  const rect = { x: r.x, y: r.y, width: r.w, height: r.h }
+  return isWin ? screen.screenToDipRect(null, rect) : rect
+}
+
+/** Show the panel, away from `avoid` (the app it acts on, in screen pixels). */
+export function showControlPanel(avoid?: { x: number; y: number; w: number; h: number } | null): void {
+  const win = panelWindow()
+  const height = panelCollapsed ? PANEL.collapsed : PANEL.height
+  if (!win.isVisible()) {
+    const avoidDip = avoid ? toDip(avoid) : null
+    const display = avoidDip ? screen.getDisplayMatching(avoidDip) : cursorDisplay()
+    const { workArea: a } = display
+    const m = 16
+    const corners = [
+      { x: a.x + a.width - PANEL.width - m, y: a.y + a.height - PANEL.height - m },
+      { x: a.x + m, y: a.y + a.height - PANEL.height - m },
+      { x: a.x + a.width - PANEL.width - m, y: a.y + m },
+      { x: a.x + m, y: a.y + m }
+    ]
+    const overlap = (c: { x: number; y: number }) => {
+      if (!avoidDip) return 0
+      const w = Math.max(0, Math.min(c.x + PANEL.width, avoidDip.x + avoidDip.width) - Math.max(c.x, avoidDip.x))
+      const h = Math.max(0, Math.min(c.y + PANEL.height, avoidDip.y + avoidDip.height) - Math.max(c.y, avoidDip.y))
+      return w * h
+    }
+    const best = corners.reduce((b, c) => (overlap(c) < overlap(b) ? c : b), corners[0])
+    win.setBounds({ x: Math.round(best.x), y: Math.round(best.y), width: PANEL.width, height })
+    win.showInactive()
+    restoreMouseInput(win)
+  }
+}
+
+export function hideControlPanel(): void {
+  controlPanel?.hide()
+  hideFrame()
+}
+
+/** Reduce the panel to its title row, or open it again; it keeps its bottom edge. */
+export function setControlCollapsed(collapsed: boolean): void {
+  panelCollapsed = collapsed
+  const win = controlPanel
+  if (!win || win.isDestroyed()) return
+  const b = win.getBounds()
+  const height = collapsed ? PANEL.collapsed : PANEL.height
+  win.setBounds({ x: b.x, y: b.y + b.height - height, width: b.width, height })
+}
+
+/** Let the panel take the keyboard, to type an order into it, or give it back. */
+export function setControlKeyboard(on: boolean): void {
+  if (!controlPanel || controlPanel.isDestroyed()) return
+  controlPanel.setFocusable(on)
+  if (on) bringToFront(controlPanel)
+}
+
+/** Where the panel is, in screen pixels (a click there is the user's, not a hand on the mouse). */
+export function controlPanelRect(): { x: number; y: number; w: number; h: number } | null {
+  if (!controlPanel?.isVisible()) return null
+  const b = isWin ? screen.dipToScreenRect(null, controlPanel.getBounds()) : controlPanel.getBounds()
+  return { x: b.x, y: b.y, w: b.width, h: b.height }
+}
+
+/** The pill is left out of screenshots while a control session runs (it may cover what the AI looks at). */
+export function setOverlayCaptureExcluded(on: boolean): void {
+  if (overlay && !overlay.isDestroyed()) overlay.setContentProtection(on && excludeFromCapture)
+}
+
+/**
+ * A frame around where the AI acts (the app's window, the screen): click-through, above all, not
+ * in screenshots. Its color says whether the AI acts or waits.
+ */
+let frame: BrowserWindow | null = null
+
+export function showFrame(area: { x: number; y: number; w: number; h: number }, tone: 'acting' | 'waiting'): void {
+  if (!frame || frame.isDestroyed()) {
+    frame = new BrowserWindow({
+      show: false,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      focusable: false,
+      skipTaskbar: true,
+      hasShadow: false,
+      alwaysOnTop: true,
+      roundedCorners: false,
+      webPreferences: webPreferences()
+    })
+    frame.setAlwaysOnTop(true, 'screen-saver')
+    frame.setIgnoreMouseEvents(true)
+    frame.setContentProtection(excludeFromCapture)
+    frame.on('close', (e) => {
+      if (!quitting) e.preventDefault()
+    })
+    load(frame, 'frame')
+  }
+  // Around a window, just outside it; around a button or a field, with room to see it.
+  const pad = area.w < 400 && area.h < 200 ? 6 : 3
+  const b = toDip({ x: area.x - pad, y: area.y - pad, w: area.w + pad * 2, h: area.h + pad * 2 })
+  frame.setBounds(b)
+  frame.webContents.send('speak:frame', tone)
+  if (!frame.isVisible()) frame.showInactive()
+}
+
+export function hideFrame(): void {
+  frame?.hide()
 }
 
 /** Send an event to every renderer. */

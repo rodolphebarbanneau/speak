@@ -7,6 +7,7 @@ import { aiConfigured, editText, NothingToWrite, processTranscript, type AiConte
 import { cleanTranscript, decodeWav, encodeWav, prepareAudio } from './audio'
 import { configStore } from './config'
 import { CLIPBOARD, contextFor, currentSource, MAX_CONTEXT_CHARS, parseSource, selectSource, useSource, warm, type ReadContext } from './context'
+import { control } from './control'
 import { history, newSessionId } from './history'
 import { hotkeys, type RecordAction } from './hotkeys'
 import { log } from './log'
@@ -28,7 +29,8 @@ import {
   showPreview
 } from './windows'
 
-type Purpose = 'dictation' | 'edit'
+/** control: an order for control mode (a new session, or the one under way). */
+type Purpose = 'dictation' | 'edit' | 'control'
 
 const MIN_SPEECH_MS = 250
 /** Real microphones always have a noise floor; a peak this low means digital silence. */
@@ -95,8 +97,15 @@ class Controller extends EventEmitter {
   // ---------------------------------------------------------------- hotkeys
 
   onShortcutPress(action: RecordAction = 'dictate'): void {
-    if (this.phase === 'idle') void this.startRecording(previewVisible() && this.current ? 'edit' : 'dictation', action === 'compose')
-    else if (this.phase === 'recording') void this.stopRecording()
+    if (this.phase === 'idle') {
+      // While a control session runs, every shortcut talks to it.
+      if (control.active) return void this.startRecording('control')
+      if (action === 'control') {
+        control.noteTarget()
+        return void this.startRecording('control')
+      }
+      void this.startRecording(previewVisible() && this.current ? 'edit' : 'dictation', action === 'compose')
+    } else if (this.phase === 'recording') void this.stopRecording()
     else this.flash({ phase: 'info', message: 'Still working on the previous dictation…' })
   }
 
@@ -116,16 +125,24 @@ class Controller extends EventEmitter {
     if (action === 'finish') void this.stopRecording()
     else if (action === 'cancel') this.cancel()
     else if (action === 'pause' || action === 'resume') this.setPaused(action === 'pause')
-    else if (this.purpose === 'dictation') {
-      this.compose = action === 'compose'
+    // The mode of a new recording (not one said to a control session under way).
+    else if (this.purpose === 'dictation' || (this.purpose === 'control' && !control.active)) {
+      if (action === 'control') {
+        if (this.purpose === 'dictation') control.noteTarget()
+        this.purpose = 'control'
+        this.compose = false
+      } else {
+        this.purpose = 'dictation'
+        this.compose = action === 'compose'
+      }
       this.overlayState(this.recordingState())
       this.emit('phase', this.phase) // refresh tray
     }
   }
 
   /** The recording in progress (for the tray): paused or not, and what it's for. */
-  get recording(): { paused: boolean; purpose: OverlayState['purpose']; clipboard: boolean } | null {
-    return this.phase === 'recording' ? { paused: !!this.pausedAt, purpose: this.overlayPurpose, clipboard: this.useClipboard } : null
+  get recording(): { paused: boolean; purpose: OverlayState['purpose']; clipboard: boolean; talk: boolean } | null {
+    return this.phase === 'recording' ? { paused: !!this.pausedAt, purpose: this.overlayPurpose, clipboard: this.useClipboard, talk: this.talk } : null
   }
 
   /**
@@ -168,19 +185,27 @@ class Controller extends EventEmitter {
     return this.compose ? 'compose' : this.purpose
   }
 
+  /** Recording something for the control session under way. */
+  private get talk(): boolean {
+    return this.purpose === 'control' && control.active
+  }
+
   private recordingState(): OverlayState {
     return {
       phase: 'recording',
       purpose: this.overlayPurpose,
       startedAt: this.recordStartedAt + this.pausedMs,
       pausedAt: this.pausedAt || undefined,
-      clipboard: this.useClipboard || undefined
+      clipboard: this.useClipboard || undefined,
+      talk: this.talk || undefined,
+      target: (this.purpose === 'control' && !control.active && control.targetLabel()) || undefined
     }
   }
 
   private setPhase(phase: Phase): void {
     this.phase = phase
     hotkeys.setCancelActive(phase !== 'idle')
+    control.setListening(phase === 'recording' && this.purpose === 'control')
     // The recording ended (finished, cancelled) while an address was being typed into the pill.
     if (phase !== 'recording' && this.typing) void this.contextKeyboard(false)
     this.emit('phase', phase)
@@ -369,6 +394,14 @@ class Controller extends EventEmitter {
       }
 
       if (purpose === 'edit') return await this.applyVoiceEdit(transcript, abort.signal)
+      // Control mode: an order, for the session under way or a new one. The panel takes it from here.
+      if (purpose === 'control') {
+        this.setPhase('idle')
+        this.overlayState({ phase: 'idle' })
+        if (control.active) control.receive(transcript)
+        else void control.start(transcript)
+        return
+      }
 
       const now = new Date().toISOString()
       const session: Session = {

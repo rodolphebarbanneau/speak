@@ -1,8 +1,9 @@
 import { app, Menu, nativeImage, nativeTheme, shell, Tray } from 'electron'
-import { DICTATION_STYLES, LANGUAGES, languageName, spokenLanguages, STYLES } from '../shared/constants'
+import { CONTROL_APPROVALS, CONTROL_SCOPES, FORMATS, LANGUAGES, languageName, spokenLanguages } from '../shared/constants'
 import type { OutputMode, Phase } from '../shared/types'
 import { configStore } from './config'
 import { currentSource, recentSources } from './context'
+import { control } from './control'
 import { controller } from './controller'
 import { paths, resource } from './paths'
 import { copyToClipboard } from './platform/paste'
@@ -11,6 +12,7 @@ import { updater } from './updater'
 import { showMain } from './windows'
 
 let tray: Tray | null = null
+let lastControl = ''
 
 function icon(recording: boolean): Electron.NativeImage {
   if (isMac) {
@@ -59,41 +61,87 @@ function actions(phase: Phase): Item[] {
       { label: 'Cancel', accelerator: prettyShortcut(shortcuts.cancel), click: () => controller.cancel() }
     ]
   }
+  // A control session: talk to it, or end it.
+  if (control.active) {
+    return [
+      { label: 'Talk to control', accelerator: prettyShortcut(shortcuts.control || shortcuts.record), click: () => controller.toggle('control') },
+      { label: 'Stop what it does', click: () => control.stop() },
+      { label: 'End control', click: () => void control.end() }
+    ]
+  }
   return [
     { label: 'Start dictation', accelerator: prettyShortcut(shortcuts.record), click: () => controller.toggle() },
-    { label: 'Start composing', accelerator: prettyShortcut(shortcuts.compose), click: () => controller.toggle('compose') }
+    { label: 'Start composing', accelerator: prettyShortcut(shortcuts.compose), click: () => controller.toggle('compose') },
+    { label: 'Start control', accelerator: prettyShortcut(shortcuts.control), click: () => controller.toggle('control') }
   ]
 }
 
+/** Control mode's defaults (and the session's, while one runs). */
+function controlChoices(): Item {
+  const cfg = configStore.get().control
+  const active = control.active
+  const scope = active ? control.state.scope : cfg.scope
+  const approval = active ? control.state.approval : cfg.approval
+  const scopeLabel = CONTROL_SCOPES.find((s) => s.id === scope)?.label ?? scope
+  const approvalLabel = CONTROL_APPROVALS.find((a) => a.id === approval)?.label ?? approval
+  return {
+    label: `Control: ${scopeLabel}, asks ${approvalLabel}`,
+    submenu: [
+      { label: 'Scope', enabled: false },
+      ...choose(
+        scope,
+        CONTROL_SCOPES.map((s) => [s.id, s.label]),
+        (v) => (active ? control.setScope(v) : configStore.update({ control: { scope: v } }))
+      ),
+      { type: 'separator' },
+      { label: 'Asks first', enabled: false },
+      ...choose(
+        approval,
+        CONTROL_APPROVALS.map((a) => [a.id, a.label]),
+        (v) => (active ? control.setApproval(v) : configStore.update({ control: { approval: v } }))
+      ),
+      { type: 'separator' },
+      { label: 'Control settings…', click: () => showMain('control') }
+    ]
+  }
+}
+
 /**
- * The pill's choices: a style, language or mode becomes the default and applies to the recording
- * in progress. While recording a dictation, compose switches only that recording.
+ * The pill's choices: a format, language or output becomes the default and applies to the recording
+ * in progress. While recording, the mode (dictate, compose, control) switches only that recording.
  */
 function choices(): Item[] {
   const cfg = configStore.get()
   const recording = controller.recording
   const compose = recording?.purpose === 'compose'
-  const style = compose ? 'Compose' : STYLES.find((s) => s.id === cfg.style)?.label
+  const format = FORMATS.find((s) => s.id === cfg.style)?.label
   const spoken = ['auto', ...spokenLanguages(cfg.transcription.engine).map((l) => l.code)]
   // A language the engine doesn't list stays visible, so the current choice is never hidden.
   if (!spoken.includes(cfg.language.input)) spoken.push(cfg.language.input)
   return [
+    ...(recording && recording.purpose !== 'edit' && !recording.talk
+      ? [
+          {
+            label: `Mode: ${recording.purpose === 'control' ? 'Control' : compose ? 'Compose' : 'Dictate'}`,
+            submenu: [
+              { label: 'Dictate', type: 'radio', checked: recording.purpose === 'dictation', click: () => controller.recordingAction('dictate') },
+              { label: 'Compose', type: 'radio', checked: compose, click: () => controller.recordingAction('compose') },
+              { label: 'Control', type: 'radio', checked: recording.purpose === 'control', click: () => controller.recordingAction('control') }
+            ]
+          } as Item
+        ]
+      : []),
     {
-      label: `Style: ${style}`,
-      submenu: [
-        ...DICTATION_STYLES.map<Item>((s) => ({
-          label: s.label,
-          type: 'radio',
-          checked: !compose && cfg.style === s.id,
-          click: () => {
-            configStore.update({ style: s.id })
-            if (compose) controller.recordingAction('dictate')
-          }
-        })),
-        ...(recording && recording.purpose !== 'edit'
-          ? [{ label: 'Compose (this recording)', type: 'radio', checked: compose, click: () => controller.recordingAction('compose') } as Item]
-          : [])
-      ]
+      label: `Format: ${format}`,
+      submenu: FORMATS.map<Item>((s) => ({
+        label: s.label,
+        type: 'radio',
+        checked: cfg.style === s.id,
+        click: () => {
+          configStore.update({ style: s.id })
+          if (compose) controller.recordingAction('dictate')
+        }
+      }))
     },
     {
       label: `Spoken language: ${languageName(cfg.language.input)}`,
@@ -122,7 +170,8 @@ function choices(): Item[] {
         (mode) => configStore.update({ output: { mode } })
       )
     },
-    context()
+    context(),
+    controlChoices()
   ]
 }
 
@@ -198,6 +247,14 @@ export function createTray(): Tray {
   }
   refresh()
   controller.on('phase', refresh)
+  control.on('change', () => {
+    // The tray follows the session's scope, approval and whether it runs, not every step.
+    const key = `${control.active}|${control.state.scope}|${control.state.approval}`
+    if (key !== lastControl) {
+      lastControl = key
+      refresh()
+    }
+  })
   configStore.on('change', refresh)
   nativeTheme.on('updated', refresh)
   updater.on('change', refresh)

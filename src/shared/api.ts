@@ -9,6 +9,9 @@ import type {
   ClipboardInfo,
   Config,
   ContextSource,
+  ControlApproval,
+  ControlScope,
+  ControlState,
   DeepPartial,
   DownloadProgress,
   EngineStatus,
@@ -143,6 +146,35 @@ export interface SpeakApi {
   recorderResult(reqId: number, samples: Float32Array | null, error?: string): void
   /** The pointer is over the pill: catch clicks there instead of passing them through. */
   overlayInteractive(interactive: boolean): void
-  /** Pill buttons: finish (process), cancel or pause the recording, or switch it to compose or dictation. */
+  /** Pill buttons: finish (process), cancel or pause the recording, or switch its mode (dictate, compose, control). */
   recordingAction(action: RecordingAction): void
+
+  // Control mode (the panel)
+  getControlState(): Promise<ControlState>
+  onControl(cb: (s: ControlState) => void): () => void
+  /** Answer what it waits for: yes, always (this kind of action, this session), or no (with what to do instead). */
+  controlAnswer(id: string, decision: 'yes' | 'always' | 'no', message?: string): void
+  controlPause(): void
+  controlResume(): void
+  /** Interrupt what it does; the session stays for the next order. */
+  controlStop(): void
+  /** Stop, then give it the last order again. */
+  controlRestart(): void
+  controlEnd(): void
+  /** An order typed in the panel. */
+  controlSend(text: string): void
+  /** Start or stop speaking to it (like the shortcut). */
+  controlTalk(): void
+  controlUndo(stepId: string): void
+  /** It waits for your hands to be still: go now. */
+  controlGoNow(): void
+  controlCollapse(collapsed: boolean): void
+  controlSetScope(scope: ControlScope): void
+  controlSetApproval(approval: ControlApproval): void
+  /** The panel takes the keyboard to type an order, or gives it back. */
+  controlKeyboard(on: boolean): void
+  /** Something to read aloud (answers, questions), when that's on. */
+  onControlSay(cb: (text: string) => void): () => void
+  /** The frame around where it acts: acting or waiting. */
+  onFrame(cb: (tone: 'acting' | 'waiting') => void): () => void
 }

@@ -4,6 +4,7 @@ import type { Config } from '../shared/types'
 import { themeShown } from '../themes/shared'
 import { decodeWav } from './audio'
 import { configStore } from './config'
+import { control } from './control'
 import { controller } from './controller'
 import { history } from './history'
 import { hotkeys, type RecordAction } from './hotkeys'
@@ -27,13 +28,25 @@ import { applyChrome, broadcast, createOverlay, createPreview, showMain } from '
  *   --show                                    open the main window
  *   --hidden                                  start in the tray (used by launch-at-login)
  *   --file=<audio.wav>                        run the pipeline on a WAV file (debugging)
+ *   --control                                 start control (an order by voice), or talk to the session under way
+ *   --order=<text>                            give control a typed order: a new session on the app in front, or the one under way
+ *   --app=<title>                             with --order: the app of the window whose title contains this, instead of the one in front
  */
 function handleArgs(argv: string[]): void {
   const has = (flag: string) => argv.includes(flag)
   // Chromium reorders forwarded arguments, so values must use the --flag=value form.
   const file = argv.find((a) => a.startsWith('--file='))?.slice('--file='.length)
-  if (has('--toggle')) controller.toggle()
+  const order = argv.find((a) => a.startsWith('--order='))?.slice('--order='.length)
+  const appTitle = argv.find((a) => a.startsWith('--app='))?.slice('--app='.length)
+  if (order) {
+    if (control.active) control.receive(order)
+    else {
+      if (!appTitle || !control.noteTargetByTitle(appTitle)) control.noteTarget()
+      void control.start(order)
+    }
+  } else if (has('--toggle')) controller.toggle()
   else if (has('--compose') && !file) controller.toggle('compose')
+  else if (has('--control')) controller.toggle('control')
   else if (has('--start') && controller.phase === 'idle') controller.toggle()
   else if (has('--stop') && controller.phase === 'recording') controller.toggle()
   else if (has('--cancel')) controller.cancel()

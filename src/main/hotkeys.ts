@@ -1,11 +1,13 @@
 import { EventEmitter } from 'node:events'
 import { globalShortcut } from 'electron'
-import type { Config } from '../shared/types'
+import type { Config, Mode } from '../shared/types'
 import { log } from './log'
 import { keyboardHookAvailable, keycodeFor, modifierKeycodes, onKeyRelease } from './platform/keyboard'
 
-/** The two ways to record: plain dictation, or a brief the AI composes from. */
-export type RecordAction = 'dictate' | 'compose'
+/** The ways to record: plain dictation, a brief the AI composes from, or an order it carries out. */
+export type RecordAction = Mode
+
+const NAMES: Record<RecordAction, string> = { dictate: 'dictation', compose: 'compose', control: 'control' }
 
 /** uiohook keycodes of an accelerator's keys, to notice when the combination is released. */
 function comboCodes(accelerator: string): Set<number> {
@@ -23,12 +25,12 @@ function comboCodes(accelerator: string): Set<number> {
 
 /**
  * Global shortcuts. Emits:
- *  - 'press' (action)    dictate or compose shortcut pressed
+ *  - 'press' (action)    dictate, compose or control shortcut pressed
  *  - 'release' (heldMs)  that shortcut released (only when the keyboard hook is available)
  *  - 'cancel'            cancel shortcut pressed (only registered while active)
  */
 class Hotkeys extends EventEmitter {
-  private shortcuts: Record<RecordAction, string> = { dictate: '', compose: '' }
+  private shortcuts: Record<RecordAction, string> = { dictate: '', compose: '', control: '' }
   private cancel = ''
   private cancelActive = false
   private suspended = false
@@ -49,7 +51,7 @@ class Hotkeys extends EventEmitter {
   }
 
   apply(shortcuts: Config['shortcuts']): string | undefined {
-    this.shortcuts = { dictate: shortcuts.record, compose: shortcuts.compose }
+    this.shortcuts = { dictate: shortcuts.record, compose: shortcuts.compose, control: shortcuts.control }
     this.cancel = shortcuts.cancel
     this.registerAll()
     return this.error
@@ -60,19 +62,21 @@ class Hotkeys extends EventEmitter {
     this.error = undefined
     if (this.suspended) return
     const errors: string[] = []
-    for (const action of ['dictate', 'compose'] as const) {
+    const actions = ['dictate', 'compose', 'control'] as const
+    for (const action of actions) {
       const accelerator = this.shortcuts[action]
       if (!accelerator) continue
-      if (action === 'compose' && accelerator === this.shortcuts.dictate) {
-        errors.push('The compose shortcut is the same as the dictation shortcut.')
+      const same = actions.find((other) => other !== action && this.shortcuts[other] === accelerator)
+      if (same && actions.indexOf(same) < actions.indexOf(action)) {
+        errors.push(`The ${NAMES[action]} shortcut is the same as the ${NAMES[same]} shortcut.`)
         continue
       }
       try {
         if (!globalShortcut.register(accelerator, () => this.onPress(action))) {
-          errors.push(`The ${action === 'dictate' ? 'dictation' : 'compose'} shortcut ${accelerator} is already used by another application.`)
+          errors.push(`The ${NAMES[action]} shortcut ${accelerator} is already used by another application.`)
         }
       } catch {
-        errors.push(`Invalid ${action === 'dictate' ? 'dictation' : 'compose'} shortcut: ${accelerator}`)
+        errors.push(`Invalid ${NAMES[action]} shortcut: ${accelerator}`)
       }
     }
     this.error = errors.join(' ') || undefined

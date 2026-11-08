@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { DICTATION_STYLES, STYLES } from '@shared/constants'
+import { FORMATS } from '@shared/constants'
 import type { AgentStatus, Config, DeepPartial, EngineStatus, MainSection, PasteKeys, PermissionStatus, RecordMode, Style } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
 import { Action, Bar, Check, displayShortcut, formatSize, List, ListRow, Row, Sep, ShortcutInput, TextInput } from '../components/ui'
@@ -18,7 +18,7 @@ interface Props {
   onNavigate: (s: MainSection) => void
 }
 
-const styleOptions = DICTATION_STYLES.map((s) => ({ value: s.id, label: s.label.toLowerCase() }))
+const formatOptions = FORMATS.map((s) => ({ value: s.id, label: s.label.toLowerCase() }))
 
 function Setup({ config, update, onNavigate, micVerdict }: Props & { micVerdict: TestVerdict | null }) {
   const [engine, setEngine] = useState<EngineStatus | null>(null)
@@ -139,7 +139,7 @@ export function General(props: Props) {
   useEffect(() => {
     void api.getPermissions().then(setPerm)
     void api.getInfo().then((i) => setShortcutError(i.shortcutError))
-  }, [config.shortcuts.record, config.shortcuts.compose])
+  }, [config.shortcuts.record, config.shortcuts.compose, config.shortcuts.control])
 
   return (
     <>
@@ -157,11 +157,17 @@ export function General(props: Props) {
       </section>
 
       <section>
-        <Sep>shortcut</Sep>
-        <Row label="dictation" hint="global shortcut, works in any application · click, then press the keys">
+        <Sep>shortcuts</Sep>
+        <Row label="dictate" hint="writes what you say, where your cursor is · works in any application · click, then press the keys">
           <ShortcutInput value={config.shortcuts.record} onChange={(v) => update({ shortcuts: { record: v } })} />
         </Row>
-        {shortcutError && !/compose/.test(shortcutError) && <p className="line error">✗ {shortcutError}</p>}
+        <Row label="compose" hint="say what to write: the ai writes the email, message or text you ask for">
+          <ShortcutInput value={config.shortcuts.compose} onChange={(v) => update({ shortcuts: { compose: v } })} />
+        </Row>
+        <Row label="control" hint="say what to do: the ai does it on the computer · see settings → control">
+          <ShortcutInput value={config.shortcuts.control} onChange={(v) => update({ shortcuts: { control: v } })} />
+        </Row>
+        {shortcutError && <p className="line error">✗ {shortcutError}</p>}
         <Row
           label="record"
           hint={
@@ -186,16 +192,11 @@ export function General(props: Props) {
       </section>
 
       <section>
-        <Sep>compose</Sep>
-        <Row label="shortcut" hint="say what to write and give the context: the ai writes the email, message or text you ask for · click, then press the keys">
-          <ShortcutInput value={config.shortcuts.compose} onChange={(v) => update({ shortcuts: { compose: v } })} />
+        <Sep>dictate · compose</Sep>
+        <Row label="format" hint={`dictate: ${FORMATS.find((s) => s.id === config.style)?.description.toLowerCase()}`}>
+          <Dropdown<Style> value={config.style} onChange={(v) => update({ style: v })} options={formatOptions} />
         </Row>
-        {shortcutError && /compose/.test(shortcutError) && <p className="line error">✗ {shortcutError}</p>}
-      </section>
-
-      <section>
-        <Sep>output</Sep>
-        <Row label="after dictation" hint="preview: check, edit by voice, copy or insert · paste: insert immediately">
+        <Row label="then" hint="preview: check, edit by voice, copy or insert · paste: insert immediately">
           <Dropdown
             value={config.output.mode}
             onChange={(v) => update({ output: { mode: v } })}
@@ -214,9 +215,6 @@ export function General(props: Props) {
         </Row>
         <Row label="output" hint="translate what you say into another language">
           <Dropdown value={config.language.output} onChange={(v) => update({ language: { output: v } })} options={outputOptions} />
-        </Row>
-        <Row label="style" hint={STYLES.find((s) => s.id === config.style)?.description.toLowerCase()}>
-          <Dropdown<Style> value={config.style} onChange={(v) => update({ style: v })} options={styleOptions} />
         </Row>
         <Row block label="vocabulary" hint="names and technical terms you use, one per line or comma separated · improves recognition and spelling">
           <TextInput

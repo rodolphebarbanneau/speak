@@ -83,6 +83,24 @@ export async function codexModels(): Promise<AgentModel[]> {
   return CODEX_MODELS
 }
 
+/** How to start this Codex for a session of its own (control mode). */
+export function codexLaunch(cfg: AgentConfig): { path: string; env: NodeJS.ProcessEnv } {
+  const path = cliPath(cfg)
+  if (!path) throw new Error('Codex not found. Install it or pick another provider in Speak → settings → ai.')
+  return { path, env: env(cfg) }
+}
+
+/**
+ * The MCP servers of the user's own Codex config (their names only): a control session turns them
+ * off, so that the only tools acting on the computer are Speak's, which keep to the scope.
+ */
+export async function codexUserMcpServers(): Promise<string[]> {
+  const toml = await readFile(join(codexHome(), 'config.toml'), 'utf8').catch(() => '')
+  const names = new Set<string>()
+  for (const m of toml.matchAll(/^\s*\[mcp_servers\.(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))\]\s*$/gm)) names.add(m[1] ?? m[2] ?? m[3])
+  return [...names]
+}
+
 export async function codexComplete(system: string, user: string, cfg: AgentConfig, opts: CompleteOptions): Promise<Completion> {
   const path = cliPath(cfg)
   if (!path) throw new Error('Codex not found. Install it or pick another provider in Speak → settings → ai.')

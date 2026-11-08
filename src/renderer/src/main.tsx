@@ -3,6 +3,7 @@ import '@fontsource-variable/jetbrains-mono'
 import { initThemes } from '@themes/index'
 import { App } from './app/app'
 import { Boundary } from './components/ui'
+import { ControlFrame, ControlPanel } from './control/panel'
 import { watchErrors } from './lib/errors'
 import { Loader } from './loader/loader'
 import { Overlay } from './overlay/overlay'
@@ -12,7 +13,7 @@ import './styles.css'
 const view = location.hash.slice(1) || 'main'
 document.documentElement.dataset.view = view
 document.documentElement.dataset.platform = window.speak.platform
-document.title = view === 'preview' ? 'Speak — Preview' : view === 'overlay' ? 'Speak overlay' : 'Speak'
+document.title = view === 'preview' ? 'Speak — Preview' : view === 'overlay' ? 'Speak overlay' : view === 'control' ? 'Speak control' : 'Speak'
 initThemes(view)
 watchErrors(view)
 
@@ -27,6 +28,12 @@ root.render(
     <Preview />
   ) : view === 'loader' ? (
     <Loader />
+  ) : view === 'control' ? (
+    <Boundary label="control panel" retry>
+      <ControlPanel />
+    </Boundary>
+  ) : view === 'frame' ? (
+    <ControlFrame />
   ) : (
     <App />
   )

@@ -108,7 +108,26 @@ export function About({ config, update }: { config: Config; update: (patch: Deep
           <span className="dim">one dictation only · pick it on the pill</span>
         </Row>
         <Row label="read-only">
-          <span className="dim">nothing is ever changed · repositories and pages are copied to ~/.speak/context</span>
+          <span className="dim">dictate and compose never change anything · repositories and pages are copied to ~/.speak/context</span>
+        </Row>
+      </section>
+
+      <section>
+        <Sep>control</Sep>
+        <Row label="scope">
+          <span className="dim">an app, the screen or everything · speak refuses anything beyond it</span>
+        </Row>
+        <Row label="approvals">
+          <span className="dim">answer by voice or in the panel: yes, always, no, or say what to do instead</span>
+        </Row>
+        <Row label="your hands">
+          <span className="dim">it works in the background when it can · what needs your mouse or keyboard waits until you pause, then gives them back</span>
+        </Row>
+        <Row label="undo">
+          <span className="dim">files it moves, writes or trashes · its trash is ~/.speak/control</span>
+        </Row>
+        <Row label="privacy">
+          <span className="dim">what it looks at goes to your ai provider: an app scope sends one app</span>
         </Row>
       </section>
 
@@ -119,6 +138,9 @@ export function About({ config, update }: { config: Config; update: (patch: Deep
         </Row>
         <Row label="--compose">
           <span className="dim">start / stop a compose dictation</span>
+        </Row>
+        <Row label="--control">
+          <span className="dim">start control, or talk to the session under way</span>
         </Row>
         <Row label="--cancel">
           <span className="dim">cancel the current dictation</span>

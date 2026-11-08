@@ -1,11 +1,24 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, systemPreferences } from 'electron'
 import type { BugReportRequest } from '../shared/bug-report'
 import { RELEASES_URL } from '../shared/constants'
-import type { AgentId, BinaryVariant, ClipboardInfo, Config, DeepPartial, MainSection, PermissionStatus, RecordingAction, Style } from '../shared/types'
+import type {
+  AgentId,
+  BinaryVariant,
+  ClipboardInfo,
+  Config,
+  ControlApproval,
+  ControlScope,
+  DeepPartial,
+  MainSection,
+  PermissionStatus,
+  RecordingAction,
+  Style
+} from '../shared/types'
 import { agentLogin, agentModels, agentStatus, testAi } from './ai'
 import { cancelBugReport, noteWindowError, prepareBugReport } from './bug-reporter'
 import { configStore } from './config'
 import { addSource, parseSource, removeSource } from './context'
+import { control } from './control'
 import { controller } from './controller'
 import { downloads } from './download'
 import { history } from './history'
@@ -157,6 +170,23 @@ export function registerIpc(): void {
   on('overlayInteractive', (interactive: boolean) => setOverlayInteractive(interactive))
   on('recordingAction', (action: RecordingAction) => controller.recordingAction(action))
   on('recorderResult', (reqId: number, samples: Float32Array | null, error?: string) => controller.recorderResult(reqId, samples, error))
+
+  // Control mode
+  handle('getControlState', () => control.state)
+  on('controlAnswer', (id: string, decision: 'yes' | 'always' | 'no', message?: string) => control.answer(id, decision, message))
+  on('controlPause', () => control.pause())
+  on('controlResume', () => control.resume())
+  on('controlStop', () => control.stop())
+  on('controlRestart', () => control.restart())
+  on('controlEnd', () => void control.end())
+  on('controlSend', (text: string) => control.receive(text))
+  on('controlTalk', () => controller.toggle('control'))
+  on('controlUndo', (stepId: string) => void control.undo(stepId))
+  on('controlGoNow', () => control.goNow())
+  on('controlCollapse', (collapsed: boolean) => control.collapse(collapsed))
+  on('controlSetScope', (scope: ControlScope) => control.setScope(scope))
+  on('controlSetApproval', (approval: ControlApproval) => control.setApproval(approval))
+  on('controlKeyboard', (on: boolean) => control.keyboard(on))
 
   // Push events
   downloads.on('progress', (p) => broadcast('download', p))
