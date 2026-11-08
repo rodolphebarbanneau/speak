@@ -20,6 +20,7 @@
     "src/preload/**/*",
     "src/shared/**/*",
     "src/themes/shared.ts",
+    "src/themes/calendar.ts",
     "src/themes/schedule.ts",
     "src/themes/*/palette.ts"
   ]

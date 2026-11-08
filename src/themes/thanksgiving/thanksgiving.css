@@ -1,0 +1,114 @@
+/* Thanksgiving: the turkey logo, and the recording pill as a harvest table a turkey walks along. */
+
+.thanksgiving-turkey {
+  display: inline-flex;
+  filter: drop-shadow(0 0 2px rgba(212, 72, 108, 0.3));
+}
+/* At rest it blinks now and then; showing off, it's the other drawing. */
+.thanksgiving-turkey .showing,
+.thanksgiving-turkey.proud .calm {
+  display: none;
+}
+.thanksgiving-turkey.proud .showing {
+  display: inline;
+}
+.thanksgiving-turkey .lid {
+  opacity: 0;
+  animation: thanksgiving-blink 4.3s steps(1) infinite;
+}
+/* Showing off: it puffs up from its feet, and its wattle wobbles as it gobbles. */
+.thanksgiving-turkey.proud .showing {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: thanksgiving-puff 0.35s ease-out;
+}
+.thanksgiving-turkey .wattle,
+.thanksgiving-walker .wattle {
+  animation: thanksgiving-wobble 0.18s steps(1) infinite;
+}
+@keyframes thanksgiving-blink {
+  0%,
+  94% {
+    opacity: 0;
+  }
+  96%,
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes thanksgiving-puff {
+  from {
+    transform: scale(0.9);
+  }
+}
+@keyframes thanksgiving-wobble {
+  50% {
+    transform: translateY(1px);
+  }
+}
+
+/* The meter in harvest gold, under the cranberry border. */
+html[data-theme='thanksgiving'] .osd .levels:not(.paused) {
+  color: var(--yellow);
+}
+
+/* The turkey on the table: one drawing shown at a time, mirrored going left. Outlined, for light windows. */
+.thanksgiving-walker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  filter: drop-shadow(0 0 1px rgba(22, 17, 16, 0.85));
+  will-change: transform;
+}
+.thanksgiving-walker.left svg {
+  transform: scaleX(-1);
+}
+.thanksgiving-walker .frame {
+  display: none;
+}
+.thanksgiving-walker[data-frame='step'] .step,
+.thanksgiving-walker[data-frame='stride'] .stride,
+.thanksgiving-walker[data-frame='peck'] .peck,
+.thanksgiving-walker[data-frame='proud'] .proud {
+  display: inline;
+}
+
+/* Wheat at the ends of the table, swaying from its foot, each at its own pace. */
+.thanksgiving-sheaf {
+  position: absolute;
+  transform-origin: 50% 100%;
+  filter: drop-shadow(0 0 1px rgba(22, 17, 16, 0.85));
+  animation: thanksgiving-sway 3.4s ease-in-out infinite alternate;
+}
+.thanksgiving-sheaf.right {
+  animation-duration: 4.1s;
+  animation-delay: -1.7s;
+}
+@keyframes thanksgiving-sway {
+  from {
+    transform: rotate(-4deg);
+  }
+  to {
+    transform: rotate(4deg);
+  }
+}
+
+/* A kernel, eaten: gone in a peck. */
+.thanksgiving-kernel {
+  position: absolute;
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
+}
+.thanksgiving-kernel.eaten {
+  opacity: 0;
+  transform: scale(0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thanksgiving-turkey .lid,
+  .thanksgiving-turkey .wattle,
+  .thanksgiving-turkey.proud .showing {
+    animation: none;
+  }
+}

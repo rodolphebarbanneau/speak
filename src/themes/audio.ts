@@ -108,6 +108,20 @@ export const TINE: Partials = [
   [3, 0.12],
   [4.16, 0.06]
 ]
+/** A handbell: its strong twelfth (an octave and a fifth over the note), and little else. */
+export const HANDBELL: Partials = [
+  [1, 1],
+  [3, 0.42],
+  [2, 0.08],
+  [5.4, 0.1]
+]
+/** A crystal glass, rung: a pure note with faint overtones above it (a glass's, not harmonic). */
+export const GLASS: Partials = [
+  [1, 1],
+  [2.32, 0.22],
+  [4.25, 0.07],
+  [6.63, 0.025]
+]
 /** A church bell: hum, prime, minor third, fifth, octave and above (not harmonic). */
 export const BELL: Partials = [
   [0.5, 0.5],
@@ -218,6 +232,55 @@ export function noise(delay: number, length: number, freq: number, q: number, le
   env.gain.exponentialRampToValueAtTime(0.0001, at + length)
   src.connect(band).connect(env).connect(out)
   src.start(at)
+}
+
+/**
+ * A warbling voice, a turkey's gobble: a reedy tone shaken fast in pitch and loudness (`rate`
+ * times a second), its pitch falling by `fall` (0.7: to 70%) as it goes.
+ */
+export function warble(freq: number, delay: number, length: number, level = 0.05, rate = 17, fall = 0.7): void {
+  const g = graph()
+  if (!g) return
+  const { c, out } = g
+  const at = c.currentTime + delay
+  const end = at + length
+  const voice = c.createOscillator()
+  voice.type = 'sawtooth'
+  voice.frequency.setValueAtTime(freq, at)
+  voice.frequency.exponentialRampToValueAtTime(freq * fall, end)
+  const shake = c.createOscillator()
+  shake.frequency.value = rate
+  const pitch = c.createGain()
+  pitch.gain.value = freq * 0.16
+  shake.connect(pitch).connect(voice.frequency)
+  // Loudness pulses with the shake: "gobble-obble-obble".
+  const pulse = c.createGain()
+  pulse.gain.value = 0.55
+  const depth = c.createGain()
+  depth.gain.value = 0.45
+  shake.connect(depth).connect(pulse.gain)
+  const throat = c.createBiquadFilter()
+  throat.type = 'bandpass'
+  throat.frequency.value = freq * 2.4
+  throat.Q.value = 1.4
+  const env = c.createGain()
+  env.gain.setValueAtTime(0, at)
+  env.gain.linearRampToValueAtTime(level, at + 0.02)
+  env.gain.setValueAtTime(level, at + length * 0.6)
+  env.gain.exponentialRampToValueAtTime(0.0001, end)
+  voice.connect(throat).connect(pulse).connect(env).connect(out)
+  voice.start(at)
+  shake.start(at)
+  voice.stop(end + 0.05)
+  shake.stop(end + 0.05)
+}
+
+/** A note's frequency, `shift` semitones up: "A4" is 440 Hz; "Bb3", "F#5". */
+export function hz(note: string, shift = 0): number {
+  const m = /^([A-G])(#|b)?(\d)$/.exec(note)
+  if (!m) throw new Error(`Not a note: ${note}`)
+  const semitone = { C: -9, D: -7, E: -5, F: -4, G: -2, A: 0, B: 2 }[m[1] as 'A'] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0)
+  return 440 * 2 ** ((semitone + (Number(m[3]) - 4) * 12 + shift) / 12)
 }
 
 /**

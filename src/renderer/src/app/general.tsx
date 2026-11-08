@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { firstShortcut, modesOn } from '@shared/constants'
 import type { AgentStatus, Config, DeepPartial, EngineStatus, MainSection, Mode, PermissionStatus, RecordMode } from '@shared/types'
+import { SCHEDULE } from '@themes/schedule'
 import { Dropdown } from '../components/dropdown'
 import { Action, Bar, Check, displayShortcut, formatSize, List, ListRow, Row, Sep, ShortcutInput } from '../components/ui'
 import { ipcError, sizeMB } from '../lib/format'
@@ -15,6 +16,10 @@ const MODE_ROWS: Array<{ id: Mode; hint: string }> = [
   { id: 'compose', hint: 'say what to write: the ai writes the email, message or text you ask for · see settings → writing' },
   { id: 'control', hint: 'say what to do: the ai does it on the computer · see settings → control' }
 ]
+
+/** The holidays with a theme, as the schedule lists them: "halloween, christmas and the new year". */
+const HOLIDAY_NAMES = SCHEDULE.map((e) => e.name)
+const HOLIDAYS = HOLIDAY_NAMES.length > 1 ? `${HOLIDAY_NAMES.slice(0, -1).join(', ')} and ${HOLIDAY_NAMES[HOLIDAY_NAMES.length - 1]}` : HOLIDAY_NAMES.join('')
 
 interface Props {
   config: Config
@@ -219,7 +224,7 @@ export function General(props: Props) {
         <Row label="launch at login" hint="speak runs in the system tray">
           <Check checked={config.app.launchAtLogin} onChange={(v) => update({ app: { launchAtLogin: v } })} />
         </Row>
-        <Row label="easter eggs" hint="a seasonal look around halloween and christmas · click its logo, top left, to turn it off · off: never shown">
+        <Row label="easter eggs" hint={`a seasonal look around ${HOLIDAYS} · click its logo, top left, to turn it off · off: never shown`}>
           <Check checked={config.app.easterEggs} onChange={(v) => update({ app: { easterEggs: v } })} />
         </Row>
       </section>

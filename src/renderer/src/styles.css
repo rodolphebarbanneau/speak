@@ -413,6 +413,14 @@ textarea:focus {
   padding: 0 var(--edge);
   color: var(--dim);
 }
+/* Its items centered on the bar, as the icons on the right are: a theme's logo (taller than the
+   text) then sits in the middle of the bar, not on the text's baseline. A space's width apart
+   (a flex row drops the spaces between its items). */
+.titlebar .title {
+  display: flex;
+  align-items: center;
+  gap: 1ch;
+}
 .titlebar .title b {
   color: var(--accent);
   font-weight: 700;

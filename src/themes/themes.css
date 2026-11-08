@@ -67,11 +67,10 @@ html.theme-fade {
 .theme-toggle {
   -webkit-app-region: no-drag;
 }
-/* Centered on the title's text; the negative margins keep it from growing the line, so the
-   logo sits clear of the window's top edge whatever its height. */
+/* Centered on the title bar (see .titlebar .title); the negative margins keep it from making
+   the title taller, so the logo sits clear of the window's top edge whatever its height. */
 .theme-toggle.logo {
   display: inline-flex;
-  vertical-align: middle;
   margin: -8px 0;
 }
 

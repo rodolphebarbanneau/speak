@@ -1,0 +1,253 @@
+/* The new year: the champagne logo, and fireworks and confetti over the recording pill at midnight. */
+
+.new-year-bottle {
+  display: inline-flex;
+  filter: drop-shadow(0 0 2px rgba(242, 197, 92, 0.35));
+}
+/* The cork and the foam fly out of the picture. */
+.new-year-bottle svg {
+  overflow: visible;
+}
+/* The foil glints. */
+.new-year-bottle .shine rect {
+  animation: new-year-glint 2.8s ease-in-out infinite;
+}
+/* Bubbles rise in the flute, a pixel at a time, and burst at the foam. */
+.new-year-bottle .bubble {
+  fill: #fff6d0;
+  opacity: 0;
+  animation: new-year-bubble 1.65s steps(4) infinite;
+}
+@keyframes new-year-bubble {
+  0% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(-4px);
+  }
+}
+.new-year-bottle .cork,
+.new-year-bottle .spray {
+  transform-box: fill-box;
+  transform-origin: 0% 100%;
+}
+.new-year-bottle .spray {
+  opacity: 0;
+}
+.new-year-bottle.pop .cork {
+  animation: new-year-cork 1.6s ease-out;
+}
+.new-year-bottle.pop .spray {
+  animation: new-year-spray 1.6s ease-out;
+}
+@keyframes new-year-glint {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+/* Off it flies, spinning, up and away; a new cork is in by the next time. */
+@keyframes new-year-cork {
+  0% {
+    opacity: 1;
+    transform: none;
+  }
+  30%,
+  85% {
+    opacity: 0;
+    transform: translate(7px, -7px) rotate(220deg);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* The foam bursts out of the neck, then drifts away as it fades. */
+@keyframes new-year-spray {
+  0%,
+  6% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  16% {
+    opacity: 1;
+    transform: none;
+  }
+  60% {
+    opacity: 0.9;
+    transform: translate(1px, -1px);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(3px, -3px);
+  }
+}
+
+/* A firework: the rocket goes up from behind the pill, flashes, and its sparks fly out, then fall and fade. */
+.new-year-shot {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+.new-year-shot > i {
+  position: absolute;
+  left: -1.5px;
+  top: -1.5px;
+  width: 3px;
+  height: 3px;
+  opacity: 0;
+  background: var(--color);
+  animation-duration: var(--every);
+  animation-delay: var(--delay);
+  animation-iteration-count: infinite;
+}
+.new-year-shot .rocket {
+  width: 2px;
+  height: 2px;
+  background: #fff3d6;
+  box-shadow:
+    0 3px 0 rgba(255, 220, 150, 0.6),
+    0 6px 0 rgba(255, 200, 120, 0.3);
+  animation-name: new-year-rise;
+}
+.new-year-shot .flash {
+  left: -5px;
+  top: -5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff6dc;
+  animation-name: new-year-flash;
+}
+/* A spark streaks the way it flies; the core's sparks are short and white hot. */
+.new-year-shot .spark {
+  left: -1px;
+  top: -3px;
+  width: 2px;
+  height: 6px;
+  box-shadow: 0 0 3px var(--color);
+  animation-name: new-year-spark;
+}
+.new-year-shot .spark.core {
+  top: -1.5px;
+  height: 3px;
+  background: #fff3d6;
+  box-shadow: 0 0 3px #fff3d6;
+}
+@keyframes new-year-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(var(--rise));
+    animation-timing-function: cubic-bezier(0.2, 0.6, 0.4, 1);
+  }
+  3% {
+    opacity: 1;
+  }
+  22% {
+    opacity: 1;
+    transform: none;
+  }
+  23%,
+  100% {
+    opacity: 0;
+    transform: none;
+  }
+}
+@keyframes new-year-flash {
+  0%,
+  22% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  24% {
+    opacity: 0.9;
+    transform: none;
+  }
+  32%,
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+@keyframes new-year-spark {
+  0%,
+  22% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(var(--a));
+  }
+  23% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(var(--a));
+    animation-timing-function: cubic-bezier(0.1, 0.8, 0.3, 1);
+  }
+  45% {
+    opacity: 1;
+    transform: translate(var(--x), var(--y)) rotate(var(--a));
+    animation-timing-function: ease-in;
+  }
+  58% {
+    opacity: 0.5;
+  }
+  62% {
+    opacity: 1;
+  }
+  78% {
+    opacity: 0;
+    transform: translate(var(--x), calc(var(--y) + 16px)) rotate(var(--a));
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--x), calc(var(--y) + 16px)) rotate(var(--a));
+  }
+}
+
+/* Confetti, coming down in flutters. */
+.new-year-confetti {
+  position: absolute;
+  opacity: 0;
+  animation-name: new-year-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.new-year-confetti > i {
+  display: block;
+  width: 4px;
+  box-shadow: 0 0 0 0.5px rgba(13, 15, 24, 0.6);
+  animation: new-year-flutter var(--flip) linear infinite;
+}
+@keyframes new-year-fall {
+  0% {
+    opacity: 0;
+    transform: none;
+  }
+  10%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(14px, var(--fall));
+  }
+}
+@keyframes new-year-flutter {
+  from {
+    transform: rotate3d(1, 0.4, 0.2, 0deg);
+  }
+  to {
+    transform: rotate3d(1, 0.4, 0.2, 360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .new-year-bottle .shine rect,
+  .new-year-bottle .bubble,
+  .new-year-bottle.pop .cork,
+  .new-year-bottle.pop .spray {
+    animation: none;
+  }
+}

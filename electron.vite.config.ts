@@ -2,21 +2,17 @@ import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import { scheduleProblems } from './src/themes/calendar'
 import { SCHEDULE } from './src/themes/schedule'
 
-/** The easter egg schedule must name theme folders and real month-days (MM-DD). */
-const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-for (const { theme, from, to } of SCHEDULE) {
-  if (!existsSync(resolve('src/themes', theme, 'palette.ts')) || !existsSync(resolve('src/themes', theme, 'index.tsx'))) {
-    throw new Error(`src/themes/schedule.ts: no theme "${theme}" in src/themes`)
-  }
-  for (const date of [from, to]) {
-    const [month, day] = /^\d\d-\d\d$/.test(date) ? date.split('-').map(Number) : [0, 0]
-    if (!(month >= 1 && month <= 12 && day >= 1 && day <= DAYS_IN_MONTH[month - 1])) {
-      throw new Error(`src/themes/schedule.ts: "${date}" is not a month-day (MM-DD)`)
-    }
-  }
-}
+/** The easter egg schedule must name theme folders, and hold together (real dates, no two themes on the same day). */
+const problems = [
+  ...SCHEDULE.filter(({ theme }) => !existsSync(resolve('src/themes', theme, 'palette.ts')) || !existsSync(resolve('src/themes', theme, 'index.tsx'))).map(
+    ({ theme }) => `no theme "${theme}" in src/themes`
+  ),
+  ...scheduleProblems()
+]
+if (problems.length) throw new Error(`src/themes/schedule.ts: ${problems.join('; ')}`)
 
 export default defineConfig({
   main: {},
