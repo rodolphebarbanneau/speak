@@ -1,4 +1,4 @@
-import { readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { copyFileSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { EventEmitter } from 'node:events'
 import { DEFAULT_CONFIG } from '../shared/constants'
 import type { Config, DeepPartial } from '../shared/types'
@@ -34,19 +34,95 @@ function sameKeys(a: unknown, b: string): boolean {
   return typeof a === 'string' && keys(a) === keys(b)
 }
 
+type Raw = Record<string, unknown>
+const obj = (v: unknown): Raw => (isObject(v) ? v : {})
+
 /**
- * Settings saved by an older version, brought up to date. Control mode (0.3) brings a shortcut:
- * its default, unless the user already uses those keys for dictation or compose (then none, to
+ * An AI provider's settings from layout 1. Its models chained (compose: '' = dictation's; control:
+ * '' = compose's), hidden from the user: now each mode has its own, '' = the recommended one. A
+ * model left at the old default becomes the recommended, which follows Speak's advice as models
+ * change; one the user picked stays.
+ */
+function agentFromV1(v: unknown, was: { dictate: string; compose: string }): Raw {
+  const a = obj(v)
+  const kept = (model: unknown, old: string) => (typeof model === 'string' && model !== old ? model : '')
+  return {
+    path: a.path,
+    home: a.home,
+    models: { dictate: kept(a.model, was.dictate), compose: kept(a.composeModel, was.compose), control: kept(a.controlModel, '') },
+    effort: a.effort
+  }
+}
+
+/**
+ * Layout 1 (up to 0.3.2), grouped as features came, to layout 2, grouped as the settings tabs. A
+ * value missing here is left out, and the default fills it. Control mode (0.3) brought a shortcut:
+ * its default, unless the user already used those keys for dictation or compose (then none, to
  * pick in settings).
  */
+function fromV1(old: Raw): Raw {
+  const shortcuts = obj(old.shortcuts)
+  const modes = obj(old.modes)
+  const output = obj(old.output)
+  const language = obj(old.language)
+  const audio = obj(old.audio)
+  const t = obj(old.transcription)
+  const ai = obj(old.ai)
+  const ui = obj(old.ui)
+  const control = obj(old.control)
+  const controlKey =
+    shortcuts.control === undefined && [shortcuts.record, shortcuts.compose].some((v) => sameKeys(v, DEFAULT_CONFIG.modes.control.shortcut))
+      ? ''
+      : shortcuts.control
+  return {
+    version: 2,
+    modes: {
+      dictate: { on: modes.dictate, shortcut: shortcuts.record },
+      compose: { on: modes.compose, shortcut: shortcuts.compose },
+      control: { on: modes.control, shortcut: controlKey }
+    },
+    recording: { press: old.recordMode, cancel: shortcuts.cancel, maxSeconds: audio.maxSeconds, sounds: audio.sounds, indicator: ui.showOverlay },
+    app: { launchAtLogin: ui.launchAtLogin, easterEggs: ui.easterEggs },
+    history: old.history,
+    speech: {
+      microphone: { id: audio.deviceId, label: audio.deviceLabel },
+      language: language.input,
+      vocabulary: old.vocabulary,
+      engine: t.engine,
+      models: { whisper: t.whisperModel, parakeet: t.parakeetModel },
+      useGpu: t.useGpu,
+      vad: t.vad,
+      keepLoadedMinutes: t.keepLoadedMinutes,
+      threads: t.threads,
+      customBinDir: t.customBinDir
+    },
+    ai: {
+      provider: ai.provider,
+      claudeCode: agentFromV1(ai.claudeCode, { dictate: 'haiku', compose: 'sonnet' }),
+      codex: agentFromV1(ai.codex, { dictate: 'gpt-6-luna', compose: '' }),
+      instructions: ai.customInstructions,
+      timeoutSeconds: ai.timeoutSeconds
+    },
+    writing: { format: old.style, language: language.output, then: output.mode, pasteKeys: output.pasteKeys, restoreClipboard: output.restoreClipboard },
+    context: old.context,
+    control: {
+      scope: control.scope === 'folder' ? 'app' : control.scope,
+      approval: control.approval,
+      alwaysAsk: control.alwaysAsk,
+      readAloud: control.speak,
+      language: control.replyLanguage,
+      idleMinutes: control.idleMinutes,
+      handsSeconds: control.handsSeconds
+    },
+    updates: old.updates,
+    state: { onboarded: old.onboarded, lastVersion: ui.lastVersion, themeOff: ui.themeOff }
+  }
+}
+
+/** Settings saved by an older version, in this version's layout. */
 function migrate(raw: unknown): unknown {
   if (!isObject(raw)) return raw
-  if (isObject(raw.control) && raw.control.scope === 'folder') raw.control.scope = 'app'
-  if (!isObject(raw.shortcuts)) return raw
-  const s = raw.shortcuts
-  const control = DEFAULT_CONFIG.shortcuts.control
-  if (s.control === undefined && [s.record, s.compose].some((v) => sameKeys(v, control))) s.control = ''
-  return raw
+  return typeof raw.version === 'number' && raw.version >= 2 ? raw : fromV1(raw)
 }
 
 class ConfigStore extends EventEmitter {
@@ -56,11 +132,13 @@ class ConfigStore extends EventEmitter {
     try {
       const raw = readFileSync(paths.config, 'utf8')
       const parsed = JSON.parse(raw)
-      const before = JSON.stringify(parsed)
+      const layout = isObject(parsed) && typeof parsed.version === 'number' ? parsed.version : 1
       this.config = merge(structuredClone(DEFAULT_CONFIG), migrate(parsed))
-      // Brought up to date: kept that way.
-      if (JSON.stringify(parsed) !== before) {
-        log.info('Settings updated to this version')
+      // Brought up to date (an older layout, or new settings with their defaults): kept that way.
+      // An older layout's file is kept as it was, next to it.
+      if (JSON.stringify(this.config, null, 2) !== raw) {
+        if (layout < DEFAULT_CONFIG.version) copyFileSync(paths.config, `${paths.config.replace(/\.json$/, '')}.v${layout}.json`)
+        log.info(layout < DEFAULT_CONFIG.version ? `Settings moved from layout ${layout} to ${DEFAULT_CONFIG.version}` : 'Settings updated to this version')
         this.save()
       }
     } catch (err) {

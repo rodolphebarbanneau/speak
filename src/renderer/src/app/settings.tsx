@@ -1,19 +1,26 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Config, DeepPartial, MainSection } from '@shared/types'
 import { Boundary, Key } from '../components/ui'
+import type { TestVerdict } from '../lib/microphone'
 import { About } from './about'
 import { AiSettings } from './ai-settings'
 import { ContextSettings } from './context-settings'
 import { ControlSettings } from './control-settings'
 import { General } from './general'
-import { Transcription } from './transcription'
+import { SpeechSettings } from './speech-settings'
+import { WritingSettings } from './writing-settings'
 
 export type SettingsSection = Exclude<MainSection, 'history' | 'bug'>
 
+/**
+ * The tabs: the app and its modes, then what turns speech into text (speech, ai), then the modes'
+ * own settings (writing: dictate and compose; context; control), then about.
+ */
 export const SETTINGS: Array<{ id: SettingsSection; label: string }> = [
   { id: 'general', label: 'general' },
-  { id: 'transcription', label: 'speech' },
+  { id: 'speech', label: 'speech' },
   { id: 'ai', label: 'ai' },
+  { id: 'writing', label: 'writing' },
   { id: 'context', label: 'context' },
   { id: 'control', label: 'control' },
   { id: 'about', label: 'about' }
@@ -23,7 +30,8 @@ export const isSettings = (s: MainSection): s is SettingsSection => SETTINGS.som
 
 /**
  * Settings, a dialog over the window: history (or the bug report) stays where it was behind it.
- * Esc, the close key or a click beside it closes it, and the focus goes back where it was.
+ * The title row names it. Esc, the close key or a click beside it closes it, and the focus goes
+ * back where it was.
  */
 export function SettingsDialog({
   section,
@@ -39,6 +47,8 @@ export function SettingsDialog({
   update: (patch: DeepPartial<Config>) => Promise<void>
 }) {
   const box = useRef<HTMLDivElement>(null)
+  // The microphone test is on speech; general's setup shows its outcome.
+  const [micVerdict, setMicVerdict] = useState<TestVerdict | null>(null)
   // The keys are the dialog's, not those of a field behind it.
   useEffect(() => {
     const before = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -55,7 +65,7 @@ export function SettingsDialog({
     <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         ref={box}
-        className="settings"
+        className="dialog settings"
         role="dialog"
         aria-modal="true"
         aria-label="settings"
@@ -69,7 +79,6 @@ export function SettingsDialog({
         }}
       >
         <nav className="nav">
-          <span className="nav-title">settings</span>
           {SETTINGS.map((s) => (
             <button key={s.id} className={section === s.id ? 'on' : ''} onClick={() => onSection(s.id)}>
               {s.label}
@@ -85,9 +94,10 @@ export function SettingsDialog({
         <div className="page" key={section}>
           <div className="page-inner">
             <Boundary label={`settings · ${page.label}`}>
-              {section === 'general' && <General config={config} update={update} onNavigate={go} />}
-              {section === 'transcription' && <Transcription config={config} update={update} />}
+              {section === 'general' && <General config={config} update={update} onNavigate={go} micVerdict={micVerdict} />}
+              {section === 'speech' && <SpeechSettings config={config} update={update} onVerdict={setMicVerdict} />}
               {section === 'ai' && <AiSettings config={config} update={update} />}
+              {section === 'writing' && <WritingSettings config={config} update={update} />}
               {section === 'context' && <ContextSettings config={config} />}
               {section === 'control' && <ControlSettings config={config} update={update} />}
               {section === 'about' && <About config={config} update={update} />}

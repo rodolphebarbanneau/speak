@@ -6,7 +6,7 @@
 import { useSyncExternalStore } from 'react'
 import type { Config } from '@shared/types'
 import { hold, setRecording, setSoundsAllowed } from './audio'
-import { activePalette, themeShown, type Season } from './shared'
+import { activePalette, themeShown, type Season, type ThemeSettings } from './shared'
 import type { Theme } from './types'
 import './themes.css'
 
@@ -45,45 +45,45 @@ export function setThemeShown(on: boolean): void {
   setTimeout(() => root.classList.remove('theme-fade'), 900)
   if (on) theme.sounds.on()
   else theme.sounds.off()
-  void api.setConfig({ ui: { themeOff: on ? '' : season.key } })
+  void api.setConfig({ state: { themeOff: on ? '' : season.key } })
 }
 
 let painted: string[] = []
 
 /** Put the theme's palette over styles.css (or take it off). */
-function paint(ui: Config['ui'], season: Season | null): void {
+function paint(settings: ThemeSettings, season: Season | null): void {
   const root = document.documentElement
   for (const name of painted) root.style.removeProperty(name)
   painted = []
-  if (!season || !themeShown(ui, season)) {
+  if (!season || !themeShown(settings, season)) {
     delete root.dataset.theme
     return
   }
   root.dataset.theme = season.id
-  for (const [name, value] of Object.entries(activePalette(ui, season))) {
+  for (const [name, value] of Object.entries(activePalette(settings, season))) {
     root.style.setProperty(name, value)
     painted.push(name)
   }
 }
 
-let ui: Config['ui'] | null = null
+let settings: ThemeSettings | null = null
 let season: Season | null = null
 
 /** Settings or season changed: work out the theme, and repaint if it changed. */
 function update(): void {
-  if (!ui) return
+  if (!settings) return
   const theme = (season && themes[`./${season.id}/index.tsx`]) || null
-  const next: ThemeState = { theme, season, shown: !!theme && themeShown(ui, season), available: !!theme && ui.easterEggs }
+  const next: ThemeState = { theme, season, shown: !!theme && themeShown(settings, season), available: !!theme && settings.app.easterEggs }
   if (next.theme === state.theme && next.season?.key === state.season?.key && next.shown === state.shown && next.available === state.available) return
   state = next
-  paint(ui, season)
+  paint(settings, season)
   listeners.forEach((cb) => cb())
 }
 
 export function initThemes(view: string): void {
   const onConfig = (config: Config) => {
-    ui = config.ui
-    setSoundsAllowed(config.audio.sounds)
+    settings = { app: config.app, state: config.state }
+    setSoundsAllowed(config.recording.sounds)
     update()
   }
   const onSeason = (next: Season | null) => {

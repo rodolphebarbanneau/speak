@@ -98,7 +98,7 @@ export async function claudeComplete(system: string, user: string, cfg: AgentCon
   const restricted = read && (await supportsRestricted(path, cfg)) ? ['--restricted'] : []
   const args = [
     '-p',
-    ['--model', cfg.model],
+    ['--model', opts.model],
     ['--effort', cfg.effort],
     ['--system-prompt-file', await promptFile('claude-system', system)],
     ['--tools', read ? 'Read,Grep,Glob' : ''],
@@ -121,6 +121,6 @@ export async function claudeComplete(system: string, user: string, cfg: AgentCon
     log.warn('claude -p failed:', detail)
     throw new Error(looksLikeAuthError(detail) ? `Claude Code is not signed in. ${detail}` : `Claude Code failed: ${detail}`)
   }
-  const model = Object.keys(json.modelUsage ?? {}).find((m) => m.includes(cfg.model)) ?? cfg.model
+  const model = Object.keys(json.modelUsage ?? {}).find((m) => m.includes(opts.model)) ?? opts.model
   return { text: json.result, model }
 }

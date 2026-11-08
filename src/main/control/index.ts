@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events'
 import { homedir } from 'node:os'
 import { isAbsolute, resolve } from 'node:path'
 import { screen } from 'electron'
-import { CONTROL_APPROVALS, CONTROL_SCOPES } from '../../shared/constants'
+import { CONTROL_APPROVALS, CONTROL_SCOPES, languageName } from '../../shared/constants'
 import type { ControlAlwaysAsk, ControlAsk, ControlApproval, ControlScope, ControlState, ControlStep, Session } from '../../shared/types'
 import { configStore } from '../config'
 import { history, newSessionId } from '../history'
@@ -22,9 +22,10 @@ import {
   showControlPanel,
   showFrame
 } from '../windows'
+import { modelFor } from '../ai'
 import { ClaudeAgent, CodexAgent, type ControlAgent, type NativeAction } from './agents'
 import { backupBeforeWrite, describeOp, undoOp, type FileOp } from './files'
-import { controlPrompt } from './prompt'
+import { controlPrompt, replyIn } from './prompt'
 import { foregroundWindow, listWindows, onUsersInput, screenSupported, stackAbove, uia, warmScreen, type Rect, type WindowInfo } from './screen'
 import { categoryOf, ToolServer, type ActionRequest, type Gate, type StepResult, type ToolHost } from './tools'
 
@@ -206,14 +207,15 @@ class Control extends EventEmitter implements ToolHost {
     if (provider !== 'claude-code' && provider !== 'codex')
       return this.fail('Control needs an AI provider: pick Claude Code or Codex in Speak → settings → ai.')
     const agentCfg = provider === 'codex' ? cfg.ai.codex : cfg.ai.claudeCode
-    const model = agentCfg.controlModel || agentCfg.composeModel || agentCfg.model
+    const model = await modelFor(provider, 'control')
     this.tools = new ToolServer(this)
     await this.tools.start()
     const scope = this.scopeInfo
     const system = controlPrompt({
       scope: scope.kind,
       scopeLabel: scope.label,
-      approval: this.state.approval
+      approval: this.state.approval,
+      replyLanguage: cfg.control.language
     })
     const options = {
       scope: scope.kind,
@@ -293,8 +295,8 @@ class Control extends EventEmitter implements ToolHost {
       updatedAt: now,
       durationMs: Date.now() - s.startedAt,
       hasAudio: false,
-      transcription: { engine: cfg.transcription.engine, model: '', language: cfg.language.input, ms: 0, text: first },
-      style: cfg.style,
+      transcription: { engine: cfg.speech.engine, model: '', language: cfg.speech.language, ms: 0, text: first },
+      style: cfg.writing.format,
       outputLanguage: 'same',
       versions: [],
       text: first,
@@ -394,7 +396,7 @@ class Control extends EventEmitter implements ToolHost {
 
   /** Read aloud in the panel, when asked to. */
   private say(text: string): void {
-    if (configStore.get().control.speak) controlPanel?.webContents.send('speak:controlSay', text)
+    if (configStore.get().control.readAloud) controlPanel?.webContents.send('speak:controlSay', text)
   }
 
   // ---------------------------------------------------------------- the gate
@@ -682,6 +684,13 @@ class Control extends EventEmitter implements ToolHost {
     if (approval === 'step') this.always.clear()
     this.addStep({ who: 'info', text: `approval: ${CONTROL_APPROVALS.find((a) => a.id === approval)?.label}` })
     this.agent?.send(`(Speak: the user changed the approval level to "${approval}": ${CONTROL_APPROVALS.find((a) => a.id === approval)?.description}.)`)
+  }
+
+  /** Another language for its answers, from the settings or the pill: the AI is told. */
+  setReplyLanguage(replyLanguage: string): void {
+    if (!this.state.active) return
+    this.addStep({ who: 'info', text: `answers: ${replyLanguage === 'same' ? 'as you speak' : languageName(replyLanguage).toLowerCase()}` })
+    this.agent?.send(`(Speak: the user changed the language you write in. From now on, write in ${replyIn(replyLanguage)}.)`)
   }
 
   /** Another scope: the AI starts again with it, and the last order. */

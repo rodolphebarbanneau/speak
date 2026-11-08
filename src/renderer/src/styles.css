@@ -427,7 +427,7 @@ html:not(.focused) .titlebar-area,
 html:not(.focused) .titlebar .title b {
   color: var(--muted);
 }
-/* A button drawn as an icon in the title row: the bug of "report a bug". */
+/* A button drawn as a pixel icon in the title row: the settings gear, the bug of "report a bug". */
 .icon-button {
   display: inline-flex;
   align-items: center;
@@ -438,9 +438,7 @@ html:not(.focused) .titlebar .title b {
 .icon-button.on {
   color: var(--accent);
 }
-.bug-icon {
-  width: 14px;
-  height: auto;
+.pixel-icon {
   fill: currentColor;
 }
 
@@ -906,11 +904,9 @@ section + section {
 
 /* ---------- report a bug ---------- */
 
-/* The page scrolls; its keys stay at the bottom, as in the preview. */
-.bug {
-  flex: 1;
-  min-width: 0;
-  display: flex;
+/* A dialog of one column: the page scrolls, its keys stay at the bottom, as in the preview. */
+.dialog.bug {
+  max-width: 900px;
   flex-direction: column;
 }
 .bug .page {
@@ -951,6 +947,24 @@ section + section {
   white-space: pre;
   overflow: auto;
 }
+/* Short facts, one a line, each wrapping under its own text. */
+.bug .facts {
+  margin: 0;
+  padding: 0 var(--inset);
+  list-style: none;
+  color: var(--dim);
+}
+.bug .facts li {
+  padding-left: 2ch;
+  text-indent: -2ch;
+}
+.bug .facts li::before {
+  content: '· ';
+  color: var(--muted);
+}
+.bug .facts li + li {
+  margin-top: var(--s1);
+}
 .bug .check-line {
   display: flex;
   align-items: baseline;
@@ -976,7 +990,8 @@ section + section {
   display: flex;
 }
 
-/* Settings: a dialog over history or the bug report, which stay behind it, dimmed. */
+/* Settings and the bug report: dialogs over history, which stays behind them, dimmed (settings can
+   open over the bug report). */
 .dialog-backdrop {
   position: absolute;
   inset: 0;
@@ -985,7 +1000,7 @@ section + section {
   padding: max(var(--s4), 4vh) max(var(--s5), 5vw);
   background: rgba(0, 0, 0, 0.55);
 }
-.settings {
+.dialog {
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -996,16 +1011,11 @@ section + section {
   border: 1px solid var(--accent);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
 }
-.settings:focus {
+.dialog:focus {
   outline: none;
 }
 .settings > .nav {
   width: 150px;
-}
-.settings .nav-title {
-  padding: 0 var(--s3) var(--s2) var(--edge);
-  color: var(--hi);
-  font-weight: 600;
 }
 /* esc close, at the bottom of the list. */
 .settings .nav-close {

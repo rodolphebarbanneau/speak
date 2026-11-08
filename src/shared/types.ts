@@ -10,6 +10,8 @@ export type Mode = 'dictate' | 'compose' | 'control'
  * AI writes from: dictations saved with it keep it, and history can redo one as the other.
  */
 export type Style = 'verbatim' | 'clean' | 'prompt' | 'summary' | 'compose'
+/** A dictation's format: the styles but compose. */
+export type Format = Exclude<Style, 'compose'>
 export type EngineId = 'whisper' | 'parakeet'
 /** Coding-agent CLIs Speak can drive with the user's own login. */
 export type AgentId = 'claude-code' | 'codex'
@@ -32,31 +34,41 @@ export interface ContextSource {
   label: string
 }
 
+/**
+ * The settings, as config.json keeps them: one group per settings tab (general: modes, recording,
+ * app, history · speech · ai · writing · context · control · about: updates), then Speak's own
+ * bookkeeping. `version` is the layout: main/config.ts brings older files up to date.
+ */
 export interface Config {
-  onboarded: boolean
-  /** The modes that are on. One that's off has no shortcut and isn't offered anywhere (the pill, the tray). */
-  modes: Record<Mode, boolean>
-  /** record: dictate · compose: dictate a brief the AI writes from · control: an order the AI carries out (empty = off). */
-  shortcuts: { record: string; compose: string; control: string; cancel: string }
-  recordMode: RecordMode
-  output: { mode: OutputMode; restoreClipboard: boolean; pasteKeys: PasteKeys }
-  /** input: 'auto' or an ISO 639-1 code. output: 'same' or an ISO 639-1 code. */
-  language: { input: string; output: string }
-  style: Style
-  /** Preferred spellings of names and technical terms, one per line or comma separated. */
-  vocabulary: string
-  /**
-   * The context the AI reads along with what you say. current: the location of a recent source,
-   * '' = none; it stays until changed. recent: the sources used, most recent first. The clipboard
-   * is never stored: it is picked for one recording at a time.
-   */
-  context: { current: string; recent: ContextSource[] }
-  /** deviceId differs between origins (dev server vs packaged app), so the label is kept to find the device again. */
-  audio: { deviceId: string; deviceLabel: string; maxSeconds: number; sounds: boolean }
-  transcription: {
+  version: number
+  /** Each mode on or off, with its shortcut ('' = none). One that's off has no shortcut and isn't offered anywhere (the pill, the tray). */
+  modes: Record<Mode, { on: boolean; shortcut: string }>
+  /** How a recording goes, in every mode. */
+  recording: {
+    /** How the modes' shortcuts work: hold while speaking, tap to start and tap to stop, or either. */
+    press: RecordMode
+    /** The key that cancels a recording or its processing, only grabbed meanwhile. */
+    cancel: string
+    maxSeconds: number
+    /** Short cues when a recording starts and stops. */
+    sounds: boolean
+    /** The pill at the bottom of the screen while recording and processing. */
+    indicator: boolean
+  }
+  /** easterEggs: allow the seasonal themes (src/themes/schedule.ts). */
+  app: { launchAtLogin: boolean; easterEggs: boolean }
+  history: { enabled: boolean; keepAudio: boolean; retentionDays: number }
+  /** From the voice to text, in every mode: the microphone, the language spoken, the engine. */
+  speech: {
+    /** The device's id differs between origins (dev server vs packaged app): its label finds it again. id 'default' follows the system. */
+    microphone: { id: string; label: string }
+    /** The language spoken: 'auto' or an ISO 639-1 code. */
+    language: string
+    /** Preferred spellings of names and technical terms, one per line or comma separated. */
+    vocabulary: string
     engine: EngineId
-    whisperModel: string
-    parakeetModel: string
+    /** The model of each engine. */
+    models: Record<EngineId, string>
     useGpu: boolean
     vad: boolean
     keepLoadedMinutes: number
@@ -68,20 +80,38 @@ export interface Config {
     provider: ProviderId
     claudeCode: AgentConfig
     codex: AgentConfig
-    customInstructions: string
+    /** Added to every request. */
+    instructions: string
     timeoutSeconds: number
   }
-  history: { enabled: boolean; keepAudio: boolean; retentionDays: number }
+  /** The modes that write, dictate and compose: the text, and how it gets where the cursor is. */
+  writing: {
+    /** Dictate's format. */
+    format: Format
+    /** 'same' (as spoken) or the ISO 639-1 code of the language to write in. */
+    language: string
+    /** preview: shown first · paste: inserted right away. */
+    then: OutputMode
+    pasteKeys: PasteKeys
+    restoreClipboard: boolean
+  }
+  /**
+   * The context the AI reads along with what you say. current: the location of a recent source,
+   * '' = none; it stays until changed. recent: the sources used, most recent first. The clipboard
+   * is never stored: it is picked for one recording at a time.
+   */
+  context: { current: string; recent: ContextSource[] }
   /** Control mode: what a new control session may touch, and when it asks first (both can change during it). */
   control: ControlConfig
-  /**
-   * easterEggs: allow the seasonal themes (src/themes/schedule.ts). themeOff: the season of the
-   * theme the user turned off by clicking its logo ("christmas-2026"), off until the next season.
-   * lastVersion: the version that last started, to tell when an update was just installed.
-   */
-  ui: { showOverlay: boolean; launchAtLogin: boolean; easterEggs: boolean; themeOff: string; lastVersion: string }
   /** Download updates in the background and install them when Speak quits. */
   updates: { auto: boolean }
+  /**
+   * Speak's own bookkeeping, not settings. onboarded: the setup list was done or hidden ·
+   * lastVersion: the version that last started, to tell when an update was just installed ·
+   * themeOff: the season of the theme the user turned off by clicking its logo ("christmas-2026"),
+   * off until the next season.
+   */
+  state: { onboarded: boolean; lastVersion: string; themeOff: string }
 }
 
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] }
@@ -245,12 +275,8 @@ export interface AgentConfig {
    * account, e.g. ~/.claude_ai; empty = the CLI's default (~/.claude, ~/.codex).
    */
   home: string
-  /** Model for dictation (cleanup, translation, edits). */
-  model: string
-  /** Model for compose, where staying faithful to the brief matters most; empty = `model`. */
-  composeModel: string
-  /** Model for control sessions, which see the screen and act; empty = the compose model. */
-  controlModel: string
+  /** Each mode's model; '' = the one Speak recommends for that mode (main/ai/index.ts), as models change. */
+  models: Record<Mode, string>
   effort: Effort
 }
 
@@ -267,6 +293,12 @@ export interface AgentStatus {
 export interface AgentModel {
   id: string
   label: string
+}
+
+/** A provider's models, and the one Speak recommends for each mode (the default, '' in the settings). */
+export interface AgentModels {
+  models: AgentModel[]
+  recommended: Record<Mode, string>
 }
 
 export interface AiTestResult {
@@ -309,7 +341,7 @@ export type RecorderCommand =
   | { type: 'sound'; name: 'start' | 'stop' | 'error' | 'done' }
 
 /** bug: "report a bug", from the title row's bug or the tray. */
-export type MainSection = 'history' | 'general' | 'transcription' | 'ai' | 'context' | 'control' | 'about' | 'bug'
+export type MainSection = 'history' | 'general' | 'speech' | 'ai' | 'writing' | 'context' | 'control' | 'about' | 'bug'
 
 // ------------------------------------------------------------------ control mode
 
@@ -343,7 +375,9 @@ export interface ControlConfig {
   approval: ControlApproval
   alwaysAsk: ControlAlwaysAsk
   /** Read the AI's answers and questions aloud. */
-  speak: boolean
+  readAloud: boolean
+  /** The language it answers in: 'same' = the language of your order, or an ISO 639-1 code. */
+  language: string
   /** The session ends after this long with nothing to do. */
   idleMinutes: number
   /**

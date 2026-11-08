@@ -1,6 +1,7 @@
 import { CONTROL_APPROVALS, CONTROL_SCOPES, firstShortcut } from '@shared/constants'
 import type { Config, ControlAlwaysAsk, ControlApproval, ControlScope, DeepPartial } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
+import { outputOptions } from '../lib/languages'
 import { Action, Check, displayShortcut, Row, Sep } from '../components/ui'
 
 const ALWAYS: Array<{ id: keyof ControlAlwaysAsk; label: string; hint: string }> = [
@@ -18,16 +19,16 @@ export function ControlSettings({ config, update }: { config: Config; update: (p
   return (
     <>
       <section>
-        {config.modes.control ? (
+        {config.modes.control.on ? (
           <p className="note">
-            say what to do with <span className="acc">{displayShortcut(config.shortcuts.control) || 'the control shortcut'}</span>: the ai does it on the
+            say what to do with <span className="acc">{displayShortcut(config.modes.control.shortcut) || 'the control shortcut'}</span>: the ai does it on the
             computer, and a panel shows what it does. keep talking to it with{' '}
             <span className="acc">{displayShortcut(firstShortcut(config)) || 'any shortcut'}</span>: while it's on, every shortcut talks to it.
           </p>
         ) : (
           <p className="note">
             <span className="yellow">control is off</span>: no shortcut, and it isn't offered on the pill or the tray. these settings apply once it's on.{' '}
-            <Action onClick={() => void update({ modes: { control: true } })}>turn on</Action>
+            <Action onClick={() => void update({ modes: { control: { on: true } } })}>turn on</Action>
           </p>
         )}
         <Sep>new sessions</Sep>
@@ -62,8 +63,14 @@ export function ControlSettings({ config, update }: { config: Config; update: (p
             options={[1, 2, 3, 5].map((s) => ({ value: String(s), label: `still for ${s} s` }))}
           />
         </Row>
+        <Row
+          label="answers in"
+          hint="the language it writes in, and reads aloud in · as spoken: the language of your order · you speak in the spoken language of settings → speech"
+        >
+          <Dropdown value={c.language} onChange={(v) => update({ control: { language: v } })} options={outputOptions} />
+        </Row>
         <Row label="read aloud" hint="its answers and questions, with the system voice">
-          <Check checked={c.speak} onChange={(v) => update({ control: { speak: v } })} />
+          <Check checked={c.readAloud} onChange={(v) => update({ control: { readAloud: v } })} />
         </Row>
       </section>
 
@@ -74,6 +81,22 @@ export function ControlSettings({ config, update }: { config: Config; update: (p
             <Check checked={c.alwaysAsk[a.id]} onChange={(v) => update({ control: { alwaysAsk: { [a.id]: v } } })} />
           </Row>
         ))}
+      </section>
+
+      <section>
+        <Sep>how it works</Sep>
+        <Row label="scope">
+          <span className="dim">an app, the screen or everything · speak refuses anything beyond it</span>
+        </Row>
+        <Row label="approvals">
+          <span className="dim">answer by voice or in the panel: yes, always, no, or say what to do instead</span>
+        </Row>
+        <Row label="undo">
+          <span className="dim">files it moves, writes or trashes · its trash is ~/.speak/control</span>
+        </Row>
+        <Row label="privacy">
+          <span className="dim">what it looks at goes to your ai provider: an app scope sends one app</span>
+        </Row>
       </section>
     </>
   )

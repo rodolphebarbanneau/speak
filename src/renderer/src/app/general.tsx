@@ -1,21 +1,18 @@
 import { useEffect, useState } from 'react'
-import { FORMATS, MODE_SHORTCUT, modesOn } from '@shared/constants'
-import type { AgentStatus, Config, DeepPartial, EngineStatus, MainSection, Mode, PasteKeys, PermissionStatus, RecordMode, Style } from '@shared/types'
+import { firstShortcut, modesOn } from '@shared/constants'
+import type { AgentStatus, Config, DeepPartial, EngineStatus, MainSection, Mode, PermissionStatus, RecordMode } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
-import { Action, Bar, Check, displayShortcut, formatSize, List, ListRow, Row, Sep, ShortcutInput, TextInput } from '../components/ui'
+import { Action, Bar, Check, displayShortcut, formatSize, List, ListRow, Row, Sep, ShortcutInput } from '../components/ui'
 import { ipcError, sizeMB } from '../lib/format'
-import { outputOptions, spokenOptions } from '../lib/languages'
 import type { TestVerdict } from '../lib/microphone'
 import { useDownloads } from './hooks'
-import { InputSettings } from './input-settings'
 
 const api = window.speak
-const isMac = api.platform === 'darwin'
 
 /** The modes, as the settings show them: what each does. */
 const MODE_ROWS: Array<{ id: Mode; hint: string }> = [
-  { id: 'dictate', hint: 'writes what you say, where your cursor is, in any application' },
-  { id: 'compose', hint: 'say what to write: the ai writes the email, message or text you ask for' },
+  { id: 'dictate', hint: 'writes what you say, where your cursor is, in any application · see settings → writing' },
+  { id: 'compose', hint: 'say what to write: the ai writes the email, message or text you ask for · see settings → writing' },
   { id: 'control', hint: 'say what to do: the ai does it on the computer · see settings → control' }
 ]
 
@@ -23,11 +20,11 @@ interface Props {
   config: Config
   update: (patch: DeepPartial<Config>) => Promise<void>
   onNavigate: (s: MainSection) => void
+  /** The outcome of the microphone test on speech, while the settings are open. */
+  micVerdict: TestVerdict | null
 }
 
-const formatOptions = FORMATS.map((s) => ({ value: s.id, label: s.label.toLowerCase() }))
-
-function Setup({ config, update, onNavigate, micVerdict }: Props & { micVerdict: TestVerdict | null }) {
+function Setup({ config, update, onNavigate, micVerdict }: Props) {
   const [engine, setEngine] = useState<EngineStatus | null>(null)
   const [agent, setAgent] = useState<AgentStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -40,7 +37,7 @@ function Setup({ config, update, onNavigate, micVerdict }: Props & { micVerdict:
     })
   }, [config.ai.provider])
 
-  const modelId = config.transcription.engine === 'whisper' ? config.transcription.whisperModel : config.transcription.parakeetModel
+  const modelId = config.speech.models[config.speech.engine]
   const model = engine?.models.find((m) => m.id === modelId)
   const engineOk = !!engine?.binary.found
   const build = engine?.binaryOptions.find((o) => o.variant === engine.recommendedVariant)
@@ -66,7 +63,7 @@ function Setup({ config, update, onNavigate, micVerdict }: Props & { micVerdict:
       label: 'microphone',
       meta: 'test your input',
       hint: 'the default device may be a silent virtual one',
-      action: <Action onClick={() => document.getElementById('input-settings')?.scrollIntoView({ behavior: 'smooth' })}>test</Action>
+      action: <Action onClick={() => onNavigate('speech')}>test</Action>
     },
     {
       ok: engineOk && !!model?.installed,
@@ -77,7 +74,7 @@ function Setup({ config, update, onNavigate, micVerdict }: Props & { micVerdict:
       action: pending.length ? null : engineOk || build ? (
         <Action onClick={installSpeech}>install</Action>
       ) : (
-        <Action onClick={() => onNavigate('transcription')}>set up</Action>
+        <Action onClick={() => onNavigate('speech')}>set up</Action>
       )
     },
     {
@@ -92,7 +89,7 @@ function Setup({ config, update, onNavigate, micVerdict }: Props & { micVerdict:
 
   return (
     <section>
-      <Sep tail={<Action onClick={() => update({ onboarded: true })}>{done ? 'done' : 'hide'}</Action>}>setup</Sep>
+      <Sep tail={<Action onClick={() => update({ state: { onboarded: true } })}>{done ? 'done' : 'hide'}</Action>}>setup</Sep>
       {error && <p className="line error">✗ {error}</p>}
       <List>
         {steps.map((s) => (
@@ -102,7 +99,7 @@ function Setup({ config, update, onNavigate, micVerdict }: Props & { micVerdict:
         ))}
       </List>
       <p className="note">
-        then put your cursor in any text field and press <span className="acc">{displayShortcut(config.shortcuts.record)}</span>: hold it while speaking, or tap
+        then put your cursor in any text field and press <span className="acc">{displayShortcut(firstShortcut(config))}</span>: hold it while speaking, or tap
         to start and tap again to stop.
       </p>
     </section>
@@ -138,38 +135,25 @@ function StoredRow() {
 }
 
 export function General(props: Props) {
-  const { config, update } = props
-  const [micVerdict, setMicVerdict] = useState<TestVerdict | null>(null)
+  const { config, update, micVerdict } = props
   const [perm, setPerm] = useState<PermissionStatus | null>(null)
   const [shortcutError, setShortcutError] = useState<string | undefined>()
 
   useEffect(() => {
     void api.getPermissions().then(setPerm)
     void api.getInfo().then((i) => setShortcutError(i.shortcutError))
-  }, [config.shortcuts.record, config.shortcuts.compose, config.shortcuts.control, config.modes.dictate, config.modes.compose, config.modes.control])
+  }, [config.modes])
 
   return (
     <>
-      <section>
-        <Sep>startup</Sep>
-        <Row label="launch at login" hint="speak runs in the system tray">
-          <Check checked={config.ui.launchAtLogin} onChange={(v) => update({ ui: { launchAtLogin: v } })} />
-        </Row>
-      </section>
-
-      {!config.onboarded && <Setup {...props} micVerdict={micVerdict} />}
-
-      <section id="input-settings">
-        <InputSettings config={config} update={update} onVerdict={setMicVerdict} />
-      </section>
+      {!config.state.onboarded && <Setup {...props} micVerdict={micVerdict} />}
 
       <section>
         <Sep>modes</Sep>
         {MODE_ROWS.map(({ id, hint }) => {
-          const on = config.modes[id]
+          const { on, shortcut } = config.modes[id]
           // Speak needs one: the last mode on stays on.
           const last = on && modesOn(config).length === 1
-          const key = MODE_SHORTCUT[id]
           return (
             <Row
               key={id}
@@ -182,10 +166,10 @@ export function General(props: Props) {
                     : `off: ${hint} · its shortcut is free for other apps, and it isn't offered on the pill or the tray`
               }
             >
-              <Check checked={on} disabled={last} onChange={(v) => update({ modes: { [id]: v } })}>
+              <Check checked={on} disabled={last} onChange={(v) => update({ modes: { [id]: { on: v } } })}>
                 {on ? 'on' : 'off'}
               </Check>
-              <ShortcutInput value={config.shortcuts[key]} disabled={!on} onChange={(v) => update({ shortcuts: { [key]: v } })} />
+              <ShortcutInput value={shortcut} disabled={!on} onChange={(v) => update({ modes: { [id]: { shortcut: v } } })} />
             </Row>
           )
         })}
@@ -193,9 +177,9 @@ export function General(props: Props) {
       </section>
 
       <section>
-        <Sep>shortcuts</Sep>
+        <Sep>recording</Sep>
         <Row
-          label="record"
+          label="shortcuts"
           hint={
             perm && !perm.hookAvailable
               ? 'hold-to-talk needs keyboard access, unavailable here: the shortcut toggles'
@@ -203,8 +187,8 @@ export function General(props: Props) {
           }
         >
           <Dropdown<RecordMode>
-            value={config.recordMode}
-            onChange={(v) => update({ recordMode: v })}
+            value={config.recording.press}
+            onChange={(v) => update({ recording: { press: v } })}
             options={[
               { value: 'hybrid', label: 'hold or tap' },
               { value: 'hold', label: 'hold' },
@@ -213,89 +197,30 @@ export function General(props: Props) {
           />
         </Row>
         <Row label="cancel" hint="only grabbed while recording or processing · click, then press the key">
-          <ShortcutInput value={config.shortcuts.cancel} onChange={(v) => update({ shortcuts: { cancel: v } })} allowBare />
-        </Row>
-      </section>
-
-      <section>
-        <Sep>dictate · compose</Sep>
-        <Row label="format" hint={`dictate: ${FORMATS.find((s) => s.id === config.style)?.description.toLowerCase()}`}>
-          <Dropdown<Style> value={config.style} onChange={(v) => update({ style: v })} options={formatOptions} />
-        </Row>
-        <Row label="then" hint="preview: check, edit by voice, copy or insert · paste: insert immediately">
-          <Dropdown
-            value={config.output.mode}
-            onChange={(v) => update({ output: { mode: v } })}
-            options={[
-              { value: 'preview', label: 'preview' },
-              { value: 'paste', label: 'paste' }
-            ]}
-          />
-        </Row>
-        <Row label="spoken" hint="the language you speak · setting it explicitly is more accurate than auto-detect">
-          <Dropdown
-            value={config.language.input}
-            onChange={(v) => update({ language: { input: v } })}
-            options={spokenOptions(config.transcription.engine, config.language.input)}
-          />
-        </Row>
-        <Row label="output" hint="translate what you say into another language">
-          <Dropdown value={config.language.output} onChange={(v) => update({ language: { output: v } })} options={outputOptions} />
-        </Row>
-        <Row block label="vocabulary" hint="names and technical terms you use, one per line or comma separated · improves recognition and spelling">
-          <TextInput
-            multiline
-            rows={3}
-            value={config.vocabulary}
-            onCommit={(v) => update({ vocabulary: v })}
-            placeholder="Claude Code, TypeScript, worktree, T3 Code…"
-          />
-        </Row>
-      </section>
-
-      <section>
-        <Sep>insertion</Sep>
-        <Row label="paste with" hint="keystroke sent to the target app · terminals on linux often need ctrl+shift+v">
-          <Dropdown<PasteKeys>
-            value={config.output.pasteKeys}
-            onChange={(v) => update({ output: { pasteKeys: v } })}
-            options={[
-              { value: 'auto', label: isMac ? 'auto (cmd+v)' : 'auto (ctrl+v)' },
-              { value: 'ctrl+v', label: 'ctrl+v' },
-              { value: 'ctrl+shift+v', label: 'ctrl+shift+v' },
-              { value: 'shift+insert', label: 'shift+insert' }
-            ]}
-          />
-        </Row>
-        <Row label="restore clipboard" hint="put back what was on the clipboard after pasting · off: the text stays on it, so ctrl+v pastes it again if needed">
-          <Check checked={config.output.restoreClipboard} onChange={(v) => update({ output: { restoreClipboard: v } })} />
-        </Row>
-        {isMac && perm && (
-          <Row
-            label="accessibility"
-            hint="needed to paste into other apps and for hold-to-talk"
-            actions={!perm.accessibility && <Action onClick={() => void api.requestPermission('accessibility').then(setPerm)}>grant</Action>}
-          >
-            {perm.accessibility ? <span className="green">granted</span> : <span className="yellow">not granted</span>}
-          </Row>
-        )}
-        {perm?.wayland && <p className="note">wayland: install wtype or ydotool for auto-paste, and bind a desktop shortcut to `speak --toggle`.</p>}
-      </section>
-
-      <section>
-        <Sep>recording</Sep>
-        <Row label="sounds" hint="short cues when recording starts and stops">
-          <Check checked={config.audio.sounds} onChange={(v) => update({ audio: { sounds: v } })} />
-        </Row>
-        <Row label="indicator" hint="status box at the bottom of the screen while recording and processing">
-          <Check checked={config.ui.showOverlay} onChange={(v) => update({ ui: { showOverlay: v } })} />
+          <ShortcutInput value={config.recording.cancel} onChange={(v) => update({ recording: { cancel: v } })} allowBare />
         </Row>
         <Row label="max length" hint="recording stops automatically after this long">
           <Dropdown
-            value={String(config.audio.maxSeconds)}
-            onChange={(v) => update({ audio: { maxSeconds: Number(v) } })}
+            value={String(config.recording.maxSeconds)}
+            onChange={(v) => update({ recording: { maxSeconds: Number(v) } })}
             options={[60, 180, 300, 600, 1200].map((s) => ({ value: String(s), label: `${s / 60} min` }))}
           />
+        </Row>
+        <Row label="sounds" hint="short cues when recording starts and stops">
+          <Check checked={config.recording.sounds} onChange={(v) => update({ recording: { sounds: v } })} />
+        </Row>
+        <Row label="indicator" hint="the pill at the bottom of the screen while recording and processing">
+          <Check checked={config.recording.indicator} onChange={(v) => update({ recording: { indicator: v } })} />
+        </Row>
+      </section>
+
+      <section>
+        <Sep>app</Sep>
+        <Row label="launch at login" hint="speak runs in the system tray">
+          <Check checked={config.app.launchAtLogin} onChange={(v) => update({ app: { launchAtLogin: v } })} />
+        </Row>
+        <Row label="easter eggs" hint="a seasonal look around halloween and christmas · click its logo, top left, to turn it off · off: never shown">
+          <Check checked={config.app.easterEggs} onChange={(v) => update({ app: { easterEggs: v } })} />
         </Row>
       </section>
 
@@ -315,13 +240,6 @@ export function General(props: Props) {
           />
         </Row>
         <StoredRow />
-      </section>
-
-      <section>
-        <Sep>theme</Sep>
-        <Row label="easter eggs" hint="a seasonal look around halloween and christmas · click its logo, top left, to turn it off · off: never shown">
-          <Check checked={config.ui.easterEggs} onChange={(v) => update({ ui: { easterEggs: v } })} />
-        </Row>
       </section>
     </>
   )

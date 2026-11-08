@@ -1,5 +1,5 @@
-import { CLAUDE_CODE_MODELS } from '../../shared/constants'
-import type { AgentConfig, AgentId, AgentModel, AgentStatus, AiTestResult, Style } from '../../shared/types'
+import { CLAUDE_CODE_MODELS, RECOMMENDED_MODELS } from '../../shared/constants'
+import type { AgentConfig, AgentId, AgentModel, AgentModels, AgentStatus, AiTestResult, Mode, ProviderId, Style } from '../../shared/types'
 import { configStore } from '../config'
 import { log } from '../log'
 import { claudeComplete, claudeLogin, claudeStatus } from './claude-code'
@@ -93,22 +93,36 @@ export async function agentLogin(id: AgentId): Promise<void> {
   await AGENTS[id].login(AGENTS[id].config())
 }
 
-export const agentModels = (id: AgentId) => AGENTS[id].models()
+/**
+ * A provider's models, and the one recommended for each mode: Claude Code's aliases follow the
+ * latest of each family; Codex's workhorse is the first of its catalog.
+ */
+export async function agentModels(id: AgentId): Promise<AgentModels> {
+  const models = await AGENTS[id].models()
+  const first = models[0]?.id ?? ''
+  const recommended = Object.fromEntries(Object.entries(RECOMMENDED_MODELS[id]).map(([mode, model]) => [mode, model || first])) as Record<Mode, string>
+  return { models, recommended }
+}
+
+/** The model a mode runs on: the one picked in the settings, else the recommended one. */
+export async function modelFor(provider: AgentId, mode: Mode): Promise<string> {
+  return AGENTS[provider].config().models[mode] || (await agentModels(provider)).recommended[mode]
+}
 
 export function aiConfigured(): boolean {
   return configStore.get().ai.provider !== 'none'
 }
 
-async function complete(system: string, user: string, signal?: AbortSignal, compose = false, readDir?: string): Promise<AiResult> {
+async function complete(system: string, user: string, mode: Mode, signal?: AbortSignal, readDir?: string): Promise<AiResult> {
   const ai = configStore.get().ai
-  if (ai.provider === 'none') throw new Error('AI processing is off. Pick Claude Code or Codex in Speak → settings → ai, or use the verbatim style.')
-  const agent = AGENTS[ai.provider]
-  const base = agent.config()
-  const cfg = compose && base.composeModel ? { ...base, model: base.composeModel } : base
+  const provider: ProviderId = ai.provider
+  if (provider === 'none') throw new Error('AI processing is off. Pick Claude Code or Codex in Speak → settings → ai, or use the verbatim format.')
+  const agent = AGENTS[provider]
+  const model = await modelFor(provider, mode)
   const started = Date.now()
   // Reading files takes a few more round trips: twice the time.
   const timeoutMs = Math.max(10, ai.timeoutSeconds) * 1000 * (readDir ? 2 : 1)
-  const result = await agent.complete(system, user, cfg, { timeoutMs, signal, readDir })
+  const result = await agent.complete(system, user, agent.config(), { model, timeoutMs, signal, readDir })
   const text = cleanOutput(result.text)
   if (!text) throw new Error('The AI returned an empty result.')
   const ms = Date.now() - started
@@ -127,7 +141,8 @@ export async function askAgent(system: string, user: string, opts: { timeoutMs: 
   const ai = configStore.get().ai
   if (ai.provider === 'none') throw new Error('AI processing is off.')
   const started = Date.now()
-  const result = await AGENTS[ai.provider].complete(system, user, AGENTS[ai.provider].config(), opts)
+  const model = await modelFor(ai.provider, 'dictate')
+  const result = await AGENTS[ai.provider].complete(system, user, AGENTS[ai.provider].config(), { ...opts, model })
   return { text: result.text, provider: ai.provider, model: result.model, ms: Date.now() - started }
 }
 
@@ -145,12 +160,12 @@ export async function processTranscript(
       transcript,
       inputLanguage: opts.inputLanguage,
       outputLanguage: opts.outputLanguage,
-      vocabulary: cfg.vocabulary,
-      custom: cfg.ai.customInstructions,
+      vocabulary: cfg.speech.vocabulary,
+      custom: cfg.ai.instructions,
       context: opts.context,
       canRead: !!opts.context?.dir
     })
-    const result = written(await complete(COMPOSE_SYSTEM, user, opts.signal, true, opts.context?.dir))
+    const result = written(await complete(COMPOSE_SYSTEM, user, 'compose', opts.signal, opts.context?.dir))
     return { ...result, text: stripSubjectLine(result.text, transcript) }
   }
   const user = processMessage({
@@ -158,16 +173,16 @@ export async function processTranscript(
     inputLanguage: opts.inputLanguage,
     style: opts.style,
     outputLanguage: opts.outputLanguage,
-    vocabulary: cfg.vocabulary,
-    custom: cfg.ai.customInstructions,
+    vocabulary: cfg.speech.vocabulary,
+    custom: cfg.ai.instructions,
     context: opts.context
   })
-  return written(await complete(PROCESS_SYSTEM, user, opts.signal))
+  return written(await complete(PROCESS_SYSTEM, user, 'dictate', opts.signal))
 }
 
 export function editText(text: string, instruction: string, signal?: AbortSignal): Promise<AiResult> {
   const cfg = configStore.get()
-  return complete(EDIT_SYSTEM, editMessage({ text, instruction, vocabulary: cfg.vocabulary, custom: cfg.ai.customInstructions }), signal)
+  return complete(EDIT_SYSTEM, editMessage({ text, instruction, vocabulary: cfg.speech.vocabulary, custom: cfg.ai.instructions }), 'dictate', signal)
 }
 
 export async function testAi(): Promise<AiTestResult> {

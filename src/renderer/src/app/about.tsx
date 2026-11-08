@@ -97,44 +97,6 @@ export function About({ config, update }: { config: Config; update: (patch: Deep
       </section>
 
       <section>
-        <Sep>context</Sep>
-        <Row label="dictation">
-          <span className="dim">spells names as the project does · adds nothing</span>
-        </Row>
-        <Row label="compose">
-          <span className="dim">reads the folder's files when it needs them</span>
-        </Row>
-        <Row label="clipboard">
-          <span className="dim">one dictation only · pick it on the pill</span>
-        </Row>
-        <Row label="read-only">
-          <span className="dim">dictate and compose never change anything · repositories and pages are copied to ~/.speak/context</span>
-        </Row>
-      </section>
-
-      <section>
-        <Sep>control</Sep>
-        <Row label="scope">
-          <span className="dim">an app, the screen or everything · speak refuses anything beyond it</span>
-        </Row>
-        <Row label="approvals">
-          <span className="dim">answer by voice or in the panel: yes, always, no, or say what to do instead</span>
-        </Row>
-        <Row label="your hands">
-          <span className="dim">
-            it works in the background when it can · what needs your mouse or keyboard waits until you pause, then gives them back · touch them and it stops,
-            until you say continue
-          </span>
-        </Row>
-        <Row label="undo">
-          <span className="dim">files it moves, writes or trashes · its trash is ~/.speak/control</span>
-        </Row>
-        <Row label="privacy">
-          <span className="dim">what it looks at goes to your ai provider: an app scope sends one app</span>
-        </Row>
-      </section>
-
-      <section>
         <Sep>command line</Sep>
         <Row label="--toggle">
           <span className="dim">start / stop dictation · bind it to a desktop shortcut on wayland</span>

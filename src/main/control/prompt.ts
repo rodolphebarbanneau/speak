@@ -1,8 +1,16 @@
+import { languageName } from '../../shared/constants'
 import type { ControlApproval, ControlScope } from '../../shared/types'
 import { isMac, isWin } from '../util'
 
+/** The language a control session writes in: that of the user's order, or the one they chose ('same' or a code). */
+export function replyIn(replyLanguage: string): string {
+  return replyLanguage === 'same'
+    ? "the language of the user's latest message (the language of their order), whatever the language on screen or in files"
+    : `${languageName(replyLanguage)}, whatever language the user speaks, or the screen and files are in`
+}
+
 /** The instructions of a control session: who gives orders, what it may touch, how to act and talk. */
-export function controlPrompt(o: { scope: ControlScope; scopeLabel: string; approval: ControlApproval }): string {
+export function controlPrompt(o: { scope: ControlScope; scopeLabel: string; approval: ControlApproval; replyLanguage: string }): string {
   const os = isWin ? 'Windows' : isMac ? 'macOS' : 'Linux'
   const scope = {
     app: `the windows of the app "${o.scopeLabel}": look at them, click, type and press keys there. Nothing else on the screen, no files, no commands. If the task needs another app, call request_app, which asks the user.`,
@@ -34,7 +42,7 @@ Every acting tool takes "intent": a short phrase in the user's language saying w
 
 # Talking
 - What you write is shown to the user in a small panel, and may be read aloud: short plain sentences, no markdown, no lists unless asked.
-- Write in the language of the user's latest message (the language of their order), whatever the language on screen or in files.
+- Write in ${replyIn(o.replyLanguage)}. That is "the user's language" for all you write: answers, questions, intents, plans.
 - Say briefly what you're about to do only when it takes a while. When you're done, one or two sentences on what you did and anything left for them.
 - If something fails twice, stop and say what is in the way.`
 }

@@ -239,22 +239,23 @@ export function ControlPanel() {
     const now = state?.status
     const was = previous.current
     previous.current = now ?? null
-    if (!now || !was || now === was || !config?.audio.sounds) return
+    if (!now || !was || now === was || !config?.recording.sounds) return
     // Waiting for your hands needs nothing from you: no cue (it would chime all along while you work).
     if (now === 'waiting' && was !== 'waiting') chime('ask')
     else if (now === 'idle' && (was === 'acting' || was === 'thinking')) chime('done')
-  }, [state?.status, config?.audio.sounds])
-  // Answers and questions read aloud, when that's on.
+  }, [state?.status, config?.recording.sounds])
+  // Answers and questions read aloud, when that's on: in the language they're written in, if known.
+  const reply = config?.control.language
+  const voice = reply && reply !== 'same' ? reply : config?.speech.language
   useEffect(
     () =>
       api.onControlSay((text) => {
         const u = new SpeechSynthesisUtterance(text)
-        const lang = config?.language.input
-        if (lang && lang !== 'auto') u.lang = lang
+        if (voice && voice !== 'auto') u.lang = voice
         speechSynthesis.cancel()
         speechSynthesis.speak(u)
       }),
-    [config?.language.input]
+    [voice]
   )
   // Follow the newest step, unless scrolled up to read.
   useLayoutEffect(() => {

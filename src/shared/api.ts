@@ -1,7 +1,7 @@
 import type {
   UpdateState,
   AgentId,
-  AgentModel,
+  AgentModels,
   AgentStatus,
   AiTestResult,
   AppInfo,
@@ -83,7 +83,7 @@ export interface SpeakApi {
   getAgentStatus(id: AgentId, refresh?: boolean): Promise<AgentStatus>
   /** Opens a terminal running the CLI's own sign-in. */
   openAgentLogin(id: AgentId): Promise<void>
-  listAgentModels(id: AgentId): Promise<AgentModel[]>
+  listAgentModels(id: AgentId): Promise<AgentModels>
   testAi(): Promise<AiTestResult>
 
   // Dictation

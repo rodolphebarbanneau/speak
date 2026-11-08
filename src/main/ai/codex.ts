@@ -114,7 +114,7 @@ export async function codexComplete(system: string, user: string, cfg: AgentConf
   const read = opts.readDir
   const args = [
     'exec',
-    ['-m', cfg.model],
+    ['-m', opts.model],
     ['-c', `model_reasoning_effort="${cfg.effort}"`],
     // TOML string; forward slashes keep Windows paths free of escapes.
     ['-c', `model_instructions_file="${instructions.replace(/\\/g, '/')}"`],
@@ -138,7 +138,7 @@ export async function codexComplete(system: string, user: string, cfg: AgentConf
       log.warn('codex exec failed:', detail)
       throw new Error(looksLikeAuthError(detail) ? `Codex is not signed in. ${detail}` : `Codex failed: ${detail}`)
     }
-    return { text, model: cfg.model }
+    return { text, model: opts.model }
   } finally {
     await rm(out, { force: true })
   }

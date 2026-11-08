@@ -108,7 +108,7 @@ if (!app.requestSingleInstanceLock()) {
     seasons.start() // the easter egg theme in season, before any window takes its colors
     if (isMac) app.dock?.hide()
     // Right after "restart & update", say so: the new version shows up instead of reappearing silently.
-    const updated = !!config.ui.lastVersion && config.ui.lastVersion !== version
+    const updated = !!config.state.lastVersion && config.state.lastVersion !== version
     registerIpc() // first: the loading dialog asks for the settings (its theme)
 
     // A loading dialog shows only if startup is slow (or just updated). Speech models load later,
@@ -140,14 +140,14 @@ if (!app.requestSingleInstanceLock()) {
             hotkeys.on('release', (ms: number) => controller.onShortcutRelease(ms))
             hotkeys.on('cancel', () => controller.cancel())
             configStore.on('change', (next: Config, prev: Config) => {
-              if (JSON.stringify(next.shortcuts) !== JSON.stringify(prev.shortcuts) || JSON.stringify(next.modes) !== JSON.stringify(prev.modes))
-                applyShortcuts(next)
+              if (JSON.stringify(next.modes) !== JSON.stringify(prev.modes) || next.recording.cancel !== prev.recording.cancel) applyShortcuts(next)
               // Control turned off: a session under way ends.
-              if (!next.modes.control && prev.modes.control && control.active) void control.end()
-              if (next.ui.launchAtLogin !== prev.ui.launchAtLogin) setLaunchAtLogin(next.ui.launchAtLogin)
-              if (JSON.stringify(next.transcription) !== JSON.stringify(prev.transcription)) engine.stopServer()
+              if (!next.modes.control.on && prev.modes.control.on && control.active) void control.end()
+              if (next.control.language !== prev.control.language) control.setReplyLanguage(next.control.language)
+              if (next.app.launchAtLogin !== prev.app.launchAtLogin) setLaunchAtLogin(next.app.launchAtLogin)
+              if (engineSettings(next) !== engineSettings(prev)) engine.stopServer()
               if (next.updates.auto !== prev.updates.auto) updater.applyConfig()
-              if (themeShown(next.ui, seasons.current) !== themeShown(prev.ui, seasons.current)) applyChrome()
+              if (themeShown(next, seasons.current) !== themeShown(prev, seasons.current)) applyChrome()
             })
             seasons.on('change', (season) => {
               applyChrome()
@@ -160,7 +160,7 @@ if (!app.requestSingleInstanceLock()) {
       ],
       updated ? { showAfterMs: 0, minShownMs: 1500 } : {}
     )
-    if (config.ui.lastVersion !== version) configStore.update({ ui: { lastVersion: version } })
+    if (config.state.lastVersion !== version) configStore.update({ state: { lastVersion: version } })
     setInterval(() => void history.prune(), 6 * 3600_000).unref()
 
     handleArgs(process.argv)
@@ -172,8 +172,14 @@ if (!app.requestSingleInstanceLock()) {
   })
 }
 
+/** What the speech engine runs with: the microphone, the language and the vocabulary aren't. */
+function engineSettings(c: Config): string {
+  const { microphone, language, vocabulary, ...engine } = c.speech
+  return JSON.stringify(engine)
+}
+
 function applyShortcuts(config: Config): void {
-  const error = hotkeys.apply(config.shortcuts, config.modes)
+  const error = hotkeys.apply(config.modes, config.recording.cancel)
   if (error && Notification.isSupported())
     new Notification({ title: 'Speak shortcut unavailable', body: `${error} Change it in Speak → settings → general.` }).show()
 }

@@ -127,11 +127,11 @@ Speak updates itself: new versions download in the background and install the ne
 
 ## Troubleshooting
 
-**"No signal from …"**: your microphone is sending silence. This usually happens when the system's default input is a virtual device (Voicemod, Voicemeeter…). Pick your real microphone in **settings → general → input** and use **test** to check it.
+**"No signal from …"**: your microphone is sending silence. This usually happens when the system's default input is a virtual device (Voicemod, Voicemeeter…). Pick your real microphone in **settings → speech → microphone** and use **test** to check it.
 
 **The text isn't pasted in a game**: anti-cheat software such as FACEIT blocks simulated key presses while it runs. Speak notices, keeps your text on the clipboard and tells you to press **Ctrl+V** yourself.
 
-**Recognition is off, or picks the wrong language**: in the preview or the history, pick the language you spoke under **spoken** to transcribe the recording again. To avoid it next time, set that language in **settings → general → spoken** instead of auto-detect, and add names and jargon you use to **vocabulary**.
+**Recognition is off, or picks the wrong language**: in the preview or the history, pick the language you spoke under **spoken** to transcribe the recording again. To avoid it next time, set that language in **settings → speech → spoken** instead of auto-detect, and add names and jargon you use to **vocabulary**.
 
 **macOS**: allow Speak in **System Settings → Privacy & Security** for the microphone, and for Accessibility so it can paste and detect when you release the shortcut.
 
@@ -169,8 +169,8 @@ To test an update without publishing, serve a newer build's `dist/` folder over 
 
 - **Speech recognition**: [whisper.cpp](https://github.com/ggml-org/whisper.cpp) with Whisper large-v3-turbo (CUDA on NVIDIA, Metal on Apple Silicon), or NVIDIA Parakeet v3, plus Silero voice detection. On Windows and Linux the engine is downloaded in the app; macOS release builds bundle it.
 - **AI**: the user's own, unmodified CLI, run non-interactively without tools, plugins, MCP servers or project settings. Speak never reads or stores credentials.
-  - Claude Code: `claude -p --model haiku --effort medium --system-prompt-file … --tools "" --setting-sources "" --strict-mcp-config --disable-slash-commands --no-session-persistence --output-format json`. Compose uses sonnet.
-  - Codex: `codex exec -m gpt-6-luna -c model_reasoning_effort="medium" -c model_instructions_file="…" --ignore-user-config --ignore-rules --sandbox read-only --ephemeral --skip-git-repo-check -o … -`.
+  - Claude Code: `claude -p --model haiku --effort medium --system-prompt-file … --tools "" --setting-sources "" --strict-mcp-config --disable-slash-commands --no-session-persistence --output-format json`. Each mode has its model (settings → ai → models): by default haiku for dictate, sonnet for compose and control.
+  - Codex: `codex exec -m gpt-6-luna -c model_reasoning_effort="medium" -c model_instructions_file="…" --ignore-user-config --ignore-rules --sandbox read-only --ephemeral --skip-git-repo-check -o … -`. By default gpt-6-luna for dictate, and the first model of Codex's catalog, its workhorse, for compose and control.
   - Control runs a live session: Claude Code with `--input-format stream-json --output-format stream-json --permission-prompt-tool stdio` (its permission prompts come to Speak), Codex through `codex app-server` (approvals as JSON-RPC requests; its own computer use, browser, plugins and the user's MCP servers turned off). Speak serves its tools (screen, undoable file changes, plan, questions) as an MCP server on 127.0.0.1 with a token, and checks the scope and the approval level in each one. The screen: window list and focus through Win32; windows pictured with `PrintWindow` (in the background), the display with `desktopCapturer` (Speak's windows excluded from capture); controls listed and acted on through UI Automation (invoke, toggle, select, expand, value, scroll), by a PowerShell bridge kept for the session; real input through `SendInput`, only once the user's hands are still (libuiohook), and given back after.
 - **Insertion**: the text goes on the clipboard and Speak sends the paste keystroke (Windows: `SendInput` with scan codes). The text stays on the clipboard so a manual Ctrl+V works if the app ignored it, unless **restore clipboard** is on. Compose reads the selection with Ctrl+Insert, which never interrupts a terminal.
 
@@ -190,14 +190,15 @@ speak --file=x.wav    process an audio file as if dictated
 
 ### Data (`~/.speak`, or `SPEAK_HOME`)
 
-| Path                                   | Content                                                     |
-| -------------------------------------- | ----------------------------------------------------------- |
-| `config.json`                          | Settings                                                    |
-| `history/YYYY-MM-DD/<id>/session.json` | Transcript, every version of the text, timings, the outcome |
-| `history/YYYY-MM-DD/<id>/audio.wav`    | The recording (optional)                                    |
-| `models/`, `bin/`                      | Speech models and the whisper.cpp engine                    |
-| `control/<id>/`                        | Control's trash and the backups its undo restores           |
-| `logs/speak.log`                       | Diagnostics                                                 |
+| Path                                   | Content                                                                                |
+| -------------------------------------- | -------------------------------------------------------------------------------------- |
+| `config.json`                          | Settings                                                                               |
+| `config.v1.json`                       | Settings as an older version saved them, before Speak moved them to the current layout |
+| `history/YYYY-MM-DD/<id>/session.json` | Transcript, every version of the text, timings, the outcome                            |
+| `history/YYYY-MM-DD/<id>/audio.wav`    | The recording (optional)                                                               |
+| `models/`, `bin/`                      | Speech models and the whisper.cpp engine                                               |
+| `control/<id>/`                        | Control's trash and the backups its undo restores                                      |
+| `logs/speak.log`                       | Diagnostics                                                                            |
 
 ### Source layout
 

@@ -38,7 +38,7 @@ const SILENT_PEAK = 1e-4
 
 function noSignalMessage(device: string): string {
   const name = device ? `"${device}"` : 'The microphone'
-  return `No signal from ${name}. Pick your microphone in Speak → settings → general → input.`
+  return `No signal from ${name}. Pick your microphone in Speak → settings → speech → microphone.`
 }
 
 /** A context as the AI gets it. */
@@ -102,7 +102,7 @@ class Controller extends EventEmitter {
       if (control.active) return void this.startRecording('control')
       // A mode that's off (the tray, the command line): said so, not started. Editing a preview by voice isn't a mode.
       const editing = action !== 'control' && previewVisible() && !!this.current
-      if (!editing && !configStore.get().modes[action])
+      if (!editing && !configStore.get().modes[action].on)
         return this.flash({ phase: 'info', message: `${action[0].toUpperCase()}${action.slice(1)} is off: turn it on in settings → general` }, 3500)
       if (action === 'control') {
         control.noteTarget()
@@ -114,7 +114,7 @@ class Controller extends EventEmitter {
   }
 
   onShortcutRelease(heldMs: number): void {
-    const mode = configStore.get().recordMode
+    const mode = configStore.get().recording.press
     if (this.phase !== 'recording') return
     if (mode === 'hold' || (mode === 'hybrid' && heldMs > 400)) void this.stopRecording()
   }
@@ -130,7 +130,7 @@ class Controller extends EventEmitter {
     else if (action === 'cancel') this.cancel()
     else if (action === 'pause' || action === 'resume') this.setPaused(action === 'pause')
     // The mode of a new recording (not one said to a control session under way), among those that are on.
-    else if (!configStore.get().modes[action]) return
+    else if (!configStore.get().modes[action].on) return
     else if (this.purpose === 'dictation' || (this.purpose === 'control' && !control.active)) {
       if (action === 'control') {
         if (this.purpose === 'dictation') control.noteTarget()
@@ -179,7 +179,7 @@ class Controller extends EventEmitter {
       () => {
         if (this.phase === 'recording') void this.stopRecording()
       },
-      Math.max(0, configStore.get().audio.maxSeconds * 1000 - recorded)
+      Math.max(0, configStore.get().recording.maxSeconds * 1000 - recorded)
     )
   }
 
@@ -221,7 +221,7 @@ class Controller extends EventEmitter {
     this.overlayTimer = null
     this.overlayShown = state
     broadcast('overlay', state)
-    if (!configStore.get().ui.showOverlay && state.phase !== 'error') return
+    if (!configStore.get().recording.indicator && state.phase !== 'error') return
     if (state.phase === 'idle') hideOverlay()
     else showOverlay(state.phase === 'recording')
   }
@@ -235,7 +235,7 @@ class Controller extends EventEmitter {
   }
 
   private sound(name: 'start' | 'stop' | 'error' | 'done'): void {
-    if (configStore.get().audio.sounds) overlay?.webContents.send('speak:recorder', { type: 'sound', name })
+    if (configStore.get().recording.sounds) overlay?.webContents.send('speak:recorder', { type: 'sound', name })
   }
 
   private updatePreviewBusy(busy: PreviewState['busy'], error?: string): void {
@@ -271,7 +271,12 @@ class Controller extends EventEmitter {
 
     const started = await new Promise<{ ok: boolean; error?: string; device?: string }>((resolve) => {
       this.pendingStart = resolve
-      overlay!.webContents.send('speak:recorder', { type: 'start', deviceId: cfg.audio.deviceId, deviceLabel: cfg.audio.deviceLabel, sounds: cfg.audio.sounds })
+      overlay!.webContents.send('speak:recorder', {
+        type: 'start',
+        deviceId: cfg.speech.microphone.id,
+        deviceLabel: cfg.speech.microphone.label,
+        sounds: cfg.recording.sounds
+      })
       setTimeout(() => resolve({ ok: false, error: 'Microphone did not start (timeout).' }), 8000)
     })
     this.pendingStart = null
@@ -322,7 +327,7 @@ class Controller extends EventEmitter {
     if (this.maxTimer) clearTimeout(this.maxTimer)
     this.setPhase('transcribing')
     // The first dictation after a while waits for the speech model: say so.
-    const loading = configStore.get().transcription.engine === 'whisper' && !engine.modelLoaded
+    const loading = configStore.get().speech.engine === 'whisper' && !engine.modelLoaded
     this.overlayState({ phase: 'transcribing', purpose: this.overlayPurpose, message: loading ? 'loading the speech model' : undefined })
     if (this.purpose === 'edit') this.updatePreviewBusy('transcribing')
     const reqId = ++this.recorderReq
@@ -387,7 +392,7 @@ class Controller extends EventEmitter {
         return this.flash({ phase: 'info', message: this.device ? `No speech detected (mic: ${this.device})` : 'No speech detected' }, 3500)
       }
       const wav = encodeWav(prepared.samples)
-      const language = cfg.language.input
+      const language = cfg.speech.language
       const t = await engine.transcribe(wav, { language, prompt: this.whisperPrompt(), signal: abort.signal })
       const transcript = cleanTranscript(t.text)
       log.info(`Transcribed ${Math.round(prepared.durationMs)}ms of audio in ${t.ms}ms (${t.engine}/${t.model})`)
@@ -416,8 +421,8 @@ class Controller extends EventEmitter {
         durationMs: Math.round(prepared.durationMs),
         hasAudio: cfg.history.keepAudio,
         transcription: { engine: t.engine, model: t.model, language, detected: t.detected, ms: t.ms, text: transcript },
-        style: compose ? 'compose' : cfg.style,
-        outputLanguage: cfg.language.output,
+        style: compose ? 'compose' : cfg.writing.format,
+        outputLanguage: cfg.writing.language,
         versions: [],
         text: transcript
       }
@@ -478,9 +483,9 @@ class Controller extends EventEmitter {
       // Nothing to insert or review: say why, and keep the transcript in the history.
       if (nothingToWrite) return this.fail(session.error!)
 
-      if (cfg.output.mode === 'paste' && !session.error) {
+      if (cfg.writing.then === 'paste' && !session.error) {
         this.overlayState({ phase: 'idle' })
-        const ok = await pasteText(session.text, { keys: cfg.output.pasteKeys, restoreClipboard: cfg.output.restoreClipboard })
+        const ok = await pasteText(session.text, { keys: cfg.writing.pasteKeys, restoreClipboard: cfg.writing.restoreClipboard })
         await this.finish(session, ok ? 'pasted' : 'copied')
         if (ok) this.sound('done')
         else this.pasteFailed()
@@ -623,7 +628,7 @@ class Controller extends EventEmitter {
   private whisperPrompt(): string | undefined {
     const vocab = configStore
       .get()
-      .vocabulary.split(/[\n,]/)
+      .speech.vocabulary.split(/[\n,]/)
       .map((v) => v.trim())
       .filter(Boolean)
     return vocab.length ? vocab.join(', ') + '.' : undefined
@@ -810,7 +815,7 @@ class Controller extends EventEmitter {
     if (!session) return
     if (this.phase !== 'idle') this.cancel()
     this.manualEdit(session, text)
-    const cfg = configStore.get().output
+    const cfg = configStore.get().writing
     await restoreFocus(this.target, hidePreview)
     const ok = await pasteText(session.text, { keys: cfg.pasteKeys, restoreClipboard: cfg.restoreClipboard })
     if (!ok) this.pasteFailed()

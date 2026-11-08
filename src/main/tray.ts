@@ -40,7 +40,7 @@ function choose<T extends string>(current: T, options: Array<[T, string]>, set: 
 /** What the recording, or the app, can do right now: the same as the pill's buttons while recording. */
 function actions(phase: Phase): Item[] {
   const cfg = configStore.get()
-  const { shortcuts, modes } = cfg
+  const { modes } = cfg
   const recording = controller.recording
   if (recording) {
     return [
@@ -53,13 +53,13 @@ function actions(phase: Phase): Item[] {
               click: () => controller.recordingAction(recording.paused ? 'resume' : 'pause')
             }
           ]),
-      { label: 'Cancel recording', accelerator: prettyShortcut(shortcuts.cancel), click: () => controller.cancel() }
+      { label: 'Cancel recording', accelerator: prettyShortcut(cfg.recording.cancel), click: () => controller.cancel() }
     ]
   }
   if (phase !== 'idle') {
     return [
       { label: phase === 'transcribing' ? 'Transcribing…' : 'Processing…', enabled: false },
-      { label: 'Cancel', accelerator: prettyShortcut(shortcuts.cancel), click: () => controller.cancel() }
+      { label: 'Cancel', accelerator: prettyShortcut(cfg.recording.cancel), click: () => controller.cancel() }
     ]
   }
   // A control session: talk to it, or end it.
@@ -76,9 +76,9 @@ function actions(phase: Phase): Item[] {
   }
   // The modes that are on.
   return [
-    ...(modes.dictate ? [{ label: 'Start dictation', accelerator: prettyShortcut(shortcuts.record), click: () => controller.toggle() }] : []),
-    ...(modes.compose ? [{ label: 'Start composing', accelerator: prettyShortcut(shortcuts.compose), click: () => controller.toggle('compose') }] : []),
-    ...(modes.control ? [{ label: 'Start control', accelerator: prettyShortcut(shortcuts.control), click: () => controller.toggle('control') }] : [])
+    ...(modes.dictate.on ? [{ label: 'Start dictation', accelerator: prettyShortcut(modes.dictate.shortcut), click: () => controller.toggle() }] : []),
+    ...(modes.compose.on ? [{ label: 'Start composing', accelerator: prettyShortcut(modes.compose.shortcut), click: () => controller.toggle('compose') }] : []),
+    ...(modes.control.on ? [{ label: 'Start control', accelerator: prettyShortcut(modes.control.shortcut), click: () => controller.toggle('control') }] : [])
   ]
 }
 
@@ -120,10 +120,10 @@ function choices(): Item[] {
   const cfg = configStore.get()
   const recording = controller.recording
   const compose = recording?.purpose === 'compose'
-  const format = FORMATS.find((s) => s.id === cfg.style)?.label
-  const spoken = ['auto', ...spokenLanguages(cfg.transcription.engine).map((l) => l.code)]
+  const format = FORMATS.find((s) => s.id === cfg.writing.format)?.label
+  const spoken = ['auto', ...spokenLanguages(cfg.speech.engine).map((l) => l.code)]
   // A language the engine doesn't list stays visible, so the current choice is never hidden.
-  if (!spoken.includes(cfg.language.input)) spoken.push(cfg.language.input)
+  if (!spoken.includes(cfg.speech.language)) spoken.push(cfg.speech.language)
   return [
     ...(recording && recording.purpose !== 'edit' && !recording.talk
       ? [
@@ -137,7 +137,7 @@ function choices(): Item[] {
                 ['control', 'Control', recording.purpose === 'control']
               ] as Array<[Mode, string, boolean]>
             )
-              .filter(([id, , checked]) => cfg.modes[id] || checked)
+              .filter(([id, , checked]) => cfg.modes[id].on || checked)
               .map(([id, label, checked]) => ({ label, type: 'radio', checked, click: () => controller.recordingAction(id) }))
           } as Item
         ]
@@ -147,42 +147,42 @@ function choices(): Item[] {
       submenu: FORMATS.map<Item>((s) => ({
         label: s.label,
         type: 'radio',
-        checked: cfg.style === s.id,
+        checked: cfg.writing.format === s.id,
         click: () => {
-          configStore.update({ style: s.id })
+          configStore.update({ writing: { format: s.id } })
           if (compose) controller.recordingAction('dictate')
         }
       }))
     },
     {
-      label: `Spoken language: ${languageName(cfg.language.input)}`,
+      label: `Spoken language: ${languageName(cfg.speech.language)}`,
       submenu: choose(
-        cfg.language.input,
+        cfg.speech.language,
         spoken.map((code) => [code, languageName(code)]),
-        (input) => configStore.update({ language: { input } })
+        (language) => configStore.update({ speech: { language } })
       )
     },
     {
-      label: `Output language: ${languageName(cfg.language.output)}`,
+      label: `Output language: ${languageName(cfg.writing.language)}`,
       submenu: choose(
-        cfg.language.output,
+        cfg.writing.language,
         ['same', ...LANGUAGES.map((l) => l.code)].map((code) => [code, languageName(code)]),
-        (output) => configStore.update({ language: { output } })
+        (language) => configStore.update({ writing: { language } })
       )
     },
     {
-      label: `After dictation: ${cfg.output.mode === 'paste' ? 'Paste directly' : 'Show preview'}`,
+      label: `After dictation: ${cfg.writing.then === 'paste' ? 'Paste directly' : 'Show preview'}`,
       submenu: choose<OutputMode>(
-        cfg.output.mode,
+        cfg.writing.then,
         [
           ['preview', 'Show preview'],
           ['paste', 'Paste directly']
         ],
-        (mode) => configStore.update({ output: { mode } })
+        (then) => configStore.update({ writing: { then } })
       )
     },
     context(),
-    ...(cfg.modes.control || control.active ? [controlChoices()] : [])
+    ...(cfg.modes.control.on || control.active ? [controlChoices()] : [])
   ]
 }
 
@@ -228,12 +228,12 @@ function buildMenu(phase: Phase): Menu {
     { type: 'separator' },
     ...choices(),
     { type: 'separator' },
-    { label: 'Sounds', type: 'checkbox', checked: cfg.audio.sounds, click: () => configStore.update({ audio: { sounds: !cfg.audio.sounds } }) },
+    { label: 'Sounds', type: 'checkbox', checked: cfg.recording.sounds, click: () => configStore.update({ recording: { sounds: !cfg.recording.sounds } }) },
     {
       label: 'Launch at login',
       type: 'checkbox',
-      checked: cfg.ui.launchAtLogin,
-      click: () => configStore.update({ ui: { launchAtLogin: !cfg.ui.launchAtLogin } })
+      checked: cfg.app.launchAtLogin,
+      click: () => configStore.update({ app: { launchAtLogin: !cfg.app.launchAtLogin } })
     },
     { type: 'separator' },
     { label: 'Copy last result', enabled: !!controller.lastResult(), click: () => void copyToClipboard(controller.lastResult()) },

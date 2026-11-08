@@ -1,4 +1,4 @@
-import type { AgentModel, Config, ControlApproval, ControlScope, EngineId, Mode, Style } from './types'
+import type { AgentId, AgentModel, Config, ControlApproval, ControlScope, EngineId, Format, Mode, Style } from './types'
 
 /** The project on GitHub: its releases, and its issues (where "report a bug" opens the bug form). */
 export const REPO_URL = 'https://github.com/rodolphebarbanneau/speak'
@@ -57,7 +57,7 @@ export const STYLES: Array<{ id: Style; label: string; description: string }> = 
   { id: 'compose', label: 'Compose', description: 'Follows your spoken instructions: writes the text you ask for from the context you give.' }
 ]
 /** A dictation's formats: compose is a mode of its own. */
-export const FORMATS = STYLES.filter((s) => s.id !== 'compose')
+export const FORMATS = STYLES.filter((s): s is (typeof STYLES)[number] & { id: Format } => s.id !== 'compose')
 
 export const MODES: Array<{ id: Mode; label: string; description: string }> = [
   { id: 'dictate', label: 'dictate', description: 'writes what you said' },
@@ -65,17 +65,14 @@ export const MODES: Array<{ id: Mode; label: string; description: string }> = [
   { id: 'control', label: 'control', description: 'does what you ask, on the computer' }
 ]
 
-/** Each mode's shortcut in the settings (dictation's is `record`). */
-export const MODE_SHORTCUT: Record<Mode, 'record' | 'compose' | 'control'> = { dictate: 'record', compose: 'compose', control: 'control' }
-
 /** The modes that are on, in order. */
 export function modesOn(c: Pick<Config, 'modes'>): Mode[] {
-  return MODES.map((m) => m.id).filter((id) => c.modes[id])
+  return MODES.map((m) => m.id).filter((id) => c.modes[id].on)
 }
 
 /** The shortcut of the first of these modes that's on and has one ('' when none): what to show as "press … to". */
-export function firstShortcut(c: Pick<Config, 'modes' | 'shortcuts'>, among: Mode[] = ['dictate', 'compose', 'control']): string {
-  for (const m of among) if (c.modes[m] && c.shortcuts[MODE_SHORTCUT[m]]) return c.shortcuts[MODE_SHORTCUT[m]]
+export function firstShortcut(c: Pick<Config, 'modes'>, among: Mode[] = ['dictate', 'compose', 'control']): string {
+  for (const m of among) if (c.modes[m].on && c.modes[m].shortcut) return c.modes[m].shortcut
   return ''
 }
 
@@ -99,36 +96,42 @@ export const CLAUDE_CODE_MODELS: AgentModel[] = [
   { id: 'opus', label: 'opus' }
 ]
 
-/** Fallback when Codex's own model catalog (~/.codex/models_cache.json) can't be read. */
+/** Fallback when Codex's own model catalog (~/.codex/models_cache.json) can't be read: its order, the workhorse first. */
 export const CODEX_MODELS: AgentModel[] = [
-  { id: 'gpt-6-luna', label: 'gpt-6-luna' },
+  { id: 'gpt-6.1-sol', label: 'gpt-6.1-sol' },
   { id: 'gpt-6.1-terra', label: 'gpt-6.1-terra' },
-  { id: 'gpt-6.1-sol', label: 'gpt-6.1-sol' }
+  { id: 'gpt-6-luna', label: 'gpt-6-luna' }
 ]
 
+/**
+ * The model Speak recommends for each mode, the default. Dictate cleans up and translates: a
+ * small fast model is plenty. Compose writes from a brief, where staying faithful matters; control
+ * sees the screen and acts, where reliability matters: a larger one. Codex's ('' here) is the first
+ * of its catalog, its workhorse, as the catalog changes (main/ai/index.ts).
+ */
+export const RECOMMENDED_MODELS: Record<AgentId, Record<Mode, string>> = {
+  'claude-code': { dictate: 'haiku', compose: 'sonnet', control: 'sonnet' },
+  codex: { dictate: 'gpt-6-luna', compose: '', control: '' }
+}
+
 export const DEFAULT_CONFIG: Config = {
-  onboarded: false,
-  modes: { dictate: true, compose: true, control: true },
+  version: 2,
   // The same on every system (Ctrl is ⌘ on a Mac): Ctrl+Shift for all, Alt for the AI modes; Space
   // for the modes that write, Enter for the one that acts. macOS keeps the other Space chords.
-  shortcuts: {
-    record: 'CommandOrControl+Shift+Space',
-    compose: 'CommandOrControl+Shift+Alt+Space',
-    control: 'CommandOrControl+Shift+Alt+Enter',
-    cancel: 'Escape'
+  modes: {
+    dictate: { on: true, shortcut: 'CommandOrControl+Shift+Space' },
+    compose: { on: true, shortcut: 'CommandOrControl+Shift+Alt+Space' },
+    control: { on: true, shortcut: 'CommandOrControl+Shift+Alt+Enter' }
   },
-  recordMode: 'hybrid',
-  // The result stays on the clipboard, so Ctrl+V pastes it again if the app ignored Speak's paste.
-  output: { mode: 'preview', restoreClipboard: false, pasteKeys: 'auto' },
-  language: { input: 'auto', output: 'same' },
-  style: 'clean',
-  vocabulary: '',
-  context: { current: '', recent: [] },
-  audio: { deviceId: 'default', deviceLabel: '', maxSeconds: 600, sounds: true },
-  transcription: {
+  recording: { press: 'hybrid', cancel: 'Escape', maxSeconds: 600, sounds: true, indicator: true },
+  app: { launchAtLogin: false, easterEggs: true },
+  history: { enabled: true, keepAudio: true, retentionDays: 90 },
+  speech: {
+    microphone: { id: 'default', label: '' },
+    language: 'auto',
+    vocabulary: '',
     engine: 'whisper',
-    whisperModel: 'large-v3-turbo-q8_0',
-    parakeetModel: 'parakeet-tdt-0.6b-v3-q8_0',
+    models: { whisper: 'large-v3-turbo-q8_0', parakeet: 'parakeet-tdt-0.6b-v3-q8_0' },
     useGpu: true,
     vad: true,
     keepLoadedMinutes: 30,
@@ -137,25 +140,26 @@ export const DEFAULT_CONFIG: Config = {
   },
   ai: {
     provider: 'claude-code',
-    // Cheap yet effective defaults: dictation cleanup doesn't need frontier models. Compose writes
-    // freely from a brief, and sonnet stays faithful to it where haiku sometimes embellishes.
-    // Control sees the screen and acts on it: the compose model unless set.
-    claudeCode: { path: '', home: '', model: 'haiku', composeModel: 'sonnet', controlModel: '', effort: 'medium' },
-    codex: { path: '', home: '', model: 'gpt-6-luna', composeModel: '', controlModel: '', effort: 'medium' },
-    customInstructions: '',
+    // '' = the recommended model of each mode (RECOMMENDED_MODELS).
+    claudeCode: { path: '', home: '', models: { dictate: '', compose: '', control: '' }, effort: 'medium' },
+    codex: { path: '', home: '', models: { dictate: '', compose: '', control: '' }, effort: 'medium' },
+    instructions: '',
     timeoutSeconds: 90
   },
-  history: { enabled: true, keepAudio: true, retentionDays: 90 },
+  // The result stays on the clipboard, so Ctrl+V pastes it again if the app ignored Speak's paste.
+  writing: { format: 'clean', language: 'same', then: 'preview', pasteKeys: 'auto', restoreClipboard: false },
+  context: { current: '', recent: [] },
   control: {
     scope: 'app',
     approval: 'plan',
     alwaysAsk: { money: true, secrets: true, delete: true, send: true },
-    speak: false,
+    readAloud: false,
+    language: 'same',
     idleMinutes: 30,
     handsSeconds: 2
   },
-  ui: { showOverlay: true, launchAtLogin: false, easterEggs: true, themeOff: '', lastVersion: '' },
-  updates: { auto: true }
+  updates: { auto: true },
+  state: { onboarded: false, lastVersion: '', themeOff: '' }
 }
 
 /** claude-opus-5-5 → opus 5.5 (other model names are returned unchanged). */

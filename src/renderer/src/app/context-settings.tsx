@@ -101,6 +101,22 @@ export function ContextSettings({ config }: { config: Config }) {
           </List>
         )}
       </section>
+
+      <section>
+        <Sep>how it's used</Sep>
+        <Row label="dictate">
+          <span className="dim">spells names as the project does · adds nothing</span>
+        </Row>
+        <Row label="compose">
+          <span className="dim">reads the folder's files when it needs them</span>
+        </Row>
+        <Row label="clipboard">
+          <span className="dim">one dictation only · pick it on the pill</span>
+        </Row>
+        <Row label="read-only">
+          <span className="dim">dictate and compose never change anything · repositories and pages are copied to ~/.speak/context</span>
+        </Row>
+      </section>
     </>
   )
 }

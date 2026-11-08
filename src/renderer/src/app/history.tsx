@@ -377,7 +377,7 @@ export function History({ config, onSetup }: { config: Config; onSetup: () => vo
             <p className="empty">
               {query ? 'no match' : 'no dictations yet'}
               {!query &&
-                (config.onboarded ? (
+                (config.state.onboarded ? (
                   <span className="acc">{displayShortcut(firstShortcut(config))} anywhere to start</span>
                 ) : (
                   <span className="setup">
@@ -408,7 +408,7 @@ export function History({ config, onSetup }: { config: Config; onSetup: () => vo
           {selected && !selected.control && (
             <Detail
               session={selected}
-              engine={config.transcription.engine}
+              engine={config.speech.engine}
               onChanged={(s) => (s ? setSessions((list) => list.map((x) => (x.id === s.id ? s : x))) : load())}
             />
           )}

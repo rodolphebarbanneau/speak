@@ -26,7 +26,7 @@ export function Preview() {
     void api.getConfig().then((c) => {
       // Any shortcut finishes the recording: the first that's on (control's starts a session instead).
       setRecordShortcut(displayShortcut(firstShortcut(c, ['dictate', 'compose'])))
-      setEngine(c.transcription.engine)
+      setEngine(c.speech.engine)
     })
     return off
   }, [])

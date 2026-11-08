@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { shortModel } from '@shared/constants'
-import type { AgentId, AgentModel, AgentStatus, AiTestResult, Config, DeepPartial, Effort, ProviderId } from '@shared/types'
+import { MODES, shortModel } from '@shared/constants'
+import type { AgentId, AgentModel, AgentModels, AgentStatus, AiTestResult, Config, DeepPartial, Effort, Mode, ProviderId } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
 import { Action, List, ListRow, Radio, Row, Sep, Spinner, TextInput } from '../components/ui'
 
@@ -22,9 +22,8 @@ const AGENTS: Record<
     install: string
     command: string
     home: string
-    modelHint: string
-    composeHint: string
-    controlHint: string
+    /** What matters for each mode's model, and what to pick. */
+    hints: Record<Mode, string>
   }
 > = {
   'claude-code': {
@@ -33,9 +32,11 @@ const AGENTS: Record<
     install: 'https://claude.com/claude-code',
     command: 'claude',
     home: '~/.claude',
-    modelHint: 'cleanup, translation and edits by voice · haiku is fast and cheap, and plenty for dictation',
-    composeHint: 'writes from your briefs, where staying faithful matters most · sonnet adds nothing you did not say',
-    controlHint: 'acts on the computer: sees the screen, clicks, types · sonnet is reliable, opus for long tasks'
+    hints: {
+      dictate: 'cleans up, translates and edits by voice: speed matters · haiku is fast, and plenty for it',
+      compose: 'writes from your briefs: staying faithful matters most · sonnet adds nothing you did not say',
+      control: 'sees the screen and acts: reliability matters · sonnet is reliable, opus for long tasks'
+    }
   },
   codex: {
     name: 'codex',
@@ -43,9 +44,11 @@ const AGENTS: Record<
     install: 'https://developers.openai.com/codex',
     command: 'codex',
     home: '~/.codex',
-    modelHint: 'cleanup, translation and edits by voice · luna is fast and cheap, and plenty for dictation',
-    composeHint: 'writes from your briefs, where staying faithful matters most · a larger model embellishes less',
-    controlHint: 'acts on the computer: sees the screen, clicks, types · a larger model is more reliable'
+    hints: {
+      dictate: 'cleans up, translates and edits by voice: speed matters · luna is fast, and plenty for it',
+      compose: 'writes from your briefs: staying faithful matters most · a larger model embellishes less',
+      control: 'sees the screen and acts: reliability matters · a larger model is more reliable'
+    }
   }
 }
 
@@ -55,12 +58,11 @@ const EFFORTS: Array<{ value: Effort; label: string }> = [
   { value: 'high', label: 'high' }
 ]
 
-/** Status, sign-in, model and effort for one coding-agent CLI. */
+/** One coding-agent CLI: its status and sign-in, and where it is. */
 function AgentSection({ id, config, update }: { id: AgentId; config: Config; update: Update }) {
   const agent = AGENTS[id]
   const cfg = config.ai[agent.configKey]
   const [status, setStatus] = useState<AgentStatus | null>(null)
-  const [models, setModels] = useState<AgentModel[]>([])
   const [loading, setLoading] = useState(false)
 
   const refresh = (force = true) => {
@@ -71,14 +73,8 @@ function AgentSection({ id, config, update }: { id: AgentId; config: Config; upd
       .finally(() => setLoading(false))
   }
   useEffect(() => refresh(false), [id, cfg.path, cfg.home]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => void api.listAgentModels(id).then(setModels), [id])
 
   const set = (patch: Partial<Config['ai']['claudeCode']>) => update({ ai: { [agent.configKey]: patch } })
-  // Keep the configured models selectable even if the catalog doesn't list them.
-  const withModel = (list: AgentModel[], id: string) => (!id || list.some((m) => m.id === id) ? list : [{ id, label: id }, ...list])
-  const modelOptions = withModel(models, cfg.model).map((m) => ({ value: m.id, label: m.label }))
-  const composeOptions = [{ value: '', label: 'same as dictation' }, ...withModel(models, cfg.composeModel).map((m) => ({ value: m.id, label: m.label }))]
-  const controlOptions = [{ value: '', label: 'same as compose' }, ...withModel(models, cfg.controlModel).map((m) => ({ value: m.id, label: m.label }))]
 
   return (
     <section>
@@ -119,23 +115,41 @@ function AgentSection({ id, config, update }: { id: AgentId; config: Config; upd
         </Row>
       )}
       {status?.error && <p className="under error">✗ {status.error}</p>}
-      <Row label="dictation model" hint={agent.modelHint}>
-        <Dropdown value={cfg.model} onChange={(model) => set({ model })} options={modelOptions} disabled={!modelOptions.length} />
-      </Row>
-      <Row label="compose model" hint={agent.composeHint}>
-        <Dropdown value={cfg.composeModel} onChange={(composeModel) => set({ composeModel })} options={composeOptions} />
-      </Row>
-      <Row label="control model" hint={agent.controlHint}>
-        <Dropdown value={cfg.controlModel} onChange={(controlModel) => set({ controlModel })} options={controlOptions} />
-      </Row>
-      <Row label="effort" hint="medium is a good balance · low is faster">
-        <Dropdown<Effort> value={cfg.effort} onChange={(effort) => set({ effort })} options={EFFORTS} />
-      </Row>
       <Row label="home path" hint={`${agent.command}'s settings and sign-in · another folder (e.g. ${agent.home}_work) uses another account`}>
         <TextInput value={cfg.home} onCommit={(v) => set({ home: v.trim() })} placeholder={`auto (${agent.home})`} />
       </Row>
       <Row label="cli path" hint={`the ${agent.command} program · leave empty to find it automatically`}>
         <TextInput value={cfg.path} onCommit={(v) => set({ path: v.trim() })} placeholder="auto" />
+      </Row>
+    </section>
+  )
+}
+
+/** Each mode's model, and the effort: the recommended ones unless the user picks others. */
+function ModelsSection({ id, config, update }: { id: AgentId; config: Config; update: Update }) {
+  const agent = AGENTS[id]
+  const cfg = config.ai[agent.configKey]
+  const [catalog, setCatalog] = useState<AgentModels | null>(null)
+  useEffect(() => void api.listAgentModels(id).then(setCatalog), [id])
+  const set = (patch: DeepPartial<Config['ai']['claudeCode']>) => update({ ai: { [agent.configKey]: patch } })
+  // Keep a picked model selectable even if the catalog no longer lists it.
+  const withModel = (list: AgentModel[], model: string) => (!model || list.some((m) => m.id === model) ? list : [{ id: model, label: model }, ...list])
+  // First, the recommended one (''), named: what the mode runs on unless another is picked.
+  const options = (mode: Mode) => [
+    { value: '', label: catalog ? `recommended · ${catalog.recommended[mode]}` : 'recommended' },
+    ...withModel(catalog?.models ?? [], cfg.models[mode]).map((m) => ({ value: m.id, label: m.label }))
+  ]
+
+  return (
+    <section>
+      <Sep>models</Sep>
+      {MODES.map((m) => (
+        <Row key={m.id} label={m.id} hint={agent.hints[m.id]}>
+          <Dropdown value={cfg.models[m.id]} onChange={(model) => set({ models: { [m.id]: model } })} options={options(m.id)} />
+        </Row>
+      ))}
+      <Row label="effort" hint="how much it thinks, in every mode · medium is a good balance · low is faster">
+        <Dropdown<Effort> value={cfg.effort} onChange={(effort) => set({ effort })} options={EFFORTS} />
       </Row>
     </section>
   )
@@ -174,18 +188,13 @@ export function AiSettings({ config, update }: { config: Config; update: Update 
       </section>
 
       {provider !== 'none' && <AgentSection key={provider} id={provider} config={config} update={update} />}
+      {provider !== 'none' && <ModelsSection key={`${provider}-models`} id={provider} config={config} update={update} />}
 
       {provider !== 'none' && (
         <section>
           <Sep>instructions</Sep>
           <Row block label="custom" hint='added to every request, e.g. "use british spelling" or "i mostly dictate prompts for a coding agent"'>
-            <TextInput
-              multiline
-              rows={3}
-              value={config.ai.customInstructions}
-              onCommit={(v) => update({ ai: { customInstructions: v } })}
-              placeholder="optional"
-            />
+            <TextInput multiline rows={3} value={config.ai.instructions} onCommit={(v) => update({ ai: { instructions: v } })} placeholder="optional" />
           </Row>
           <Row label="timeout" hint="give up on the ai pass after this long (the raw transcript is kept)">
             <Dropdown

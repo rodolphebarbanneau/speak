@@ -147,7 +147,7 @@ function AddressField({ onDone }: { onDone: () => void }) {
 const SHEET_FORMATS = ['clean', 'verbatim', 'prompt', 'summary'].map((id) => FORMATS.find((s) => s.id === id)!).filter(Boolean)
 
 /** What the sheet shows: its rows, or one long list (languages, contexts), or the field for an address. */
-type View = 'main' | 'spoken' | 'output' | 'context' | 'url'
+type View = 'main' | 'spoken' | 'output' | 'reply' | 'context' | 'url'
 
 /** A choice of the sheet: every option on one line, the current one highlighted. */
 function Seg<T extends string>({ options, value, onPick }: { options: Array<{ id: T; label: string; title?: string }>; value: T; onPick: (v: T) => void }) {
@@ -222,19 +222,19 @@ function Choices({ config, mode, clipboard, target }: { config: Config; mode: Mo
   const contextLabel = typeof context === 'object' ? shorten(context.label, 18) : context
   const approval = CONTROL_APPROVALS.find((a) => a.id === config.control.approval)
   const scope = config.control.scope
+  const reply = config.control.language
   const summary =
     mode === 'control'
-      ? [scope === 'app' ? target || 'app' : scope, approval?.label ?? '']
+      ? [scope === 'app' ? target || 'app' : scope, approval?.label ?? '', ...(reply !== 'same' ? [`→ ${reply}`] : [])]
       : [
-          ...(mode === 'dictate' && config.style !== 'clean' ? [FORMATS.find((s) => s.id === config.style)?.label.toLowerCase() ?? config.style] : []),
-          ...(config.language.output !== 'same' ? [`→ ${config.language.output}`] : []),
+          ...(mode === 'dictate' && config.writing.format !== 'clean'
+            ? [FORMATS.find((s) => s.id === config.writing.format)?.label.toLowerCase() ?? config.writing.format]
+            : []),
+          ...(config.writing.language !== 'same' ? [`→ ${config.writing.language}`] : []),
           ...(contextLabel ? [contextLabel] : [])
         ]
 
-  const spoken = [
-    { code: 'auto', name: 'auto-detect' },
-    ...spokenLanguages(config.transcription.engine).map((l) => ({ code: l.code, name: l.name.toLowerCase() }))
-  ]
+  const spoken = [{ code: 'auto', name: 'auto-detect' }, ...spokenLanguages(config.speech.engine).map((l) => ({ code: l.code, name: l.name.toLowerCase() }))]
   const back = () => setView('main')
   const lists: Partial<Record<View, { title: string; options: Option[] }>> = {
     spoken: {
@@ -242,8 +242,8 @@ function Choices({ config, mode, clipboard, target }: { config: Config; mode: Mo
       options: spoken.map((o) => ({
         key: o.code,
         label: o.name,
-        on: config.language.input === o.code,
-        apply: () => setDefault({ language: { input: o.code } })
+        on: config.speech.language === o.code,
+        apply: () => setDefault({ speech: { language: o.code } })
       }))
     },
     output: {
@@ -251,8 +251,17 @@ function Choices({ config, mode, clipboard, target }: { config: Config; mode: Mo
       options: OUTPUTS.map((o) => ({
         key: o.code,
         label: o.name,
-        on: config.language.output === o.code,
-        apply: () => setDefault({ language: { output: o.code } })
+        on: config.writing.language === o.code,
+        apply: () => setDefault({ writing: { language: o.code } })
+      }))
+    },
+    reply: {
+      title: 'answers in',
+      options: OUTPUTS.map((o) => ({
+        key: o.code,
+        label: o.name,
+        on: reply === o.code,
+        apply: () => setDefault({ control: { language: o.code } })
       }))
     },
     context: { title: 'context', options: contextOptions(config, clipboard, clip, () => setView('url')) }
@@ -308,7 +317,7 @@ function Choices({ config, mode, clipboard, target }: { config: Config; mode: Mo
             <>
               <SheetRow label="mode">
                 <Seg
-                  options={MODES.filter((m) => config.modes[m.id] || m.id === mode).map((m) => ({ id: m.id, label: m.label, title: m.description }))}
+                  options={MODES.filter((m) => config.modes[m.id].on || m.id === mode).map((m) => ({ id: m.id, label: m.label, title: m.description }))}
                   value={mode}
                   onPick={(m) => api.recordingAction(m)}
                 />
@@ -329,6 +338,15 @@ function Choices({ config, mode, clipboard, target }: { config: Config; mode: Mo
                       onPick={(v) => setDefault({ control: { approval: v } })}
                     />
                   </SheetRow>
+                  <SheetRow label="language">
+                    <Chip title="spoken language" onClick={() => setView('spoken')}>
+                      {config.speech.language}
+                    </Chip>
+                    <span className="dim">→</span>
+                    <Chip title="answers in" onClick={() => setView('reply')}>
+                      {reply === 'same' ? 'as spoken' : reply}
+                    </Chip>
+                  </SheetRow>
                   <p className="sfoot">
                     {scope === 'app'
                       ? `app: ${target ? `${target}, the one` : 'the one'} in front when you pressed the shortcut`
@@ -341,22 +359,22 @@ function Choices({ config, mode, clipboard, target }: { config: Config; mode: Mo
                     <SheetRow label="format">
                       <Seg
                         options={SHEET_FORMATS.map((s) => ({ id: s.id, label: s.label.toLowerCase(), title: s.description.toLowerCase() }))}
-                        value={config.style}
-                        onPick={(v) => setDefault({ style: v })}
+                        value={config.writing.format}
+                        onPick={(v) => setDefault({ writing: { format: v } })}
                       />
                     </SheetRow>
                   )}
                   <SheetRow label="language">
                     <Chip title="spoken language" onClick={() => setView('spoken')}>
-                      {config.language.input}
+                      {config.speech.language}
                     </Chip>
                     <span className="dim">→</span>
                     <Chip title="write in" onClick={() => setView('output')}>
-                      {config.language.output === 'same' ? 'as spoken' : config.language.output}
+                      {config.writing.language === 'same' ? 'as spoken' : config.writing.language}
                     </Chip>
                   </SheetRow>
                   <SheetRow label="then">
-                    <Seg options={THEN.map((t) => ({ id: t, label: t }))} value={config.output.mode} onPick={(v) => setDefault({ output: { mode: v } })} />
+                    <Seg options={THEN.map((t) => ({ id: t, label: t }))} value={config.writing.then} onPick={(v) => setDefault({ writing: { then: v } })} />
                   </SheetRow>
                   {contextRow('context', 'none')}
                   <p className="sfoot">mode: this recording only · the rest becomes your default</p>

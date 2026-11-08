@@ -47,11 +47,11 @@ export function InputSettings({ config, update, onVerdict }: Props) {
     try {
       const list = await listMicrophones()
       setMics(list)
-      setSelected((await resolveDeviceId(config.audio.deviceId, config.audio.deviceLabel)) ?? 'default')
+      setSelected((await resolveDeviceId(config.speech.microphone.id, config.speech.microphone.label)) ?? 'default')
     } catch (err) {
       setError(microphoneError(err))
     }
-  }, [config.audio.deviceId, config.audio.deviceLabel])
+  }, [config.speech.microphone.id, config.speech.microphone.label])
 
   useEffect(() => {
     void load()
@@ -60,7 +60,7 @@ export function InputSettings({ config, update, onVerdict }: Props) {
   }, [load])
 
   const labelOf = (id: string) =>
-    id === 'default' ? `default · ${mics?.defaultLabel ?? ''}` : (mics?.devices.find((d) => d.id === id)?.label ?? config.audio.deviceLabel)
+    id === 'default' ? `default · ${mics?.defaultLabel ?? ''}` : (mics?.devices.find((d) => d.id === id)?.label ?? config.speech.microphone.label)
 
   const stop = useCallback(async () => {
     if (timer.current) clearTimeout(timer.current)
@@ -111,7 +111,7 @@ export function InputSettings({ config, update, onVerdict }: Props) {
     if (testing) void stop()
     setResult(null)
     setSelected(id)
-    void update({ audio: { deviceId: id, deviceLabel: id === 'default' ? '' : labelOf(id) } })
+    void update({ speech: { microphone: { id, label: id === 'default' ? '' : labelOf(id) } } })
   }
 
   const options = [
@@ -128,7 +128,7 @@ export function InputSettings({ config, update, onVerdict }: Props) {
 
   return (
     <>
-      <Sep tail={api.platform !== 'linux' && <Action onClick={() => api.openSoundSettings()}>system sound settings</Action>}>input</Sep>
+      <Sep tail={api.platform !== 'linux' && <Action onClick={() => api.openSoundSettings()}>system sound settings</Action>}>microphone</Sep>
       <Row label="device" hint="the microphone speak records from · 'default' follows your system setting">
         <Dropdown value={selected} onChange={choose} options={options} disabled={!mics} />
       </Row>

@@ -37,7 +37,7 @@ function webPreferences(): Electron.WebPreferences {
 }
 
 // Tokyo Night (Omarchy default theme), or the easter egg theme in season while it's on.
-const palette = () => activePalette(configStore.get().ui, seasons.current)
+const palette = () => activePalette(configStore.get(), seasons.current)
 export const TITLE_BAR_HEIGHT = 32
 /** Windows picks the right size from the multi-resolution .ico; elsewhere a PNG is used. */
 const APP_ICON = isWin ? 'icon.ico' : 'icon.png'

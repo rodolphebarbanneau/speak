@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { MODE_SHORTCUT, modesOn } from '@shared/constants'
+import { modesOn } from '@shared/constants'
 import type { MainSection } from '@shared/types'
 import { AppName } from '@themes/components'
-import { Action, displayShortcut, HelpProvider, Key, TitleBar, useWindowFocus } from '../components/ui'
-import { BugReportPage } from './bug-report'
+import { Canvas, cellSize, Pixels } from '@themes/pixels'
+import { displayShortcut, HelpProvider, Key, TitleBar, useWindowFocus } from '../components/ui'
+import { BugReportDialog } from './bug-report'
 import { History } from './history'
 import { useConfig } from './hooks'
 import { isSettings, SETTINGS, SettingsDialog, type SettingsSection } from './settings'
@@ -12,22 +13,26 @@ const api = window.speak
 
 /** A beetle in the font's pixels, for "report a bug". */
 const BUG = ['.x.....x.', '..x...x..', '...xxx...', 'x.xxxxx.x', '.xxx.xxx.', 'x.xxxxx.x', '.xxx.xxx.', 'x..xxx..x']
+/** A cog, for settings: finer pixels, drawn as tall as the beetle. */
+const GEAR = ['....xx....', '.xx.xx.xx.', '.xxxxxxxx.', '..xx..xx..', 'xxx....xxx', 'xxx....xxx', '..xx..xx..', '.xxxxxxxx.', '.xx.xx.xx.', '....xx....']
 
-function BugIcon() {
+/** A title-row icon, as tall as the beetle (whose pixels stay whole device pixels), colored by the button. */
+function PixelIcon({ rows }: { rows: string[] }) {
   return (
-    <svg className="bug-icon" viewBox="0 0 9 8" aria-hidden="true" shapeRendering="crispEdges">
-      {BUG.flatMap((row, y) => [...row].map((c, x) => (c === 'x' ? <rect key={`${x}-${y}`} x={x} y={y} width="1" height="1" /> : null)))}
-    </svg>
+    <Canvas cols={rows[0].length} rows={rows.length} cell={(cellSize(1.5) * BUG.length) / rows.length} className="pixel-icon">
+      <Pixels rows={rows} />
+    </Canvas>
   )
 }
 
 /**
- * The window shows history, or the bug report; settings open over either, in a dialog, from the
- * title bar's [ settings ] (or the tray), and close back to what was there.
+ * The window shows history; settings and the bug report open over it, in dialogs, from the title
+ * bar's gear and bug (or the tray), and close back to it. Settings can open over the bug report, to
+ * check something while writing it. The title row names what's in front.
  */
 export function App() {
   useWindowFocus()
-  const [view, setView] = useState<'history' | 'bug'>('history')
+  const [bug, setBug] = useState(false)
   const [settings, setSettings] = useState<SettingsSection | null>(null)
   const [lastSettings, setLastSettings] = useState<SettingsSection>('general')
   /** What was on screen when "report a bug" opened: the report says which screen. */
@@ -38,16 +43,16 @@ export function App() {
 
   const screenName = () => (settings ? `settings · ${SETTINGS.find((p) => p.id === settings)?.label ?? settings}` : 'history')
   const openBug = () => {
-    setBugScreen(screenName())
+    if (!bug) setBugScreen(screenName())
     setSettings(null)
-    setView('bug')
+    setBug(true)
   }
   const navigate = (s: MainSection) => {
     if (isSettings(s)) setSettings(s)
     else if (s === 'bug') openBug()
     else {
       setSettings(null)
-      setView('history')
+      setBug(false)
     }
   }
 
@@ -56,12 +61,12 @@ export function App() {
   useEffect(() => {
     setHelp('')
     if (settings) setLastSettings(settings)
-  }, [settings, view])
+  }, [settings, bug])
 
   if (!config) return null
   // The first mode that's on: the button starts it, the status line says how.
   const mode = modesOn(config)[0] ?? 'dictate'
-  const key = displayShortcut(config.shortcuts[MODE_SHORTCUT[mode]])
+  const key = displayShortcut(config.modes[mode].shortcut)
 
   return (
     <HelpProvider value={setHelp}>
@@ -72,26 +77,30 @@ export function App() {
               <Key k="●" onClick={() => api.toggleRecording(mode)}>
                 {mode}
               </Key>
-              <Action onClick={() => setSettings(settings ? null : lastSettings)}>settings</Action>
               <button
-                className={`icon-button ${view === 'bug' ? 'on' : ''}`}
+                className={`icon-button ${settings ? 'on' : ''}`}
+                title="settings"
+                aria-label="settings"
+                onClick={() => setSettings(settings ? null : lastSettings)}
+              >
+                <PixelIcon rows={GEAR} />
+              </button>
+              <button
+                className={`icon-button ${bug ? 'on' : ''}`}
                 title="report a bug"
                 aria-label="report a bug"
-                onClick={() => (view === 'bug' && !settings ? setView('history') : openBug())}
+                onClick={() => (bug && !settings ? setBug(false) : openBug())}
               >
-                <BugIcon />
+                <PixelIcon rows={BUG} />
               </button>
             </>
           }
         >
-          <AppName /> · {view === 'bug' ? 'report a bug' : 'history'}
+          <AppName /> · {settings ? 'settings' : bug ? 'bug' : 'history'}
         </TitleBar>
         <div className="main">
-          {view === 'bug' ? (
-            <BugReportPage config={config} screen={bugScreen} onClose={() => setView('history')} />
-          ) : (
-            <History config={config} onSetup={() => setSettings('general')} />
-          )}
+          <History config={config} onSetup={() => setSettings('general')} />
+          {bug && <BugReportDialog config={config} screen={bugScreen} onClose={() => setBug(false)} />}
           {settings && <SettingsDialog section={settings} onSection={setSettings} onClose={() => setSettings(null)} config={config} update={update} />}
         </div>
         <div className="statusline">

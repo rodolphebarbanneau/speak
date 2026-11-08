@@ -3,8 +3,9 @@ import { arch, homedir, userInfo } from 'node:os'
 import { join } from 'node:path'
 import { app, screen, systemPreferences } from 'electron'
 import type { BugReport, BugReportRequest } from '../shared/bug-report'
+import type { AgentId, Mode } from '../shared/types'
 import { themeShown } from '../themes/shared'
-import { AGENT_NAMES, agentStatus, askAgent } from './ai'
+import { AGENT_NAMES, agentStatus, askAgent, modelFor } from './ai'
 import { ANALYSIS_PROMPT, analysisMessage, diagnosticsText, dictationsCourse, logTail, parseAnalysis, scrub, titleFrom, type Machine } from './bug-report'
 import { configStore } from './config'
 import { control } from './control'
@@ -97,8 +98,8 @@ function readLogEnd(): string {
 const onOff = (on: boolean) => (on ? 'on' : 'off')
 
 async function transcription(): Promise<string> {
-  const t = configStore.get().transcription
-  const model = t.engine === 'whisper' ? t.whisperModel : t.parakeetModel
+  const t = configStore.get().speech
+  const model = t.models[t.engine]
   const status = await engine.status().catch(() => null)
   const bin = status?.binary
   return [
@@ -113,12 +114,19 @@ async function transcription(): Promise<string> {
     .join(', ')
 }
 
-/** The AI provider's name and model, as the form's "AI provider" field says it. */
-function aiLine(): string {
+/** Each mode's model, as it runs: "dictate haiku, compose sonnet (picked), control sonnet". */
+async function modelsLine(provider: AgentId): Promise<string> {
+  const picked = configStore.get().ai[provider === 'claude-code' ? 'claudeCode' : 'codex'].models
+  const modes: Mode[] = ['dictate', 'compose', 'control']
+  const models = await Promise.all(modes.map((m) => modelFor(provider, m).catch(() => '?')))
+  return modes.map((m, i) => `${m} ${models[i]}${picked[m] ? ' (picked)' : ''}`).join(', ')
+}
+
+/** The AI provider's name and dictation model, as the form's "AI provider" field says it. */
+async function aiLine(): Promise<string> {
   const ai = configStore.get().ai
   if (ai.provider === 'none') return 'none'
-  const cfg = ai.provider === 'claude-code' ? ai.claudeCode : ai.codex
-  return `${AGENT_NAMES[ai.provider]} (${cfg.model})`
+  return `${AGENT_NAMES[ai.provider]} (${await modelFor(ai.provider, 'dictate').catch(() => '?')})`
 }
 
 async function aiDiagnostics(): Promise<string> {
@@ -131,48 +139,40 @@ async function aiDiagnostics(): Promise<string> {
   return [
     AGENT_NAMES[ai.provider],
     `${found}${status?.loggedIn === false ? ', signed out' : ''}${status?.error ? `, ${status.error}` : ''}`,
-    `model ${cfg.model}${cfg.composeModel ? `, compose model ${cfg.composeModel}` : ''}, effort ${cfg.effort}`,
+    `models ${await modelsLine(ai.provider)}, effort ${cfg.effort}`,
     `timeout ${ai.timeoutSeconds}s`,
     cfg.path ? 'custom cli path' : '',
     cfg.home ? 'custom home path' : '',
-    ai.customInstructions.trim() ? 'custom instructions' : ''
+    ai.instructions.trim() ? 'custom instructions' : ''
   ]
     .filter(Boolean)
     .join('; ')
 }
 
+/** The settings, as the tabs group them, without anything personal (paths, addresses, words). */
 function settings(): string {
   const c = configStore.get()
-  const shortcuts = Object.entries(c.shortcuts)
-    .map(([k, v]) => `${k} ${v || 'none'}`)
-    .join(', ')
+  const r = c.recording
+  const w = c.writing
+  const ctl = c.control
   return [
-    `modes ${
-      Object.entries(c.modes)
-        .filter(([, on]) => on)
-        .map(([m]) => m)
-        .join('+') || 'none'
-    }`,
-    `record ${c.recordMode}`,
-    `output ${c.output.mode} (paste keys ${c.output.pasteKeys}, restore clipboard ${onOff(c.output.restoreClipboard)})`,
-    `style ${c.style}`,
-    `spoken ${c.language.input} → output ${c.language.output}`,
-    `pill ${onOff(c.ui.showOverlay)}`,
-    `sounds ${onOff(c.audio.sounds)}`,
-    `max ${c.audio.maxSeconds}s`,
-    `microphone ${c.audio.deviceId ? 'chosen' : 'default'}`,
+    `modes ${Object.entries(c.modes)
+      .map(([m, { on, shortcut }]) => `${m} ${on ? shortcut || 'no shortcut' : 'off'}`)
+      .join(', ')}`,
+    `recording ${r.press}, cancel ${r.cancel || 'none'}, max ${r.maxSeconds}s, sounds ${onOff(r.sounds)}, pill ${onOff(r.indicator)}`,
+    `microphone ${c.speech.microphone.id === 'default' ? 'default' : 'chosen'}, spoken ${c.speech.language}`,
+    `writing ${w.format} → ${w.language}, then ${w.then} (paste keys ${w.pasteKeys}, restore clipboard ${onOff(w.restoreClipboard)})`,
     // The kind only: a folder's path or a page's address is the user's business.
     `context ${c.context.recent.find((s) => s.location === c.context.current)?.kind ?? 'none'} (${c.context.recent.length} recent)`,
-    `control ${c.control.scope}, asks ${c.control.approval}, always-ask ${
-      Object.entries(c.control.alwaysAsk)
+    `control ${ctl.scope}, asks ${ctl.approval}, always-ask ${
+      Object.entries(ctl.alwaysAsk)
         .filter(([, on]) => on)
         .map(([k]) => k)
         .join('+') || 'none'
-    }`,
+    }, answers ${ctl.language}`,
     `history ${onOff(c.history.enabled)}${c.history.keepAudio ? ' with audio' : ''}`,
-    `shortcuts ${shortcuts}`,
-    `theme ${seasons.current && themeShown(c.ui, seasons.current) ? seasons.current.id : 'none'}`,
-    `launch at login ${onOff(c.ui.launchAtLogin)}`,
+    `theme ${seasons.current && themeShown(c, seasons.current) ? seasons.current.id : 'none'}`,
+    `launch at login ${onOff(c.app.launchAtLogin)}`,
     `auto updates ${onOff(c.updates.auto)}`
   ].join(', ')
 }
@@ -221,16 +221,16 @@ export async function prepareBugReport(req: BugReportRequest): Promise<BugReport
     analysis: '',
     version: app.getVersion(),
     system: systemLine(),
-    ai: aiLine(),
+    ai: await aiLine(),
     diagnostics: clean(await diagnostics(req)),
     analyzedBy: null
   }
   if (!req.analyze) return base
   const provider = configStore.get().ai.provider
-  if (provider === 'none') return { ...base, problem: 'AI processing is off (settings → ai): the report has no analysis.' }
+  if (provider === 'none') return { ...base, problem: 'no analysis: ai is off (settings → ai)' }
   const name = AGENT_NAMES[provider]
   const status = await agentStatus(provider).catch(() => null)
-  if (!status?.found || status.loggedIn === false) return { ...base, problem: `${name} isn't ready (settings → ai): the report has no analysis.` }
+  if (!status?.found || status.loggedIn === false) return { ...base, problem: "no analysis: the ai isn't ready (settings → ai)" }
 
   current?.abort()
   const abort = new AbortController()
@@ -250,9 +250,9 @@ export async function prepareBugReport(req: BugReportRequest): Promise<BugReport
       analyzedBy: `${name} (${result.model})`
     }
   } catch (err) {
-    if (abort.signal.aborted) return { ...base, problem: 'Analysis stopped: the report has none.' }
+    if (abort.signal.aborted) return { ...base, problem: 'no analysis: stopped' }
     log.warn('Bug report: no analysis from', provider, (err as Error).message)
-    return { ...base, problem: `The analysis failed (${clean((err as Error).message)}): the report has none.` }
+    return { ...base, problem: `no analysis: the ai failed (${clean((err as Error).message)})` }
   } finally {
     if (current === abort) current = null
   }

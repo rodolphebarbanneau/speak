@@ -54,7 +54,7 @@ function languageCode(name: string): string {
 }
 
 function threads(): number {
-  const n = configStore.get().transcription.threads
+  const n = configStore.get().speech.threads
   return n > 0 ? n : Math.max(2, Math.min(8, availableParallelism() - 1))
 }
 
@@ -82,7 +82,7 @@ class Engine {
   }
 
   async locateBinary(): Promise<BinaryLocation | null> {
-    const custom = configStore.get().transcription.customBinDir.trim()
+    const custom = configStore.get().speech.customBinDir.trim()
     if (custom) return existsSync(join(custom, SERVER)) || existsSync(join(custom, PARAKEET)) ? { dir: custom, source: 'custom' } : null
     try {
       const m = JSON.parse(await readFile(MANIFEST, 'utf8')) as Manifest
@@ -220,9 +220,9 @@ class Engine {
 
   /** Resolve what's needed to transcribe, or throw a user-facing error. */
   private async prepare(): Promise<{ engine: EngineId; def: ModelDef; model: string; bin: BinaryLocation }> {
-    const cfg = configStore.get().transcription
+    const cfg = configStore.get().speech
     const engine = cfg.engine
-    const def = MODELS.find((m) => m.id === (engine === 'whisper' ? cfg.whisperModel : cfg.parakeetModel))
+    const def = MODELS.find((m) => m.id === cfg.models[engine])
     if (!def) throw new Error('No speech model selected. Choose one in Speak → settings → speech.')
     const model = this.modelPath(def)
     if (!existsSync(model)) throw new Error(`The speech model "${def.label}" is not downloaded. Download it in Speak → settings → speech.`)
@@ -235,7 +235,7 @@ class Engine {
 
   /** Start the Whisper server ahead of time (called when recording starts). */
   warmup(): void {
-    if (configStore.get().transcription.engine !== 'whisper') return
+    if (configStore.get().speech.engine !== 'whisper') return
     this.prepare()
       .then(({ model, bin }) => this.ensureServer(model, bin))
       .catch(() => undefined)
@@ -280,7 +280,7 @@ class Engine {
     await writeFile(file, wav)
     try {
       const args = ['-m', model, '-t', String(threads()), '-np', '-f', file]
-      if (!configStore.get().transcription.useGpu) args.push('-ng')
+      if (!configStore.get().speech.useGpu) args.push('-ng')
       const r = await run(join(bin.dir, PARAKEET), args, { cwd: bin.dir, env: childEnv(bin.dir), timeoutMs: 300_000, signal: opts.signal, lowPriority: true })
       if (r.code !== 0) throw new Error(`parakeet-cli failed: ${(r.stderr || r.stdout).trim().split('\n').slice(-3).join(' ')}`)
       return r.stdout
@@ -294,7 +294,7 @@ class Engine {
   }
 
   private async ensureServer(model: string, bin: BinaryLocation): Promise<void> {
-    const cfg = configStore.get().transcription
+    const cfg = configStore.get().speech
     const useVad = cfg.vad && existsSync(this.vadPath())
     const key = JSON.stringify([bin.dir, model, cfg.useGpu, useVad, threads()])
     if (this.server && this.serverKey === key) {
@@ -357,7 +357,7 @@ class Engine {
   /** Reset the idle timer that unloads the model. */
   private touch(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer)
-    const minutes = configStore.get().transcription.keepLoadedMinutes
+    const minutes = configStore.get().speech.keepLoadedMinutes
     if (minutes > 0) {
       this.idleTimer = setTimeout(() => {
         log.info('Unloading idle whisper-server')
