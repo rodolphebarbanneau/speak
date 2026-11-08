@@ -266,7 +266,10 @@ export function windowAt(x: number, y: number): WindowInfo | null {
 
 /**
  * Bring a window to the front with the keyboard focus. Windows only lets the foreground process
- * do that: Speak borrows the foreground thread's input queue, and taps Alt (which unlocks it).
+ * do that: Speak borrows the foreground thread's input queue, and presses Alt (which unlocks it).
+ * Never Alt alone: pressed and released by itself, Alt shows an app's access keys (a letter on
+ * each button), and the next key Speak types presses one instead (in Notepad, "b" is Bold). A key
+ * no app uses, in between, keeps it from being Alt alone.
  */
 export async function focusWindow(id: number): Promise<boolean> {
   const w = need()
@@ -279,6 +282,8 @@ export async function focusWindow(id: number): Promise<boolean> {
   if (attach) w.AttachThreadInput(self, fgThread, true)
   keyEvents([
     [VK.Alt, false],
+    [MASK_KEY, false],
+    [MASK_KEY, true],
     [VK.Alt, true]
   ])
   w.SetForegroundWindow(id)
@@ -492,6 +497,8 @@ const ALIASES: Record<string, string> = {
 }
 /** Keys sharing a scan code with the numpad: the dedicated keys are the extended ones. */
 const EXTENDED = new Set([0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2d, 0x2e, 0x5b, 0x5d])
+/** A virtual key Windows leaves unassigned: no app does anything with it (see focusWindow). */
+const MASK_KEY = 0xe8
 
 function keyEvents(keys: Array<[number, boolean]>): void {
   const w = need()
@@ -945,7 +952,34 @@ function Focused() {
   $e = $A::FocusedElement
   if (-not $e) { return $null }
   $c = $e.Current
-  return [ordered]@{ type = $keep[$c.ControlType.Id]; name = [string]$c.Name; password = [bool]$c.IsPassword }
+  return [ordered]@{ type = $keep[$c.ControlType.Id]; name = [string]$c.Name; password = [bool]$c.IsPassword; pid = [int]$c.ProcessId }
+}
+
+# The text just before the cursor, in the field with the keyboard (to check what was typed). Never a password's.
+function BeforeCursor($n) {
+  $e = $A::FocusedElement
+  if (-not $e) { return $null }
+  $c = $e.Current
+  $o = [ordered]@{ pid = [int]$c.ProcessId }
+  if ($c.IsPassword) { $o.password = $true; return $o }
+  [object]$p = $null
+  if ($e.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref]$p)) {
+    $sel = $p.GetSelection()
+    if ($sel.Length -gt 0) {
+      $ends = [System.Windows.Automation.Text.TextPatternRangeEndpoint]
+      $r = $sel[0].Clone()
+      # The cursor is where the selection starts (an app may select what it suggests after it).
+      [void]$r.MoveEndpointByRange($ends::End, $r, $ends::Start)
+      [void]$r.MoveEndpointByUnit($ends::Start, [System.Windows.Automation.Text.TextUnit]::Character, -[int]$n)
+      $o.text = $r.GetText([int]$n)
+      return $o
+    }
+  }
+  if ($e.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$p)) {
+    $v = [string]$p.Current.Value
+    $o.value = $v.Substring([Math]::Max(0, $v.Length - 4000))
+  }
+  return $o
 }
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -961,6 +995,7 @@ while ($true) {
     switch ($req.op) {
       'elements' { $res.elements = @(Elements $req.hwnd $req.max) }
       'focused' { $res.focused = Focused }
+      'before' { $res.before = BeforeCursor $req.n }
       'press' { $res.done = Press (Get $req.hwnd $req.index) }
       'fill' { $res.done = Fill (Get $req.hwnd $req.index) $req.text }
       'scroll' { $res.done = ScrollIn $req.hwnd $req.index $req.dy }
@@ -972,10 +1007,14 @@ while ($true) {
 }
 `
 
-type Focused = { type?: string; name: string; password: boolean } | null
+/** The control with the keyboard focus, and the app it's in. */
+type Focused = { type?: string; name: string; password: boolean; pid?: number } | null
+/** The field with the keyboard: the `text` before its cursor, else its whole `value` (neither for a password). */
+export type BeforeCursor = { pid: number; text?: string; value?: string; password?: boolean } | null
 interface UiaReply {
   elements?: Element[]
   focused?: Focused
+  before?: BeforeCursor
   /** What a background action did ('invoke', 'value'…), or null when the element doesn't support it. */
   done?: string | null
   error?: string
@@ -1082,6 +1121,12 @@ class Uia {
   async focused(): Promise<Focused> {
     const r = await this.ask({ op: 'focused' }, 3000)
     return r.focused ?? null
+  }
+
+  /** Up to `n` characters before the cursor, in the field with the keyboard (to check what was typed). */
+  async beforeCursor(n: number): Promise<BeforeCursor> {
+    const r = await this.ask({ op: 'before', n }, 3000)
+    return r.before ?? null
   }
 
   stop(): void {

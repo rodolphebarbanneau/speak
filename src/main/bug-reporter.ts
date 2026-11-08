@@ -59,7 +59,11 @@ function machine(): Machine {
 function systemLine(): string {
   const version = process.getSystemVersion?.() ?? ''
   if (isMac) return `macOS ${version} (${arch() === 'arm64' ? 'Apple silicon' : 'Intel'})`
-  if (isWin) return `Windows ${version} (${arch()})`
+  if (isWin) {
+    // Windows 11 still says 10.0: its builds start at 22000.
+    const build = Number(version.split('.')[2])
+    return build ? `Windows ${build >= 22000 ? 11 : 10}, build ${build} (${arch()})` : `Windows ${version} (${arch()})`
+  }
   return `Linux ${version} (${arch()})`
 }
 
@@ -114,19 +118,26 @@ async function transcription(): Promise<string> {
     .join(', ')
 }
 
+const MODES: Mode[] = ['dictate', 'compose', 'control']
+
+/** Each mode's model, as it runs (in MODES' order). */
+function modeModels(provider: AgentId): Promise<string[]> {
+  return Promise.all(MODES.map((m) => modelFor(provider, m).catch(() => '?')))
+}
+
 /** Each mode's model, as it runs: "dictate haiku, compose sonnet (picked), control sonnet". */
 async function modelsLine(provider: AgentId): Promise<string> {
   const picked = configStore.get().ai[provider === 'claude-code' ? 'claudeCode' : 'codex'].models
-  const modes: Mode[] = ['dictate', 'compose', 'control']
-  const models = await Promise.all(modes.map((m) => modelFor(provider, m).catch(() => '?')))
-  return modes.map((m, i) => `${m} ${models[i]}${picked[m] ? ' (picked)' : ''}`).join(', ')
+  const models = await modeModels(provider)
+  return MODES.map((m, i) => `${m} ${models[i]}${picked[m] ? ' (picked)' : ''}`).join(', ')
 }
 
-/** The AI provider's name and dictation model, as the form's "AI provider" field says it. */
+/** The AI provider's name and each mode's model (a bug may be any mode's), as the form's "AI provider" field says it. */
 async function aiLine(): Promise<string> {
-  const ai = configStore.get().ai
-  if (ai.provider === 'none') return 'none'
-  return `${AGENT_NAMES[ai.provider]} (${await modelFor(ai.provider, 'dictate').catch(() => '?')})`
+  const provider = configStore.get().ai.provider
+  if (provider === 'none') return 'none'
+  const models = await modeModels(provider)
+  return `${AGENT_NAMES[provider]} (${MODES.map((m, i) => `${m} ${models[i]}`).join(', ')})`
 }
 
 async function aiDiagnostics(): Promise<string> {

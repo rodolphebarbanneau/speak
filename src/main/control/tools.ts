@@ -166,6 +166,9 @@ interface Borrowed<T> {
   stopped?: Stopped
 }
 
+/** Typed text read back from its field: there, or what's before the cursor instead. Null: the field can't be read. */
+type Check = { ok: true } | { ok: false; shows: string } | null
+
 /** What a borrowed action needs: the keyboard on its window (typing, keys), a button held (a drag). */
 interface BorrowNeeds {
   keyboard?: boolean
@@ -180,6 +183,8 @@ export class ToolServer {
   private shots = new Map<string, Shot>()
   /** The window it looked at or acted on last: the default one. */
   private current: number | null = null
+  /** A window whose cursor turned out to be in a password field when Speak was about to type: its next text goes in as a password. */
+  private passwordIn: number | null = null
   /** The elements listed per window, by number (e1, e2…), as the UI Automation bridge keeps them. */
   private elements = new Map<number, Element[]>()
   /** One action on the screen at a time: the AI may ask for several at once. */
@@ -493,9 +498,12 @@ export class ToolServer {
     const now = windowInfo(w.id)
     if (!now) throw new Error(`"${windowName(w)}" is closed.`)
     if (!now.focused || now.minimized) {
+      const from = foregroundWindow()
       await focusWindow(w.id)
       const fg = foregroundWindow()
-      if (!fg || fg.id !== w.id) throw new Error(`Could not bring "${windowName(w)}" to the front.`)
+      const ok = !!fg && fg.id === w.id
+      log.info(`Control: ${ok ? 'brought' : 'could not bring'} ${now.exe || 'a window'} to the front (from ${from?.exe || 'no window'})`)
+      if (!ok) throw new Error(`Could not bring "${windowName(w)}" to the front.`)
     }
     return windowInfo(w.id) ?? now
   }
@@ -555,7 +563,10 @@ export class ToolServer {
     const fg = saved.fg
     if (!fg || fg.id === w.id || fg.pid === process.pid || !windowInfo(fg.id)) return
     const elsewhere = !displayRects().some((d) => inRect(center(fg.rect), d) && inRect(center(w.rect), d))
-    if (saved.busy || elsewhere) await focusWindow(fg.id)
+    if (saved.busy || elsewhere) {
+      log.info(`Control: focus back to ${fg.exe || "the user's window"}`)
+      await focusWindow(fg.id)
+    }
   }
 
   /** A background action: some apps take the focus when acted on; it goes back to the user. */
@@ -748,6 +759,7 @@ export class ToolServer {
         return text(`Filled ${el.e.type} "${el.e.name}".`)
       }
       // The field takes no value from outside: click it, select what's there, type.
+      let check = null as Check
       const r = await this.borrow(
         a.intent || 'fill a field',
         w,
@@ -758,11 +770,13 @@ export class ToolServer {
           await delay(120)
           if (stop()) return 0
           pressKeys('ctrl+a')
-          return insertText(value, stop, secret)
+          const sent = await insertText(value, stop, secret)
+          check = await this.typedCheck(win, value, sent, secret)
+          return sent
         },
         { keyboard: true }
       )
-      return this.ended(g.step, r, `Filled ${el.e.type} "${el.e.name}".`, secret ? undefined : value)
+      return this.ended(g.step, r, `Filled ${el.e.type} "${el.e.name}".`, secret ? undefined : value, check)
     } catch (err) {
       return this.failed(g.step, err)
     }
@@ -773,8 +787,10 @@ export class ToolServer {
     const w = this.pick(a.window)
     const el = a.element ? this.element(w, a.element) : null
     const value = String(a.text ?? '')
+    // The field with the keyboard counts only when it's in that app: another app's says nothing about it.
     const focused = el ? null : await uia.focused().catch(() => null)
-    const secret = !!(el?.e.password ?? focused?.password)
+    const secret = el ? !!el.e.password : (focused?.pid === w.pid && focused.password) || this.passwordIn === w.id
+    if (this.passwordIn === w.id) this.passwordIn = null
     const category = secret ? 'secrets' : categoryOf(a.intent)
     const g = await this.host.gate({
       title: a.intent || `type in ${windowName(w)}`,
@@ -787,6 +803,8 @@ export class ToolServer {
     })
     if (!g.ok) return text(g.reason)
     try {
+      let check = null as Check
+      let password = false as boolean
       const r = await this.borrow(
         a.intent || 'type',
         w,
@@ -799,12 +817,28 @@ export class ToolServer {
               if (!(await click(p.x, p.y, 'left', 1, stop))) return 0
             }
             await delay(120)
+          } else if (!secret) {
+            // The window in front now, the field with the keyboard is its own: a password field after all
+            // isn't typed into as plain text (it would be pasted when long, and kept in the history).
+            const now = await uia.focused().catch(() => null)
+            if (now?.password && now.pid === win.pid) {
+              password = true
+              return 0
+            }
           }
-          return insertText(value, stop, secret)
+          const sent = await insertText(value, stop, secret)
+          check = await this.typedCheck(win, value, sent, secret)
+          return sent
         },
         { keyboard: true }
       )
-      return this.ended(g.step, r, 'Typed.', secret ? undefined : value)
+      if (password) {
+        this.passwordIn = w.id
+        // Its text off the step (and the history): it was meant for a password field.
+        this.host.finish(g.step, { ok: false, detail: `${value.length} characters`, error: 'not typed: the cursor is in a password field' })
+        return text('Not typed: the cursor is in a password field. Call type again to type it there as a password (the user may be asked first).')
+      }
+      return this.ended(g.step, r, 'Typed.', secret ? undefined : value, check)
     } catch (err) {
       return this.failed(g.step, err)
     }
@@ -948,9 +982,40 @@ export class ToolServer {
 
   // ---------------------------------------------------------------- endings
 
-  /** A real-input action's end: done, or stopped on the way (how far it got, for text). */
-  private ended(step: string, r: Borrowed<unknown>, done: string, typed?: string): Content[] {
+  /**
+   * What Speak typed, read back from its field while the window is still in front: an app may take
+   * a key for one of its shortcuts (after a lone Alt, Notepad's "b" is Bold), and the AI would say
+   * it typed what isn't there. Never a password's; logged as a count only. Null: it can't be read.
+   */
+  private async typedCheck(win: WindowInfo, typed: string, sent: number, secret: boolean): Promise<Check> {
+    let check: Check = null
+    if (!secret && sent === typed.length) {
+      // Line breaks, tabs and an app's curly quotes aren't a difference.
+      const flat = (s: string) => s.replace(/\s+/g, ' ').replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
+      const want = flat(typed).slice(-200)
+      if (want.trim()) {
+        await delay(150) // the last keys reach the app
+        const r = await uia.beforeCursor(want.length + 200).catch(() => null)
+        const got = r && r.pid === win.pid && !r.password ? (r.text ?? r.value) : undefined
+        if (got !== undefined) {
+          const ok = r?.text !== undefined ? flat(got).endsWith(want) : flat(got).includes(want)
+          check = ok ? { ok: true } : { ok: false, shows: flat(got).slice(-(want.length + 20)) }
+        }
+      }
+    }
+    log.info(`Control: typed ${sent} of ${typed.length} characters${check ? (check.ok ? ', read back' : ', but the field shows something else') : ''}`)
+    return check
+  }
+
+  /** A real-input action's end: done (and what it typed there, when read back), or stopped on the way (how far it got, for text). */
+  private ended(step: string, r: Borrowed<unknown>, done: string, typed?: string, check: Check = null): Content[] {
     if (!r.stopped) {
+      if (check && !check.ok) {
+        this.host.finish(step, { ok: false, error: `the field shows "…${check.shows.slice(-60)}"` })
+        return text(
+          `${done.replace(/\.$/, '')}, but the text before the cursor is now "${check.shows}": not what was sent (the app may have taken a key for one of its shortcuts). Look at the window and fix it before going on: don't send it all again blindly.`
+        )
+      }
       this.host.finish(step, { ok: true })
       return text(done)
     }
