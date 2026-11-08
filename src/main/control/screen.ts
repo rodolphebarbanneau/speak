@@ -1,9 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { desktopCapturer, nativeImage, screen, type NativeImage } from 'electron'
+import { clipboard, desktopCapturer, nativeImage, screen, type ClipboardItem, type NativeImage } from 'electron'
 import { log } from '../log'
 import { paths } from '../paths'
+import { onUserInput, type UserInput } from '../platform/keyboard'
+import { restoreClipboard, snapshotClipboard } from '../platform/paste'
 import { delay, isWin } from '../util'
 
 /**
@@ -70,6 +72,9 @@ interface Win32 {
   GetCurrentThreadId: () => number
   WindowFromPoint: (pt: { x: number; y: number }) => number | bigint
   GetAncestor: (h: number, flags: number) => number | bigint
+  GetWindow: (h: number, cmd: number) => number | bigint
+  GetAsyncKeyState: (vk: number) => number
+  SetWindowPos: (h: number, after: number, x: number, y: number, cx: number, cy: number, flags: number) => boolean
   SetCursorPos: (x: number, y: number) => boolean
   SendInput: (count: number, inputs: Buffer, size: number) => number
   MapVirtualKeyW: (code: number, type: number) => number
@@ -125,6 +130,9 @@ function load(): Win32 | null {
       GetCurrentThreadId: kernel32.func('uint32 __stdcall GetCurrentThreadId()'),
       WindowFromPoint: user32.func('intptr_t __stdcall WindowFromPoint(SPEAK_POINT pt)'),
       GetAncestor: user32.func('intptr_t __stdcall GetAncestor(intptr_t h, uint32 flags)'),
+      GetWindow: user32.func('intptr_t __stdcall GetWindow(intptr_t h, uint32 cmd)'),
+      GetAsyncKeyState: user32.func('int16 __stdcall GetAsyncKeyState(int vk)'),
+      SetWindowPos: user32.func('bool __stdcall SetWindowPos(intptr_t h, intptr_t after, int x, int y, int cx, int cy, uint32 flags)'),
       SetCursorPos: user32.func('bool __stdcall SetCursorPos(int x, int y)'),
       SendInput: user32.func('uint32 __stdcall SendInput(uint32 count, const uint8_t *inputs, int size)'),
       MapVirtualKeyW: user32.func('uint32 __stdcall MapVirtualKeyW(uint32 code, uint32 type)'),
@@ -228,6 +236,21 @@ export function foregroundWindow(): WindowInfo | null {
   return fg ? info(w, fg, fg) : null
 }
 
+/**
+ * Keep one of Speak's windows (the frame) just above `target` in the z-order, as if part of it:
+ * a window that covers the target covers it too, and so do Speak's panel and pill (always on top).
+ */
+export function stackAbove(h: number, target: number): void {
+  const w = load()
+  if (!w || !w.IsWindow(target)) return
+  const above = Number(w.GetWindow(target, 3)) // GW_HWNDPREV
+  if (above === h) return
+  // The target is the first of the ordinary windows: the frame goes first (still under those on top).
+  const topmost = above !== 0 && (Number(w.GetWindowLongPtrW(above, -20)) & 0x8) !== 0 // GWL_EXSTYLE, WS_EX_TOPMOST
+  // SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOOWNERZORDER
+  w.SetWindowPos(h, above === 0 || topmost ? 0 : above, 0, 0, 0, 0, 0x1 | 0x2 | 0x10 | 0x200)
+}
+
 /** The top-level window under a point of the screen. */
 export function windowAt(x: number, y: number): WindowInfo | null {
   const w = need()
@@ -276,15 +299,109 @@ const KEYEVENTF_KEYUP = 0x2
 const KEYEVENTF_UNICODE = 0x4
 const MOUSE = { leftDown: 0x2, leftUp: 0x4, rightDown: 0x8, rightUp: 0x10, middleDown: 0x20, middleUp: 0x40, wheel: 0x800, hwheel: 0x1000 }
 
-/** Speak's own input, to tell it from the user's (whose input pauses the session). */
-let injectingUntil = 0
-export const injecting = () => Date.now() < injectingUntil
+// ---------------------------------------------------------------- whose input it is
+
+/*
+ * Speak's input, told from the user's. The hook sees both, and doesn't pass on Windows' mark for
+ * injected input: Speak announces each key press, click and wheel turn it sends, and an event it
+ * didn't announce is the user's. Its characters go as Unicode packets, which no key on a keyboard
+ * gives (key code 0); it moves the pointer with SetCursorPos, which the hook doesn't see, so a
+ * move there is the user's. (Not a time window: typing would hide the user for as long as it lasts.)
+ */
+type Announced = 'packet' | 'key' | 'mouse'
+const announced: Array<{ kind: Announced; at: number }> = []
+/** An announced event not seen by then never will be (input a window above Speak's rights refused). */
+const ANNOUNCED_MS = 1000
+/** A move smaller than this, from where the pointer was put or last moved, is a nudge of the desk, not a hand. */
+const NUDGE = 3
+let anchor: { x: number; y: number } | null = null
+
+function announce(buf: Buffer, count: number): void {
+  const at = Date.now()
+  for (let i = 0; i < count; i++) {
+    const o = i * INPUT_SIZE
+    if (buf.readUInt32LE(o) === INPUT_KEYBOARD) {
+      const flags = buf.readUInt32LE(o + 12)
+      if (!(flags & KEYEVENTF_KEYUP)) announced.push({ kind: flags & KEYEVENTF_UNICODE ? 'packet' : 'key', at })
+    } else if (buf.readUInt32LE(o + 20) & (MOUSE.leftDown | MOUSE.rightDown | MOUSE.middleDown | MOUSE.wheel | MOUSE.hwheel)) {
+      announced.push({ kind: 'mouse', at })
+    }
+  }
+}
+
+/** Whether a key press, click, wheel turn or move is the user's: Speak's own are taken off as they come. */
+function fromUser(e: UserInput): boolean {
+  const now = Date.now()
+  while (announced.length && now - announced[0].at > ANNOUNCED_MS) announced.shift()
+  if (e.kind === 'move') {
+    if (anchor && Math.abs(e.x - anchor.x) < NUDGE && Math.abs(e.y - anchor.y) < NUDGE) return false
+    anchor = { x: e.x, y: e.y }
+    return true
+  }
+  const kinds: Announced[] = e.kind === 'mouse' ? ['mouse'] : e.keycode === 0 ? ['packet', 'key'] : ['key']
+  for (const kind of kinds) {
+    const i = announced.findIndex((a) => a.kind === kind)
+    if (i >= 0) {
+      announced.splice(i, 1)
+      return false
+    }
+  }
+  return true
+}
+
+const usersListeners = new Set<(e: UserInput) => void>()
+let classifying = false
+
+/** The user's own key presses, clicks, wheel turns and moves: never Speak's. */
+export function onUsersInput(cb: (e: UserInput) => void): () => void {
+  if (!classifying) {
+    // Once, for good: every event is told once, and Speak's announced ones are taken off.
+    classifying = true
+    onUserInput((e) => {
+      if (fromUser(e)) for (const l of usersListeners) l(e)
+    })
+  }
+  usersListeners.add(cb)
+  return () => usersListeners.delete(cb)
+}
+
+const MODIFIER_KEYS = [0x10, 0x11, 0x12, 0x5b, 0x5c] // Shift, Ctrl, Alt, the Windows keys
+const MOUSE_BUTTONS = [0x01, 0x02, 0x04]
+
+/**
+ * Whether the user holds a key that changes what Speak's input does (Ctrl with a letter is a
+ * shortcut), or a mouse button: asked of Windows directly, ahead of the hook. Speak never leaves
+ * its own down between two bursts, except the button of a drag (`buttons: false` then).
+ */
+export function pressing(buttons = true): boolean {
+  const w = load()
+  if (!w) return false
+  const down = (vk: number) => (w.GetAsyncKeyState(vk) & 0x8000) !== 0
+  if (MODIFIER_KEYS.some(down)) return true
+  if (!buttons || !MOUSE_BUTTONS.some(down)) return false
+  // A click on Speak's own panel or pill (pause, stop, see) isn't taking the mouse back.
+  const p = cursorPos()
+  return windowAt(p.x, p.y)?.pid !== process.pid
+}
+
+/** Whether the keyboard still goes to that window (or a dialog or menu it owns). */
+export function hasKeyboard(id: number): boolean {
+  const w = need()
+  const fg = Number(w.GetForegroundWindow())
+  return !!fg && (fg === id || Number(w.GetAncestor(fg, 3)) === id) // GA_ROOTOWNER
+}
 
 function send(buf: Buffer, count: number): void {
   const w = need()
-  injectingUntil = Date.now() + 400
   const sent = w.SendInput(count, buf, INPUT_SIZE)
+  announce(buf, sent)
   if (sent !== count) throw new Error('Windows did not take the input (an app running as administrator, or a secure screen, is in front).')
+}
+
+/** The pointer put somewhere by Speak (the hook doesn't see it: where the user's next move starts). */
+function putPointer(x: number, y: number): void {
+  need().SetCursorPos(Math.round(x), Math.round(y))
+  anchor = { x: Math.round(x), y: Math.round(y) }
 }
 
 function mouseEvents(events: Array<{ flags: number; data?: number }>): void {
@@ -416,56 +533,115 @@ export function pressKeys(combo: string): void {
 }
 
 /**
- * Type text as Unicode characters (any keyboard layout); new lines as Enter, tabs as Tab. In short
- * bursts (some apps drop characters sent too fast), checking `stop` between them: the user's hands
- * on the keyboard end it there. Returns how many characters went out.
+ * Type one line as Unicode characters: any keyboard layout, and no key's meaning (a tab is a tab,
+ * not the next field). Never Enter: a line break would be one (see insertText), so it's a space
+ * here. One character at a time, `stop` asked before each (the user's hands, the keyboard still on
+ * the window): if another window takes the keyboard on its own, at most one can reach it before
+ * Speak sees. (Each key waits for the system's keyboard hooks anyway: more at once isn't faster.)
+ * Returns how many characters went out.
  */
-export async function typeText(text: string, stop: () => boolean = () => false): Promise<number> {
-  const s = text.replace(/\r\n?/g, '\n')
-  const BURST = 8
+export async function typeText(text: string, stop: () => boolean): Promise<number> {
+  const s = text.replace(/\r\n?|\n/g, ' ')
+  const BURST = 1
   let sent = 0
   for (let start = 0; start < s.length; start += BURST) {
     if (stop()) return sent
     const part = s.slice(start, start + BURST)
     const buf = Buffer.alloc(INPUT_SIZE * part.length * 2)
     for (let i = 0; i < part.length; i++) {
-      const ch = part[i]
-      const vk = ch === '\n' ? VK.Enter : ch === '\t' ? VK.Tab : 0
       for (const up of [false, true]) {
         const o = (i * 2 + (up ? 1 : 0)) * INPUT_SIZE
         buf.writeUInt32LE(INPUT_KEYBOARD, o)
-        if (vk) {
-          buf.writeUInt16LE(vk, o + 8)
-          buf.writeUInt32LE(up ? KEYEVENTF_KEYUP : 0, o + 12)
-        } else {
-          buf.writeUInt16LE(part.charCodeAt(i), o + 10)
-          buf.writeUInt32LE(KEYEVENTF_UNICODE | (up ? KEYEVENTF_KEYUP : 0), o + 12)
-        }
+        buf.writeUInt16LE(part.charCodeAt(i), o + 10)
+        buf.writeUInt32LE(KEYEVENTF_UNICODE | (up ? KEYEVENTF_KEYUP : 0), o + 12)
       }
     }
     send(buf, part.length * 2)
     sent += part.length
-    await delay(12)
+    await delay(4)
   }
   return sent
 }
 
-export async function click(x: number, y: number, button: 'left' | 'right' | 'middle' = 'left', count = 1): Promise<void> {
-  const w = need()
-  injectingUntil = Date.now() + 400
-  w.SetCursorPos(Math.round(x), Math.round(y))
+/** The user's clipboard while Speak pastes, put back after (kept across pastes in a row). */
+let clipboardSaved: { items: ClipboardItem[]; text: string; timer: NodeJS.Timeout } | null = null
+/** The user's clipboard going back: the next paste waits for it (or it would save Speak's text as theirs). */
+let restoring: Promise<void> = Promise.resolve()
+
+/**
+ * Paste text in one go, the user's clipboard put back after. Typed, a line break is Enter, which
+ * sends a message or submits a form (even Shift+Enter, in a one-line field); pasted, it's only
+ * text, and nothing goes out key by key into another window. Returns whether it went out.
+ */
+export async function pasteText(text: string, stop: () => boolean): Promise<boolean> {
+  await restoring
+  let items: ClipboardItem[]
+  if (clipboardSaved) {
+    clearTimeout(clipboardSaved.timer)
+    items = (await clipboard.readText()) === clipboardSaved.text ? clipboardSaved.items : await snapshotClipboard()
+    clipboardSaved = null
+  } else items = await snapshotClipboard()
+  const putBack = (): Promise<void> => {
+    clipboardSaved = null
+    // Unless the user copied something meanwhile.
+    restoring = (async () => {
+      if ((await clipboard.readText()) === text) await restoreClipboard(items)
+    })()
+    return restoring
+  }
+  await clipboard.writeText(text)
+  await delay(40)
+  if (stop()) {
+    await putBack()
+    return false
+  }
+  pressKeys('ctrl+v')
+  // The app reads the clipboard when it pastes: the user's goes back a moment later.
+  clipboardSaved = { items, text, timer: setTimeout(() => void putBack(), 800) }
+  await delay(150)
+  return true
+}
+
+/**
+ * Beyond this, a line is pasted rather than typed. Each key Speak sends waits for every keyboard
+ * hook on the system (a mouse's or a keyboard's software often has one): a timer tick each, about
+ * 30 characters a second on some machines. A paste is one shortcut, whatever the length, so the
+ * user's hands have nothing to cross.
+ */
+const PASTE_FROM = 40
+
+/**
+ * Text where the cursor is: a short line is typed; a longer one, or several lines, pasted in one
+ * go (see pasteText). A password is always typed: never on the clipboard (its history, other
+ * devices). Returns how many characters went out.
+ */
+export async function insertText(text: string, stop: () => boolean, secret = false): Promise<number> {
+  if (!secret && (/[\r\n]/.test(text) || text.length > PASTE_FROM)) return (await pasteText(text, stop)) ? text.length : 0
+  return typeText(text, stop)
+}
+
+/** A click at a point. `stop` is asked once the pointer is there, before the button goes down. */
+export async function click(
+  x: number,
+  y: number,
+  button: 'left' | 'right' | 'middle' = 'left',
+  count = 1,
+  stop: () => boolean = () => false
+): Promise<boolean> {
+  putPointer(x, y)
   await delay(40)
   const [down, up] =
     button === 'right' ? [MOUSE.rightDown, MOUSE.rightUp] : button === 'middle' ? [MOUSE.middleDown, MOUSE.middleUp] : [MOUSE.leftDown, MOUSE.leftUp]
   for (let i = 0; i < count; i++) {
+    if (stop()) return false
     mouseEvents([{ flags: down }, { flags: up }])
     if (i < count - 1) await delay(60)
   }
+  return true
 }
 
 export async function moveMouse(x: number, y: number): Promise<void> {
-  injectingUntil = Date.now() + 400
-  need().SetCursorPos(Math.round(x), Math.round(y))
+  putPointer(x, y)
   await delay(30)
 }
 
@@ -476,19 +652,19 @@ export function cursorPos(): { x: number; y: number } {
   return { x: buf.readInt32LE(0), y: buf.readInt32LE(4) }
 }
 
-export async function drag(from: { x: number; y: number }, to: { x: number; y: number }, stop: () => boolean = () => false): Promise<void> {
-  const w = need()
-  injectingUntil = Date.now() + 1500
-  w.SetCursorPos(Math.round(from.x), Math.round(from.y))
+/** A drag, in steps; `stop` is asked before the button goes down and between steps (the button comes up anyway). */
+export async function drag(from: { x: number; y: number }, to: { x: number; y: number }, stop: () => boolean): Promise<boolean> {
+  putPointer(from.x, from.y)
   await delay(60)
+  if (stop()) return false
   mouseEvents([{ flags: MOUSE.leftDown }])
   try {
     for (let i = 1; i <= 10; i++) {
-      if (stop()) break
-      injectingUntil = Date.now() + 400
-      w.SetCursorPos(Math.round(from.x + ((to.x - from.x) * i) / 10), Math.round(from.y + ((to.y - from.y) * i) / 10))
+      if (stop()) return false
+      putPointer(from.x + ((to.x - from.x) * i) / 10, from.y + ((to.y - from.y) * i) / 10)
       await delay(25)
     }
+    return true
   } finally {
     mouseEvents([{ flags: MOUSE.leftUp }])
   }

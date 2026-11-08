@@ -392,7 +392,7 @@ export function History({ config, onSetup }: { config: Config; onSetup: () => vo
               <button key={s.id} className={`item ${selected?.id === s.id ? 'on' : ''}`} onClick={() => setSelectedId(s.id)}>
                 <span className="meta">
                   <span>{when(s.createdAt)}</span>
-                  {s.control ? <span className="acc">control</span> : o && <span className={ACTION_TONE[o]}>{o}</span>}
+                  {s.control ? <span className="purple">control</span> : o && <span className={ACTION_TONE[o]}>{o}</span>}
                 </span>
                 <span className="text">{s.text || s.transcription.text}</span>
               </button>

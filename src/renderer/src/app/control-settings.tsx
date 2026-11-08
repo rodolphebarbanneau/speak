@@ -20,7 +20,8 @@ export function ControlSettings({ config, update }: { config: Config; update: (p
       <section>
         <p className="note">
           say what to do with <span className="acc">{displayShortcut(config.shortcuts.control) || 'the control shortcut'}</span>: the ai does it on the
-          computer, and a panel shows what it does. keep talking to it with the shortcut.
+          computer, and a panel shows what it does. keep talking to it with{' '}
+          <span className="acc">{displayShortcut(config.shortcuts.record) || 'any shortcut'}</span>: while it's on, every shortcut talks to it.
         </p>
         <Sep>new sessions</Sep>
         <Row label="scope" hint={scope?.description}>
@@ -46,7 +47,7 @@ export function ControlSettings({ config, update }: { config: Config; update: (p
         </Row>
         <Row
           label="your hands"
-          hint="it acts in the background when it can · what needs your mouse or keyboard waits until your hands have been still this long, then gives them back"
+          hint="it acts in the background when it can · what needs your mouse or keyboard waits until your hands have been still this long, then gives them back · touch them meanwhile and it stops, until you say continue"
         >
           <Dropdown
             value={String(c.handsSeconds)}

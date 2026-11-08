@@ -387,8 +387,8 @@ export interface ControlAsk {
   risk?: ControlRisk
   /** Why it asks although the level wouldn't: an always-ask item. */
   because?: string
-  /** "always" is offered: approve this kind of action for the rest of the session. */
-  always?: boolean
+  /** What "always" approves for the rest of the session ("clicks in Discord"), when it's offered. */
+  always?: string
   /** Where it will act, boxed on its latest look (a data URL). */
   image?: string
 }
@@ -408,6 +408,8 @@ export interface ControlState {
   ask?: ControlAsk
   /** What waits for your hands to be still (it needs the real mouse or keyboard): "click Send". */
   hands?: string
+  /** You took the mouse or the keyboard during an action: what needs them waits until you say continue. */
+  tookOver?: boolean
   /** You're speaking to it (the pill records). */
   listening: boolean
   /** The panel is reduced to its title row. */

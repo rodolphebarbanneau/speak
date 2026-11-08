@@ -455,7 +455,7 @@ export function Overlay() {
             {paused ? 'paused' : levels.map((l, i) => <i key={i} style={{ height: `${((Math.min(STEPS - 1, Math.floor(l * STEPS)) + 1) / STEPS) * 100}%` }} />)}
           </span>
           {state.talk ? (
-            <span className="acc">talking to control</span>
+            <span className="purple">talking to control</span>
           ) : (
             !edit && config && <Choices config={config} mode={mode} clipboard={!!state.clipboard} target={state.target} />
           )}

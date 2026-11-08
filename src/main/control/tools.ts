@@ -6,7 +6,6 @@ import { isAbsolute, resolve } from 'node:path'
 import { shell } from 'electron'
 import type { ControlAlwaysAsk, ControlRisk, ControlScope } from '../../shared/types'
 import { log } from '../log'
-import { onUserInput } from '../platform/keyboard'
 import { delay, run } from '../util'
 import { makeFolder, moveItem, trashItem, type FileOp } from './files'
 import {
@@ -18,14 +17,15 @@ import {
   drag,
   focusWindow,
   foregroundWindow,
-  injecting,
+  hasKeyboard,
+  insertText,
   listWindows,
   markBox,
   moveMouse,
+  pressing,
   pressKeys,
   scroll,
   shoot,
-  typeText,
   uia,
   unminimize,
   windowAt,
@@ -61,8 +61,9 @@ export interface ActionRequest {
   secret?: boolean
   /** Where it will act, on its latest look (a data URL, the spot boxed): shown with the approval. */
   image?: string
-  /** Where it will act on the screen, to box it there while asking (when it's visible). */
+  /** Where it will act on the screen, to box it there while asking (when it's visible), and in which window. */
   area?: Rect
+  areaWindow?: number
 }
 
 export type Gate = { ok: true; step: string } | { ok: false; reason: string }
@@ -92,12 +93,16 @@ export interface ToolHost {
   handsFree(what: string): Promise<boolean>
   /** When the user last touched the mouse or the keyboard (ms timestamp; 0: not since the session started). */
   lastInput(): number
+  /** Whether actions may go on: not paused, stopped or ended. */
+  running(): boolean
+  /** The user took the mouse or the keyboard during an action: Speak doesn't take them again until they say to. */
+  tookOver(): void
   plan(steps: string[], summary?: string): Promise<{ approved: boolean; reason?: string }>
   ask(question: string): Promise<string>
   /** Add an app to the scope (asks the user). */
   widen(app: WindowInfo, why: string): Promise<boolean>
   /** Speak has the mouse and the keyboard, there (a frame around it), or not anymore (null). */
-  acting(area: Rect | null): void
+  acting(win: WindowInfo | null): void
 }
 
 interface Tool {
@@ -142,10 +147,29 @@ const inRect = (p: { x: number; y: number }, r: Rect) => p.x >= r.x && p.x < r.x
 
 class Held extends Error {}
 
-/** What a real-input action left: stopped by the user's hands, or not. */
+/** On the panel, why an action stopped on the way. */
+const STOPPED_LABEL: Record<'hands' | 'focus' | 'halted', string> = {
+  hands: 'you took the mouse or the keyboard',
+  focus: 'another window took the keyboard',
+  halted: 'paused or stopped'
+}
+
+/**
+ * Why a real-input action stopped before its end: the user's hands on the mouse or the keyboard,
+ * the keyboard gone to another window (it never types there), or paused, stopped or ended.
+ */
+type Stopped = 'hands' | 'focus' | 'halted'
+
+/** What a real-input action left: its result, and why it stopped, if it did. */
 interface Borrowed<T> {
   result?: T
-  interrupted: boolean
+  stopped?: Stopped
+}
+
+/** What a borrowed action needs: the keyboard on its window (typing, keys), a button held (a drag). */
+interface BorrowNeeds {
+  keyboard?: boolean
+  holdsButton?: boolean
 }
 
 export class ToolServer {
@@ -250,9 +274,10 @@ export class ToolServer {
       {
         name: 'propose_plan',
         description: 'Show the user your plan before acting: short steps in their language. Returns whether they approved it, or what they want instead.',
-        inputSchema: obj({ summary: { type: 'string', description: 'One line: what you will do.' }, steps: { type: 'array', items: { type: 'string' } } }, [
-          'steps'
-        ]),
+        inputSchema: obj(
+          { summary: { type: 'string', description: 'One line, in their language: what you will do.' }, steps: { type: 'array', items: { type: 'string' } } },
+          ['summary', 'steps']
+        ),
         run: async (a) => {
           const r = await this.host.plan(a.steps ?? [], a.summary)
           return text(r.approved ? 'The user approved the plan: go ahead.' : `The user did not approve the plan${r.reason ? `: "${r.reason}"` : ''}. Adapt it.`)
@@ -321,7 +346,7 @@ export class ToolServer {
       {
         name: 'type',
         description:
-          'Type text where the cursor is, or into an element (a document, an email body, an editor): borrows the keyboard. For a form field, prefer fill.',
+          'Type text where the cursor is, or into an element (a document, an email body, an editor): borrows the keyboard. It never presses Enter: long text, or text with line breaks, is pasted in one go (the clipboard is put back after), and a tab is a tab character. To send or submit, use key. For a form field, prefer fill.',
         inputSchema: obj({ ...target, ...element, text: { type: 'string' }, intent: INTENT, risky: RISKY }, ['text', 'intent']),
         run: (a) => this.type(a)
       },
@@ -482,26 +507,40 @@ export class ToolServer {
    * window in front; then the pointer goes back where it was and, if the user was working, the
    * focus goes back to their window. Their hands on the mouse or the keyboard stop it there.
    */
-  private borrow<T>(what: string, w: WindowInfo, fn: (stop: () => boolean, win: WindowInfo) => Promise<T>): Promise<Borrowed<T>> {
-    return this.serial(() => this.borrowNow(what, w, fn))
+  private borrow<T>(what: string, w: WindowInfo, fn: (stop: () => boolean, win: WindowInfo) => Promise<T>, needs: BorrowNeeds = {}): Promise<Borrowed<T>> {
+    return this.serial(() => this.borrowNow(what, w, fn, needs))
   }
 
-  private async borrowNow<T>(what: string, w: WindowInfo, fn: (stop: () => boolean, win: WindowInfo) => Promise<T>): Promise<Borrowed<T>> {
+  private async borrowNow<T>(what: string, w: WindowInfo, fn: (stop: () => boolean, win: WindowInfo) => Promise<T>, needs: BorrowNeeds): Promise<Borrowed<T>> {
     if (!(await this.host.handsFree(what))) throw new Held()
     const saved = { fg: foregroundWindow(), cursor: cursorPos(), busy: Date.now() - this.host.lastInput() < BUSY_MS }
-    let interrupted = false
-    const off = onUserInput(() => {
-      if (!injecting()) interrupted = true
-    })
+    const since = Date.now()
+    let stopped: Stopped | undefined
+    let target: number | null = null
+    /**
+     * Asked before each burst of input, and between steps: once it says stop, it stays so. The
+     * user's hands (what the hook saw, and what Windows says is held down right now, ahead of the
+     * hook), then pause and stop, then the keyboard still on the window it acts on.
+     */
+    const stop = (): boolean => {
+      if (stopped) return true
+      if (this.host.lastInput() > since || pressing(!needs.holdsButton)) stopped = 'hands'
+      else if (!this.host.running()) stopped = 'halted'
+      else if (needs.keyboard && target !== null && !hasKeyboard(target)) stopped = 'focus'
+      return !!stopped
+    }
     try {
+      if (stop()) return { stopped }
       const win = await this.front(w)
-      this.host.acting(win.rect)
-      const result = await fn(() => interrupted, win)
-      return { result, interrupted }
+      target = win.id
+      this.host.acting(win)
+      const result = await fn(stop, win)
+      return { result, stopped }
     } finally {
-      off()
       this.host.acting(null)
-      if (!interrupted) await this.giveBack(saved, w)
+      // Taken back by the user: theirs now, pointer and focus where they put them.
+      if (stopped === 'hands') this.host.tookOver()
+      else await this.giveBack(saved, w)
     }
   }
 
@@ -535,12 +574,12 @@ export class ToolServer {
   // ---------------------------------------------------------------- what it acts on, shown with the approval
 
   /** The element or point it will act on, boxed, on its latest look of the window (for the approval). */
-  private spot(w: WindowInfo, area: Rect): { image?: string; area?: Rect } {
+  private spot(w: WindowInfo, area: Rect): { image?: string; area?: Rect; areaWindow?: number } {
     // Boxed on the screen too, while it asks, when that spot is in sight (not behind another window).
     const c = center(area)
-    const visible = windowAt(Math.round(c.x), Math.round(c.y))?.id === w.id ? area : undefined
+    const shown = windowAt(Math.round(c.x), Math.round(c.y))?.id === w.id ? { area, areaWindow: w.id } : {}
     const shot = this.shots.get(String(w.id))
-    if (!shot || !inRect(c, shot.area)) return { area: visible }
+    if (!shot || !inRect(c, shot.area)) return shown
     const s = shot.scale
     const box = { x: (area.x - shot.area.x) / s, y: (area.y - shot.area.y) / s, w: area.w / s, h: area.h / s }
     const size = shot.image.getSize()
@@ -553,10 +592,10 @@ export class ToolServer {
     }
     crop.width = Math.min(size.width - crop.x, Math.round(box.w + pad * 3.2))
     crop.height = Math.min(size.height - crop.y, Math.round(box.h + pad * 2))
-    if (crop.width < 8 || crop.height < 8) return { area: visible }
+    if (crop.width < 8 || crop.height < 8) return shown
     let image = markBox(shot.image.crop(crop), { x: box.x - crop.x - 3, y: box.y - crop.y - 3, w: box.w + 6, h: box.h + 6 }, [224, 175, 104])
     if (image.getSize().width > 440) image = image.resize({ width: 440, quality: 'good' })
-    return { image: `data:image/jpeg;base64,${image.toJPEG(82).toString('base64')}`, area: visible }
+    return { image: `data:image/jpeg;base64,${image.toJPEG(82).toString('base64')}`, ...shown }
   }
 
   // ---------------------------------------------------------------- screen
@@ -674,7 +713,7 @@ export class ToolServer {
       const r = await this.borrow(a.intent || 'click', w, async (stop, win) => {
         this.landsOn(win, p)
         if (stop()) return
-        await click(p.x, p.y, a.button ?? 'left', a.double ? 2 : 1)
+        await click(p.x, p.y, a.button ?? 'left', a.double ? 2 : 1, stop)
         await delay(250)
       })
       return this.ended(g.step, r, `Clicked${name ? ` ${name}` : ''}.`)
@@ -709,15 +748,20 @@ export class ToolServer {
         return text(`Filled ${el.e.type} "${el.e.name}".`)
       }
       // The field takes no value from outside: click it, select what's there, type.
-      const r = await this.borrow(a.intent || 'fill a field', w, async (stop, win) => {
-        const p = center(el.e)
-        this.landsOn(win, p)
-        await click(p.x, p.y)
-        await delay(120)
-        if (stop()) return 0
-        pressKeys('ctrl+a')
-        return typeText(value, stop)
-      })
+      const r = await this.borrow(
+        a.intent || 'fill a field',
+        w,
+        async (stop, win) => {
+          const p = center(el.e)
+          this.landsOn(win, p)
+          if (!(await click(p.x, p.y, 'left', 1, stop))) return 0
+          await delay(120)
+          if (stop()) return 0
+          pressKeys('ctrl+a')
+          return insertText(value, stop, secret)
+        },
+        { keyboard: true }
+      )
       return this.ended(g.step, r, `Filled ${el.e.type} "${el.e.name}".`, secret ? undefined : value)
     } catch (err) {
       return this.failed(g.step, err)
@@ -743,18 +787,23 @@ export class ToolServer {
     })
     if (!g.ok) return text(g.reason)
     try {
-      const r = await this.borrow(a.intent || 'type', w, async (stop, win) => {
-        if (el) {
-          // Into that element: focused through UI Automation, else clicked.
-          if (!(await uia.focus(w.id, el.index))) {
-            const p = center(el.e)
-            this.landsOn(win, p)
-            await click(p.x, p.y)
+      const r = await this.borrow(
+        a.intent || 'type',
+        w,
+        async (stop, win) => {
+          if (el) {
+            // Into that element: focused through UI Automation, else clicked.
+            if (!(await uia.focus(w.id, el.index))) {
+              const p = center(el.e)
+              this.landsOn(win, p)
+              if (!(await click(p.x, p.y, 'left', 1, stop))) return 0
+            }
+            await delay(120)
           }
-          await delay(120)
-        }
-        return typeText(value, stop)
-      })
+          return insertText(value, stop, secret)
+        },
+        { keyboard: true }
+      )
       return this.ended(g.step, r, 'Typed.', secret ? undefined : value)
     } catch (err) {
       return this.failed(g.step, err)
@@ -775,11 +824,16 @@ export class ToolServer {
     })
     if (!g.ok) return text(g.reason)
     try {
-      const r = await this.borrow(a.intent || `press ${keys}`, w, async (stop) => {
-        if (stop()) return
-        pressKeys(keys)
-        await delay(200)
-      })
+      const r = await this.borrow(
+        a.intent || `press ${keys}`,
+        w,
+        async (stop) => {
+          if (stop()) return
+          pressKeys(keys)
+          await delay(200)
+        },
+        { keyboard: true }
+      )
       return this.ended(g.step, r, `Pressed ${keys}.`)
     } catch (err) {
       return this.failed(g.step, err)
@@ -806,8 +860,9 @@ export class ToolServer {
       await scroll(p.x, p.y, dy)
       await delay(150)
     })
+    if (r.stopped) return this.notDone(r.stopped, 'Not scrolled')
     this.host.looked(`scrolled ${windowName(w)}`)
-    return text(r.interrupted ? 'The user took the mouse: not scrolled. Try again when they pause.' : 'Scrolled.')
+    return text('Scrolled.')
   }
 
   private async drag(a: Record<string, any>): Promise<Content[]> {
@@ -826,11 +881,16 @@ export class ToolServer {
     })
     if (!g.ok) return text(g.reason)
     try {
-      const r = await this.borrow(a.intent || 'drag', w, async (stop, win) => {
-        this.landsOn(win, from)
-        this.landsOn(win, to)
-        await drag(from, to, stop)
-      })
+      const r = await this.borrow(
+        a.intent || 'drag',
+        w,
+        async (stop, win) => {
+          this.landsOn(win, from)
+          this.landsOn(win, to)
+          await drag(from, to, stop)
+        },
+        { holdsButton: true }
+      )
       return this.ended(g.step, r, 'Dragged.')
     } catch (err) {
       return this.failed(g.step, err)
@@ -888,17 +948,31 @@ export class ToolServer {
 
   // ---------------------------------------------------------------- endings
 
+  /** A real-input action's end: done, or stopped on the way (how far it got, for text). */
   private ended(step: string, r: Borrowed<unknown>, done: string, typed?: string): Content[] {
-    if (r.interrupted) {
-      const count = typeof r.result === 'number' ? r.result : undefined
-      const where = typed !== undefined && count !== undefined ? ` after ${count} of ${typed.length} characters ("${typed.slice(0, count).slice(-40)}")` : ''
-      this.host.finish(step, { ok: false, error: `stopped: you took the mouse or the keyboard${where}` })
-      return text(
-        `The user took the mouse or the keyboard: stopped${where}. Speak waits until their hands are still before your next action that needs them; check the window before going on.`
-      )
+    if (!r.stopped) {
+      this.host.finish(step, { ok: true })
+      return text(done)
     }
-    this.host.finish(step, { ok: true })
-    return text(done)
+    const count = typeof r.result === 'number' ? r.result : 0
+    const where =
+      typed === undefined
+        ? ''
+        : count === 0
+          ? ', before any of the text'
+          : ` after ${count} of ${typed.length} characters (it ends with "${typed.slice(0, count).slice(-40)}")`
+    this.host.finish(step, { ok: false, error: `${STOPPED_LABEL[r.stopped]}: stopped${where}` })
+    return this.notDone(r.stopped, `Stopped${where}`)
+  }
+
+  /** What the AI is told when its action stopped on the way. */
+  private notDone(why: Stopped, what: string): Content[] {
+    if (why === 'hands')
+      return text(
+        `${what}: the user took the mouse or the keyboard. Speak won't use them again until the user says to continue: your next action that needs them waits for that. Then look at the window before going on (it may have changed).`
+      )
+    if (why === 'focus') return text(`${what}: another window took the keyboard, and Speak never types into it. Look again before going on.`)
+    return text(`${what}: the user paused or stopped you.`)
   }
 
   private failed(step: string, err: unknown): Content[] {

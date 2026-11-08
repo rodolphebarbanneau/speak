@@ -460,12 +460,15 @@ export function setOverlayCaptureExcluded(on: boolean): void {
 }
 
 /**
- * A frame around where the AI acts (the app's window, the screen): click-through, above all, not
- * in screenshots. Its color says whether the AI acts or waits.
+ * A frame around where the AI acts (the app's window, a button): click-through, not in
+ * screenshots. Its color says whether the AI acts or waits. It isn't on top of everything: `keep`
+ * holds it just above the window it's around, so what covers that window (another app, Speak's
+ * panel) covers the frame too.
  */
 let frame: BrowserWindow | null = null
+let frameKeeper: NodeJS.Timeout | null = null
 
-export function showFrame(area: { x: number; y: number; w: number; h: number }, tone: 'acting' | 'waiting'): void {
+export function showFrame(area: { x: number; y: number; w: number; h: number }, tone: 'acting' | 'waiting', keep?: (frame: number) => void): void {
   if (!frame || frame.isDestroyed()) {
     frame = new BrowserWindow({
       show: false,
@@ -479,11 +482,9 @@ export function showFrame(area: { x: number; y: number; w: number; h: number }, 
       focusable: false,
       skipTaskbar: true,
       hasShadow: false,
-      alwaysOnTop: true,
       roundedCorners: false,
       webPreferences: webPreferences()
     })
-    frame.setAlwaysOnTop(true, 'screen-saver')
     frame.setIgnoreMouseEvents(true)
     frame.setContentProtection(excludeFromCapture)
     frame.on('close', (e) => {
@@ -497,9 +498,20 @@ export function showFrame(area: { x: number; y: number; w: number; h: number }, 
   frame.setBounds(b)
   frame.webContents.send('speak:frame', tone)
   if (!frame.isVisible()) frame.showInactive()
+  if (frameKeeper) clearInterval(frameKeeper)
+  frameKeeper = null
+  if (keep) {
+    const handle = frame.getNativeWindowHandle()
+    const h = handle.length >= 8 ? Number(handle.readBigUInt64LE(0)) : handle.readUInt32LE(0)
+    keep(h)
+    // The user brings another window forward, or the one it's around: it follows.
+    frameKeeper = setInterval(() => keep(h), 200)
+  }
 }
 
 export function hideFrame(): void {
+  if (frameKeeper) clearInterval(frameKeeper)
+  frameKeeper = null
   frame?.hide()
 }
 

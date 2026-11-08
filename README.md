@@ -71,7 +71,7 @@ Context is read-only. Speak and the AI never change anything in your folders: Cl
 
 ### Control
 
-Press **Ctrl+Shift+Alt+Enter** (**⌘⇧⌥Enter** on a Mac) and say what to do: "reply to Marc's last email, tell him Thursday works", "put the PDFs of my desktop in a folder", "turn on dark mode in this app". A panel opens and stays on top. It shows what the AI says and does, asks for your approval, and lets you **pause**, **stop**, **restart** or **end** control. Keep talking to it with the same shortcut, or type in it.
+Press **Ctrl+Shift+Alt+Enter** (**⌘⇧⌥Enter** on a Mac) and say what to do: "reply to Marc's last email, tell him Thursday works", "put the PDFs of my desktop in a folder", "turn on dark mode in this app". A panel opens and stays on top. It shows what the AI says and does, asks for your approval, and lets you **pause**, **stop**, **restart** or **end** control. Keep talking to it with **Ctrl+Shift+Space** (**⌘⇧Space**), or type in it: while control is on, every Speak shortcut talks to it.
 
 **What it may touch** (the scope, on the bar or the panel):
 
@@ -83,9 +83,10 @@ Press **Ctrl+Shift+Alt+Enter** (**⌘⇧⌥Enter** on a Mac) and say what to do:
 
 Speak enforces the scope itself: the AI acts through Speak's tools, which refuse anything outside it. In the app scope, it asks you before it uses another app.
 
-**When it asks first** (the approval): **every step**, **the plan** (you approve its plan once; it asks again for a risky step or one off the plan), **when risky** or **never**. Paying, passwords, deleting for good and sending messages as you always ask, unless you turn them off in **settings → control**. Answer in the panel, or by voice: "yes", "always", "no", or say what to do instead.
+**When it asks first** (the approval): **every step**, **the plan** (you approve its plan once; it asks again for a risky step or one off the plan), **when risky** or **never**. Paying, passwords, deleting for good and sending messages as you always ask, unless you turn them off in **settings → control**. Answer in the panel, or by voice: "yes", "always" (the same kind of action in that app, until the session ends; never for paying or passwords), "no", or say what to do instead.
 
-- **Keep working meanwhile.** It looks at windows without bringing them forward, and presses buttons, fills fields and scrolls in the background, even in a window behind yours or on another screen. What needs the real mouse or keyboard (clicking a point, typing into a document, a shortcut) waits until your hands have been still for a moment, acts, then gives them back: the pointer where it was, the focus to your window. Touch them meanwhile and that action stops there. **[go now]** in the panel, or "go", skips the wait.
+- **Keep working meanwhile.** It looks at windows without bringing them forward, and presses buttons, fills fields and scrolls in the background, even in a window behind yours or on another screen. What needs the real mouse or keyboard (clicking a point, typing into a document, a shortcut) waits until your hands have been still for a moment, acts, then gives them back: the pointer where it was, the focus to your window. Touch them meanwhile (a key, a click, the pointer) and that action stops at once; it then waits for you to say so before taking them again: **[continue]** in the panel, or "continue". **[go now]**, or "go", skips the wait.
+- **It never types where you are.** It types only while the keyboard is on the window it acts on: if another window takes it, it stops. It never presses Enter in a text: long text, or text with line breaks, is pasted in one go (your clipboard is put back after), so a line break never sends a message; sending is its own step, which asks first.
 - **The panel shows where it will act**: an approval comes with a picture of the spot, boxed, and the spot is boxed on the screen too when it's in sight.
 - **Undo.** Files it moves, writes or trashes can be put back from the panel. Its trash is `.speak/control`.
 - **Speak's panel stays out of its screenshots**, and a frame shows when it has the mouse and the keyboard.

@@ -16,6 +16,7 @@
   --red: #f7768e;
   --green: #9ece6a;
   --yellow: #e0af68;
+  --purple: #bb9af7; /* control mode */
 
   /* spacing scale */
   --s1: 4px;
@@ -108,6 +109,9 @@ p {
 }
 .yellow {
   color: var(--yellow);
+}
+.purple {
+  color: var(--purple);
 }
 .selectable {
   user-select: text;

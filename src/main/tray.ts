@@ -64,7 +64,11 @@ function actions(phase: Phase): Item[] {
   // A control session: talk to it, or end it.
   if (control.active) {
     return [
-      { label: 'Talk to control', accelerator: prettyShortcut(shortcuts.control || shortcuts.record), click: () => controller.toggle('control') },
+      {
+        label: 'Talk to control',
+        accelerator: prettyShortcut(shortcuts.record || shortcuts.compose || shortcuts.control),
+        click: () => controller.toggle('control')
+      },
       { label: 'Stop what it does', click: () => control.stop() },
       { label: 'End control', click: () => void control.end() }
     ]

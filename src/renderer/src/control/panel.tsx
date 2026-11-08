@@ -98,19 +98,26 @@ function Step({ step }: { step: ControlStep }) {
   )
 }
 
-/** It needs the real mouse or keyboard: it goes once your hands are still, or now. */
-function Hands({ what }: { what: string }) {
+/**
+ * It needs the real mouse or keyboard: it goes once your hands are still, or now. After you took
+ * them back during an action, only when you say so.
+ */
+function Hands({ what, tookOver }: { what: string; tookOver: boolean }) {
   return (
     <div className="cask hands">
       <p className="cask-head">
-        <span className="yellow">needs your mouse and keyboard a moment</span>
+        <span className="yellow">{tookOver ? 'you took the mouse or the keyboard: it waits for you' : 'needs your mouse and keyboard a moment'}</span>
       </p>
       <p className="hi">{what}</p>
       <p className="cask-keys">
         <button className="ckey green" onClick={() => api.controlGoNow()}>
-          [go now]
+          [{tookOver ? 'continue' : 'go now'}]
         </button>
-        <span className="dim">· or keep working: it goes once your hands are still, then gives them back</span>
+        <span className="dim">
+          {tookOver
+            ? '· or say "continue": it takes them again, then gives them back'
+            : '· or keep working: it goes once your hands are still, then gives them back'}
+        </span>
       </p>
     </div>
   )
@@ -126,7 +133,7 @@ function Ask({ ask }: { ask: ControlAsk }) {
         <span className="yellow">{head}</span>
         {ask.because && <span className="yellow"> · always asks: {ask.because}</span>}
       </p>
-      <p className="hi">{ask.title}</p>
+      {ask.title && ask.title !== head && <p className="hi">{ask.title}</p>}
       {ask.detail && <p className="cdetail dim selectable clamp">{ask.detail}</p>}
       {ask.image && <img className="cspot" src={ask.image} alt="where it will act" />}
       {ask.steps && (
@@ -144,8 +151,12 @@ function Ask({ ask }: { ask: ControlAsk }) {
             [{ask.kind === 'plan' ? 'approve' : 'yes'}]
           </button>
           {ask.always && (
-            <button className="ckey acc" onClick={() => api.controlAnswer(ask.id, 'always')} title="approve this kind of action for the rest of the session">
-              [always]
+            <button
+              className="ckey acc"
+              onClick={() => api.controlAnswer(ask.id, 'always')}
+              title={`yes, and no more asking for ${ask.always} until this session ends`}
+            >
+              [always: {ask.always}]
             </button>
           )}
           <button className="ckey red" onClick={no}>
@@ -252,11 +263,12 @@ export function ControlPanel() {
   }, [state?.steps.length, state?.ask?.id, state?.collapsed])
 
   if (!state) return null
-  const status = STATUS[state.status]
+  const status = state.status === 'hands' && state.tookOver ? { label: 'waiting for you', tone: 'yellow' } : STATUS[state.status]
   const last = [...state.steps].reverse().find((s) => s.who !== 'info')
   const scope = CONTROL_SCOPES.find((s) => s.id === state.scope)
   const approval = CONTROL_APPROVALS.find((a) => a.id === state.approval)
-  const talkKey = config ? displayShortcut(config.shortcuts.control || config.shortcuts.record) : ''
+  // Every shortcut talks to a session under way: the panel shows the easiest, dictation's.
+  const talkKey = config ? displayShortcut(config.shortcuts.record || config.shortcuts.compose || config.shortcuts.control) : ''
   const busy = state.status === 'thinking' || state.status === 'acting'
   /** It works, or waits to: pause and stop apply. */
   const working = busy || state.status === 'hands'
@@ -265,7 +277,7 @@ export function ControlPanel() {
     <div className={`cpanel ${state.collapsed ? 'collapsed' : ''}`}>
       <header className="chead">
         <span className={`cdot ${status.tone}`}>{busy ? <Spinner /> : '●'}</span>
-        <span className="hi">control</span>
+        <span className="purple">control</span>
         <span className="dim">·</span>
         <button className={`cchoice ${menu === 'scope' ? 'open' : ''}`} title={scope?.description} onClick={() => setMenu(menu === 'scope' ? null : 'scope')}>
           {state.scopeLabel || scope?.label}
@@ -317,14 +329,16 @@ export function ControlPanel() {
                   </button>
                 </>
               )}
-              <span className="yellow">{state.ask.title}</span>
+              <span className="yellow">{state.ask.title || 'its plan'}</span>
             </>
           ) : state.hands ? (
             <>
               <button className="ckey green" onClick={() => api.controlGoNow()}>
-                [go now]
+                [{state.tookOver ? 'continue' : 'go now'}]
               </button>
-              <span className="yellow">needs your hands: {state.hands}</span>
+              <span className="yellow">
+                {state.tookOver ? 'waits for you' : 'needs your hands'}: {state.hands}
+              </span>
             </>
           ) : last ? (
             last.text
@@ -346,7 +360,7 @@ export function ControlPanel() {
               <Step key={s.id} step={s} />
             ))}
             {state.ask && <Ask ask={state.ask} />}
-            {!state.ask && state.hands && <Hands what={state.hands} />}
+            {!state.ask && state.hands && <Hands what={state.hands} tookOver={!!state.tookOver} />}
             {state.status === 'listening' && <p className="red cstep-note">● listening…</p>}
           </div>
           <OrderField question={state.ask?.kind === 'question'} />

@@ -121,7 +121,10 @@ export function About({ config, update }: { config: Config; update: (patch: Deep
           <span className="dim">answer by voice or in the panel: yes, always, no, or say what to do instead</span>
         </Row>
         <Row label="your hands">
-          <span className="dim">it works in the background when it can · what needs your mouse or keyboard waits until you pause, then gives them back</span>
+          <span className="dim">
+            it works in the background when it can · what needs your mouse or keyboard waits until you pause, then gives them back · touch them and it stops,
+            until you say continue
+          </span>
         </Row>
         <Row label="undo">
           <span className="dim">files it moves, writes or trashes · its trash is ~/.speak/control</span>

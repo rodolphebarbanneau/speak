@@ -4,11 +4,10 @@ import { homedir } from 'node:os'
 import { isAbsolute, resolve } from 'node:path'
 import { screen } from 'electron'
 import { CONTROL_APPROVALS, CONTROL_SCOPES } from '../../shared/constants'
-import type { ControlAsk, ControlApproval, ControlScope, ControlState, ControlStep, Session } from '../../shared/types'
+import type { ControlAlwaysAsk, ControlAsk, ControlApproval, ControlScope, ControlState, ControlStep, Session } from '../../shared/types'
 import { configStore } from '../config'
 import { history, newSessionId } from '../history'
 import { log } from '../log'
-import { onUserInput } from '../platform/keyboard'
 import { isWin } from '../util'
 import {
   broadcast,
@@ -26,7 +25,7 @@ import {
 import { ClaudeAgent, CodexAgent, type ControlAgent, type NativeAction } from './agents'
 import { backupBeforeWrite, describeOp, undoOp, type FileOp } from './files'
 import { controlPrompt } from './prompt'
-import { foregroundWindow, injecting, listWindows, screenSupported, uia, warmScreen, type Rect, type WindowInfo } from './screen'
+import { foregroundWindow, listWindows, onUsersInput, screenSupported, stackAbove, uia, warmScreen, type Rect, type WindowInfo } from './screen'
 import { categoryOf, ToolServer, type ActionRequest, type Gate, type StepResult, type ToolHost } from './tools'
 
 /**
@@ -38,6 +37,11 @@ import { categoryOf, ToolServer, type ActionRequest, type Gate, type StepResult,
  */
 
 type Decision = 'yes' | 'always' | 'no'
+
+interface Framed {
+  rect: Rect
+  window: number
+}
 interface Answer {
   decision: Decision
   /** What the user said instead (a correction, or the answer to a question). */
@@ -85,11 +89,14 @@ class Control extends EventEmitter implements ToolHost {
   private orders: string[] = []
   private idleTimer: NodeJS.Timeout | null = null
   /** Where Speak has the mouse and the keyboard now (the frame), and where an action waiting for approval would act. */
-  private actingArea: Rect | null = null
-  private askArea: Rect | null = null
+  /** Where it acts, or what it asks about: framed on the screen, in that window. */
+  private actingArea: Framed | null = null
+  private askArea: Framed | null = null
   /** When the user last touched the mouse or the keyboard (0: they handed over, by approving or saying go). */
   private lastUserInput = 0
   private goAhead = false
+  /** The user took the mouse or the keyboard during an action: Speak doesn't take them again until they say to. */
+  private handsTaken = false
   private unhook: (() => void) | null = null
   /** The window in front when the shortcut was pressed (the app scope's app). */
   private pendingTarget: WindowInfo | null = null
@@ -191,6 +198,7 @@ class Control extends EventEmitter implements ToolHost {
     this.askArea = null
     this.lastUserInput = 0
     this.goAhead = false
+    this.handsTaken = false
   }
 
   private async launch(order: string, provider: string): Promise<void> {
@@ -316,7 +324,7 @@ class Control extends EventEmitter implements ToolHost {
     if (!said || !this.state.active) return
     const n = norm(said)
     const ask = this.asks[0]
-    if (this.state.hands && !ask && YES.test(n)) {
+    if (this.state.hands && !ask && (YES.test(n) || RESUME.test(n))) {
       this.addStep({ who: 'you', text: said })
       return this.goNow()
     }
@@ -348,6 +356,8 @@ class Control extends EventEmitter implements ToolHost {
     }
     this.addStep({ who: 'you', text: said })
     this.stopped = false
+    // A new order: they let it act again (what needs their hands still waits for them to be still).
+    this.handsTaken = false
     if (this.paused) this.resume(true)
     this.orders.push(said)
     if (!this.agent) return void this.relaunch(said)
@@ -360,7 +370,10 @@ class Control extends EventEmitter implements ToolHost {
     if (i < 0) return
     const [a] = this.asks.splice(i, 1)
     // Approving hands over: what it was asked for doesn't then wait for the user's hands to be still.
-    if (decision !== 'no') this.lastUserInput = 0
+    if (decision !== 'no') {
+      this.lastUserInput = 0
+      this.handsTaken = false
+    }
     a.resolve({ decision, message })
     this.refresh()
   }
@@ -369,7 +382,7 @@ class Control extends EventEmitter implements ToolHost {
     return new Promise<Answer>((resolve) => {
       const full = { ...ask, id: randomBytes(4).toString('hex') }
       this.asks.push({ ask: full, resolve })
-      if (this.asks.length === 1) this.say(full.kind === 'question' ? full.title : `${full.title}?`)
+      if (this.asks.length === 1) this.say(full.kind === 'question' ? full.title : `${full.title || 'Approve its plan'}?`)
       this.refresh()
     })
   }
@@ -395,10 +408,11 @@ class Control extends EventEmitter implements ToolHost {
     const cfg = configStore.get().control
     const level = this.state.approval
     const because = req.category && cfg.alwaysAsk[req.category] ? ALWAYS_ASK_LABEL[req.category] : undefined
+    const always = alwaysOf(req, because ? req.category : undefined)
     let ask = false
     if (req.risk !== 'look') {
-      if (because) ask = true
-      else if (this.always.has(req.key)) ask = false
+      if (always && this.always.has(always.key)) ask = false
+      else if (because) ask = true
       else if (level === 'step') ask = true
       else if (level === 'plan') {
         if (!this.planApproved) return { ok: false, reason: 'Call propose_plan first: the user approves your plan before you act.' }
@@ -406,8 +420,16 @@ class Control extends EventEmitter implements ToolHost {
       } else if (level === 'risky') ask = req.risk === 'risky'
     }
     if (ask) {
-      this.askArea = req.area ?? null
-      const answer = await this.asking({ kind: 'action', title: req.title, detail: req.detail, risk: req.risk, because, always: !because, image: req.image })
+      this.askArea = req.area && req.areaWindow ? { rect: req.area, window: req.areaWindow } : null
+      const answer = await this.asking({
+        kind: 'action',
+        title: req.title,
+        detail: req.detail,
+        risk: req.risk,
+        because,
+        always: always?.label,
+        image: req.image
+      })
       this.askArea = null
       if (!this.state.active) return { ok: false, reason: 'The control session ended.' }
       if (answer.decision === 'no') {
@@ -419,7 +441,10 @@ class Control extends EventEmitter implements ToolHost {
             : 'The user refused this action. Ask what they want instead, or try another way.'
         }
       }
-      if (answer.decision === 'always') this.always.add(req.key)
+      if (answer.decision === 'always' && always) {
+        this.always.add(always.key)
+        this.addStep({ who: 'info', text: `${always.label}: approved for this session` })
+      }
       // Approved after a stop: they want it.
       this.stopped = false
     }
@@ -455,10 +480,11 @@ class Control extends EventEmitter implements ToolHost {
   async plan(steps: string[], summary?: string): Promise<{ approved: boolean; reason?: string }> {
     await this.whilePaused()
     const level = this.state.approval
-    const title = summary?.trim() || 'its plan'
+    // Its one line, when it gave one: the panel's heading already says it's a plan.
+    const title = summary?.trim() ?? ''
     // At "the plan" (and every step), the plan is asked; otherwise shown.
     if (level === 'risky' || level === 'never') {
-      this.addStep({ who: 'ai', text: title, detail: steps.map((s, i) => `${i + 1}. ${s}`).join('\n') })
+      this.addStep({ who: 'ai', text: title || 'my plan', detail: steps.map((s, i) => `${i + 1}. ${s}`).join('\n') })
       this.planApproved = true
       return { approved: true }
     }
@@ -484,8 +510,8 @@ class Control extends EventEmitter implements ToolHost {
     return true
   }
 
-  acting(area: Rect | null): void {
-    this.actingArea = area
+  acting(win: WindowInfo | null): void {
+    this.actingArea = win && { rect: win.rect, window: win.id }
     this.refresh()
   }
 
@@ -493,22 +519,38 @@ class Control extends EventEmitter implements ToolHost {
     return this.lastUserInput
   }
 
+  running(): boolean {
+    return this.state.active && !this.stopped && !this.paused
+  }
+
+  tookOver(): void {
+    this.handsTaken = true
+  }
+
   /**
    * Before borrowing the mouse and the keyboard: wait until the user's hands have been still for a
-   * moment (settings → control), or they say go. Paused, it waits for resume too.
+   * moment (settings → control), or they say go. After they took them back during an action, only
+   * their word gives them to it again (a pause of theirs isn't a yes). Paused, it waits for resume too.
    */
   async handsFree(what: string): Promise<boolean> {
-    const still = () => Date.now() - this.lastUserInput >= configStore.get().control.handsSeconds * 1000
+    const free = () => !this.handsTaken && Date.now() - this.lastUserInput >= configStore.get().control.handsSeconds * 1000
     if (!(await this.hold())) return false
-    if (still()) return true
+    if (free()) return true
     this.state.hands = what
+    this.state.tookOver = this.handsTaken || undefined
     this.refresh()
-    while (this.state.active && !this.stopped && !this.goAhead && !still()) {
+    while (this.state.active && !this.stopped && !this.goAhead && !free()) {
       await this.whilePaused()
       await new Promise((r) => setTimeout(r, 150))
+      // A new order lets it go on (it then waits for still hands only).
+      if (!!this.state.tookOver !== this.handsTaken) {
+        this.state.tookOver = this.handsTaken || undefined
+        this.refresh()
+      }
     }
     this.goAhead = false
     this.state.hands = undefined
+    this.state.tookOver = undefined
     this.refresh()
     return this.state.active && !this.stopped
   }
@@ -517,6 +559,7 @@ class Control extends EventEmitter implements ToolHost {
   goNow(): void {
     if (!this.state.hands) return
     this.goAhead = true
+    this.handsTaken = false
   }
 
   // ---------------------------------------------------------------- built-in actions
@@ -594,6 +637,8 @@ class Control extends EventEmitter implements ToolHost {
   resume(quiet = false): void {
     if (!this.paused) return
     this.paused = false
+    // Resuming is their word to go on, hands included.
+    this.handsTaken = false
     if (!quiet) this.addStep({ who: 'info', text: 'resumed' })
     this.wake()
   }
@@ -736,8 +781,8 @@ class Control extends EventEmitter implements ToolHost {
                 : 'thinking'
               : 'idle'
     // A frame where Speak has the mouse and the keyboard, or around what an approval is about.
-    if (this.actingArea) showFrame(this.actingArea, 'acting')
-    else if (this.askArea && s.ask) showFrame(this.askArea, 'waiting')
+    const framed = this.actingArea ?? (s.ask ? this.askArea : null)
+    if (framed) showFrame(framed.rect, this.actingArea ? 'acting' : 'waiting', (frame) => stackAbove(frame, framed.window))
     else hideFrame()
     this.armIdle()
     this.push()
@@ -763,8 +808,8 @@ class Control extends EventEmitter implements ToolHost {
    */
   private hook(): void {
     this.unhook?.()
-    this.unhook = onUserInput((e) => {
-      if (!this.state.active || injecting()) return
+    this.unhook = onUsersInput((e) => {
+      if (!this.state.active) return
       if (e.kind !== 'key') {
         const panel = controlPanelRect()
         if (panel && e.x >= panel.x && e.x < panel.x + panel.w && e.y >= panel.y && e.y < panel.y + panel.h) return
@@ -796,6 +841,34 @@ class Control extends EventEmitter implements ToolHost {
 }
 
 const ALWAYS_ASK_LABEL = { money: 'money', secrets: 'passwords and security', delete: 'deleting', send: 'sending as you' } as const
+
+/** The screen actions, by their key's kind ("click:Discord.exe"): what "always" says it approves. */
+const IN_APP: Record<string, string> = { click: 'clicks', fill: 'filling fields', type: 'typing', key: 'keys', drag: 'dragging' }
+const OTHER: Record<string, string> = {
+  open: 'opening apps and links',
+  move: 'moving files',
+  make_folder: 'making folders',
+  trash: 'putting files in the trash',
+  write: 'writing files',
+  'file change': 'changing files'
+}
+
+/**
+ * What "always" approves for the rest of the session, and how the panel says it: the same kind of
+ * action in the same app ("clicks in Discord"). An always-ask item, the item in that app, whatever
+ * the action ("sending as you in Discord"). Paying and passwords are never approved in advance.
+ */
+function alwaysOf(req: ActionRequest, category?: keyof ControlAlwaysAsk): { key: string; label: string } | undefined {
+  if (category === 'money' || category === 'secrets') return undefined
+  const i = req.key.indexOf(':')
+  const kind = i < 0 ? req.key : req.key.slice(0, i)
+  const rest = i < 0 ? '' : req.key.slice(i + 1)
+  const app = IN_APP[kind] && rest ? rest.replace(/\.exe$/i, '') : ''
+  const what = app ? `${IN_APP[kind]} in ${app}` : kind === 'command' ? `running ${rest || 'commands'}` : (OTHER[kind] ?? `using ${req.key}`)
+  if (!category) return { key: req.key, label: what }
+  const item = ALWAYS_ASK_LABEL[category]
+  return app ? { key: `${category}:${rest}`, label: `${item} in ${app}` } : { key: `${category}:${req.key}`, label: `${item} (${what})` }
+}
 
 function appName(w: { exe: string; title: string }): string {
   const exe = w.exe.replace(/\.exe$/i, '')
