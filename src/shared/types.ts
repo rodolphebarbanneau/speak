@@ -34,6 +34,8 @@ export interface ContextSource {
 
 export interface Config {
   onboarded: boolean
+  /** The modes that are on. One that's off has no shortcut and isn't offered anywhere (the pill, the tray). */
+  modes: Record<Mode, boolean>
   /** record: dictate · compose: dictate a brief the AI writes from · control: an order the AI carries out (empty = off). */
   shortcuts: { record: string; compose: string; control: string; cancel: string }
   recordMode: RecordMode

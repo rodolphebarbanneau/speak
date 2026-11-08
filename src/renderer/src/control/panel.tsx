@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { CONTROL_APPROVALS, CONTROL_SCOPES } from '@shared/constants'
+import { CONTROL_APPROVALS, CONTROL_SCOPES, firstShortcut } from '@shared/constants'
 import type { Config, ControlAsk, ControlState, ControlStatus, ControlStep } from '@shared/types'
 import { displayShortcut, Spinner } from '../components/ui'
 
@@ -267,8 +267,8 @@ export function ControlPanel() {
   const last = [...state.steps].reverse().find((s) => s.who !== 'info')
   const scope = CONTROL_SCOPES.find((s) => s.id === state.scope)
   const approval = CONTROL_APPROVALS.find((a) => a.id === state.approval)
-  // Every shortcut talks to a session under way: the panel shows the easiest, dictation's.
-  const talkKey = config ? displayShortcut(config.shortcuts.record || config.shortcuts.compose || config.shortcuts.control) : ''
+  // Every shortcut talks to a session under way: the panel shows the easiest that's on (dictation's).
+  const talkKey = config ? displayShortcut(firstShortcut(config)) : ''
   const busy = state.status === 'thinking' || state.status === 'acting'
   /** It works, or waits to: pause and stop apply. */
   const working = busy || state.status === 'hands'

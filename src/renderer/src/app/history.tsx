@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
-import { CONTROL_APPROVALS, CONTROL_SCOPES, languageName, shortModel, STYLES } from '@shared/constants'
+import { CONTROL_APPROVALS, CONTROL_SCOPES, firstShortcut, languageName, shortModel, STYLES } from '@shared/constants'
 import type { Config, ControlStep, EngineId, Session, Style } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
 import { Action, displayShortcut, Row, Sep, Spinner, Track } from '../components/ui'
@@ -378,7 +378,7 @@ export function History({ config, onSetup }: { config: Config; onSetup: () => vo
               {query ? 'no match' : 'no dictations yet'}
               {!query &&
                 (config.onboarded ? (
-                  <span className="acc">{displayShortcut(config.shortcuts.record)} anywhere to start</span>
+                  <span className="acc">{displayShortcut(firstShortcut(config))} anywhere to start</span>
                 ) : (
                   <span className="setup">
                     first, <Action onClick={onSetup}>set up speak</Action>

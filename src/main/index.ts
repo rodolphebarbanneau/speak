@@ -140,7 +140,10 @@ if (!app.requestSingleInstanceLock()) {
             hotkeys.on('release', (ms: number) => controller.onShortcutRelease(ms))
             hotkeys.on('cancel', () => controller.cancel())
             configStore.on('change', (next: Config, prev: Config) => {
-              if (JSON.stringify(next.shortcuts) !== JSON.stringify(prev.shortcuts)) applyShortcuts(next)
+              if (JSON.stringify(next.shortcuts) !== JSON.stringify(prev.shortcuts) || JSON.stringify(next.modes) !== JSON.stringify(prev.modes))
+                applyShortcuts(next)
+              // Control turned off: a session under way ends.
+              if (!next.modes.control && prev.modes.control && control.active) void control.end()
               if (next.ui.launchAtLogin !== prev.ui.launchAtLogin) setLaunchAtLogin(next.ui.launchAtLogin)
               if (JSON.stringify(next.transcription) !== JSON.stringify(prev.transcription)) engine.stopServer()
               if (next.updates.auto !== prev.updates.auto) updater.applyConfig()
@@ -170,7 +173,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 function applyShortcuts(config: Config): void {
-  const error = hotkeys.apply(config.shortcuts)
+  const error = hotkeys.apply(config.shortcuts, config.modes)
   if (error && Notification.isSupported())
     new Notification({ title: 'Speak shortcut unavailable', body: `${error} Change it in Speak → settings → general.` }).show()
 }

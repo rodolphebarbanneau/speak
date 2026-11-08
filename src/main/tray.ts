@@ -1,6 +1,6 @@
 import { app, Menu, nativeImage, nativeTheme, shell, Tray } from 'electron'
-import { CONTROL_APPROVALS, CONTROL_SCOPES, FORMATS, LANGUAGES, languageName, spokenLanguages } from '../shared/constants'
-import type { OutputMode, Phase } from '../shared/types'
+import { CONTROL_APPROVALS, CONTROL_SCOPES, firstShortcut, FORMATS, LANGUAGES, languageName, spokenLanguages } from '../shared/constants'
+import type { Mode, OutputMode, Phase } from '../shared/types'
 import { configStore } from './config'
 import { currentSource, recentSources } from './context'
 import { control } from './control'
@@ -39,11 +39,12 @@ function choose<T extends string>(current: T, options: Array<[T, string]>, set: 
 
 /** What the recording, or the app, can do right now: the same as the pill's buttons while recording. */
 function actions(phase: Phase): Item[] {
-  const { shortcuts } = configStore.get()
+  const cfg = configStore.get()
+  const { shortcuts, modes } = cfg
   const recording = controller.recording
   if (recording) {
     return [
-      { label: 'Finish recording', accelerator: prettyShortcut(shortcuts.record), click: () => controller.recordingAction('finish') },
+      { label: 'Finish recording', accelerator: prettyShortcut(firstShortcut(cfg)), click: () => controller.recordingAction('finish') },
       ...(recording.purpose === 'edit'
         ? []
         : [
@@ -66,17 +67,18 @@ function actions(phase: Phase): Item[] {
     return [
       {
         label: 'Talk to control',
-        accelerator: prettyShortcut(shortcuts.record || shortcuts.compose || shortcuts.control),
+        accelerator: prettyShortcut(firstShortcut(cfg)),
         click: () => controller.toggle('control')
       },
       { label: 'Stop what it does', click: () => control.stop() },
       { label: 'End control', click: () => void control.end() }
     ]
   }
+  // The modes that are on.
   return [
-    { label: 'Start dictation', accelerator: prettyShortcut(shortcuts.record), click: () => controller.toggle() },
-    { label: 'Start composing', accelerator: prettyShortcut(shortcuts.compose), click: () => controller.toggle('compose') },
-    { label: 'Start control', accelerator: prettyShortcut(shortcuts.control), click: () => controller.toggle('control') }
+    ...(modes.dictate ? [{ label: 'Start dictation', accelerator: prettyShortcut(shortcuts.record), click: () => controller.toggle() }] : []),
+    ...(modes.compose ? [{ label: 'Start composing', accelerator: prettyShortcut(shortcuts.compose), click: () => controller.toggle('compose') }] : []),
+    ...(modes.control ? [{ label: 'Start control', accelerator: prettyShortcut(shortcuts.control), click: () => controller.toggle('control') }] : [])
   ]
 }
 
@@ -127,11 +129,16 @@ function choices(): Item[] {
       ? [
           {
             label: `Mode: ${recording.purpose === 'control' ? 'Control' : compose ? 'Compose' : 'Dictate'}`,
-            submenu: [
-              { label: 'Dictate', type: 'radio', checked: recording.purpose === 'dictation', click: () => controller.recordingAction('dictate') },
-              { label: 'Compose', type: 'radio', checked: compose, click: () => controller.recordingAction('compose') },
-              { label: 'Control', type: 'radio', checked: recording.purpose === 'control', click: () => controller.recordingAction('control') }
-            ]
+            // The modes that are on (and the recording's own).
+            submenu: (
+              [
+                ['dictate', 'Dictate', recording.purpose === 'dictation'],
+                ['compose', 'Compose', compose],
+                ['control', 'Control', recording.purpose === 'control']
+              ] as Array<[Mode, string, boolean]>
+            )
+              .filter(([id, , checked]) => cfg.modes[id] || checked)
+              .map(([id, label, checked]) => ({ label, type: 'radio', checked, click: () => controller.recordingAction(id) }))
           } as Item
         ]
       : []),
@@ -175,7 +182,7 @@ function choices(): Item[] {
       )
     },
     context(),
-    controlChoices()
+    ...(cfg.modes.control || control.active ? [controlChoices()] : [])
   ]
 }
 

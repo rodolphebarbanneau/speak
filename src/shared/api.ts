@@ -17,6 +17,7 @@ import type {
   EngineStatus,
   LoadingState,
   MainSection,
+  Mode,
   OverlayState,
   PermissionStatus,
   PreviewState,
@@ -86,7 +87,8 @@ export interface SpeakApi {
   testAi(): Promise<AiTestResult>
 
   // Dictation
-  toggleRecording(): void
+  /** Start (or finish) a recording: dictation, or the mode given. */
+  toggleRecording(mode?: Mode): void
   cancel(): void
   /** What the pill shows now (its page asks when it loads, or comes back from an error). */
   getOverlayState(): Promise<OverlayState>

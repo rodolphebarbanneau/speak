@@ -100,6 +100,10 @@ class Controller extends EventEmitter {
     if (this.phase === 'idle') {
       // While a control session runs, every shortcut talks to it.
       if (control.active) return void this.startRecording('control')
+      // A mode that's off (the tray, the command line): said so, not started. Editing a preview by voice isn't a mode.
+      const editing = action !== 'control' && previewVisible() && !!this.current
+      if (!editing && !configStore.get().modes[action])
+        return this.flash({ phase: 'info', message: `${action[0].toUpperCase()}${action.slice(1)} is off: turn it on in settings → general` }, 3500)
       if (action === 'control') {
         control.noteTarget()
         return void this.startRecording('control')
@@ -125,7 +129,8 @@ class Controller extends EventEmitter {
     if (action === 'finish') void this.stopRecording()
     else if (action === 'cancel') this.cancel()
     else if (action === 'pause' || action === 'resume') this.setPaused(action === 'pause')
-    // The mode of a new recording (not one said to a control session under way).
+    // The mode of a new recording (not one said to a control session under way), among those that are on.
+    else if (!configStore.get().modes[action]) return
     else if (this.purpose === 'dictation' || (this.purpose === 'control' && !control.active)) {
       if (action === 'control') {
         if (this.purpose === 'dictation') control.noteTarget()

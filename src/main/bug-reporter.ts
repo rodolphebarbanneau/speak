@@ -147,6 +147,12 @@ function settings(): string {
     .map(([k, v]) => `${k} ${v || 'none'}`)
     .join(', ')
   return [
+    `modes ${
+      Object.entries(c.modes)
+        .filter(([, on]) => on)
+        .map(([m]) => m)
+        .join('+') || 'none'
+    }`,
     `record ${c.recordMode}`,
     `output ${c.output.mode} (paste keys ${c.output.pasteKeys}, restore clipboard ${onOff(c.output.restoreClipboard)})`,
     `style ${c.style}`,

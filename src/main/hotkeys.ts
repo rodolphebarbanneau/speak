@@ -50,8 +50,13 @@ class Hotkeys extends EventEmitter {
     })
   }
 
-  apply(shortcuts: Config['shortcuts']): string | undefined {
-    this.shortcuts = { dictate: shortcuts.record, compose: shortcuts.compose, control: shortcuts.control }
+  /** The shortcuts of the modes that are on (one that's off leaves its keys to other apps). */
+  apply(shortcuts: Config['shortcuts'], modes: Config['modes']): string | undefined {
+    this.shortcuts = {
+      dictate: modes.dictate ? shortcuts.record : '',
+      compose: modes.compose ? shortcuts.compose : '',
+      control: modes.control ? shortcuts.control : ''
+    }
     this.cancel = shortcuts.cancel
     this.registerAll()
     return this.error

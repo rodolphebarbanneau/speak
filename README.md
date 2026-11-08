@@ -113,7 +113,7 @@ Speak runs on any recent computer (on a Mac, macOS 13.5 or later). An NVIDIA gra
 | Control | Ctrl+Shift+Alt+Enter | ⌘⇧⌥Enter |
 | Cancel  | Esc                  | Esc      |
 
-Hold a shortcut while you speak, or tap it to start and again to stop. You can change all of them in **settings → general**.
+Hold a shortcut while you speak, or tap it to start and again to stop. You can change all of them in **settings → general**, and turn a mode off there: its shortcut is then free for other apps, and the mode isn't offered on the bar or in the tray.
 
 ## Privacy
 

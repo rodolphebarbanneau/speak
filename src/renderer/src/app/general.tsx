@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { FORMATS } from '@shared/constants'
-import type { AgentStatus, Config, DeepPartial, EngineStatus, MainSection, PasteKeys, PermissionStatus, RecordMode, Style } from '@shared/types'
+import { FORMATS, MODE_SHORTCUT, modesOn } from '@shared/constants'
+import type { AgentStatus, Config, DeepPartial, EngineStatus, MainSection, Mode, PasteKeys, PermissionStatus, RecordMode, Style } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
 import { Action, Bar, Check, displayShortcut, formatSize, List, ListRow, Row, Sep, ShortcutInput, TextInput } from '../components/ui'
 import { ipcError, sizeMB } from '../lib/format'
@@ -11,6 +11,13 @@ import { InputSettings } from './input-settings'
 
 const api = window.speak
 const isMac = api.platform === 'darwin'
+
+/** The modes, as the settings show them: what each does. */
+const MODE_ROWS: Array<{ id: Mode; hint: string }> = [
+  { id: 'dictate', hint: 'writes what you say, where your cursor is, in any application' },
+  { id: 'compose', hint: 'say what to write: the ai writes the email, message or text you ask for' },
+  { id: 'control', hint: 'say what to do: the ai does it on the computer · see settings → control' }
+]
 
 interface Props {
   config: Config
@@ -139,7 +146,7 @@ export function General(props: Props) {
   useEffect(() => {
     void api.getPermissions().then(setPerm)
     void api.getInfo().then((i) => setShortcutError(i.shortcutError))
-  }, [config.shortcuts.record, config.shortcuts.compose, config.shortcuts.control])
+  }, [config.shortcuts.record, config.shortcuts.compose, config.shortcuts.control, config.modes.dictate, config.modes.compose, config.modes.control])
 
   return (
     <>
@@ -157,17 +164,36 @@ export function General(props: Props) {
       </section>
 
       <section>
-        <Sep>shortcuts</Sep>
-        <Row label="dictate" hint="writes what you say, where your cursor is · works in any application · click, then press the keys">
-          <ShortcutInput value={config.shortcuts.record} onChange={(v) => update({ shortcuts: { record: v } })} />
-        </Row>
-        <Row label="compose" hint="say what to write: the ai writes the email, message or text you ask for">
-          <ShortcutInput value={config.shortcuts.compose} onChange={(v) => update({ shortcuts: { compose: v } })} />
-        </Row>
-        <Row label="control" hint="say what to do: the ai does it on the computer · see settings → control">
-          <ShortcutInput value={config.shortcuts.control} onChange={(v) => update({ shortcuts: { control: v } })} />
-        </Row>
+        <Sep>modes</Sep>
+        {MODE_ROWS.map(({ id, hint }) => {
+          const on = config.modes[id]
+          // Speak needs one: the last mode on stays on.
+          const last = on && modesOn(config).length === 1
+          const key = MODE_SHORTCUT[id]
+          return (
+            <Row
+              key={id}
+              label={id}
+              hint={
+                last
+                  ? `${hint} · the last mode on: speak needs one`
+                  : on
+                    ? `${hint} · click the shortcut, then press the keys`
+                    : `off: ${hint} · its shortcut is free for other apps, and it isn't offered on the pill or the tray`
+              }
+            >
+              <Check checked={on} disabled={last} onChange={(v) => update({ modes: { [id]: v } })}>
+                {on ? 'on' : 'off'}
+              </Check>
+              <ShortcutInput value={config.shortcuts[key]} disabled={!on} onChange={(v) => update({ shortcuts: { [key]: v } })} />
+            </Row>
+          )
+        })}
         {shortcutError && <p className="line error">✗ {shortcutError}</p>}
+      </section>
+
+      <section>
+        <Sep>shortcuts</Sep>
         <Row
           label="record"
           hint={

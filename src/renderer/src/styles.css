@@ -270,6 +270,9 @@ button:disabled {
 .check:hover {
   color: var(--dim);
 }
+.check-label {
+  color: var(--fg);
+}
 
 /* (•) */
 .radio {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { shortModel, STYLES } from '@shared/constants'
+import { firstShortcut, shortModel, STYLES } from '@shared/constants'
 import type { EngineId, PreviewState, Style } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
 import { AppName } from '@themes/components'
@@ -24,7 +24,8 @@ export function Preview() {
     const off = api.onPreview(setState)
     api.previewReady()
     void api.getConfig().then((c) => {
-      setRecordShortcut(displayShortcut(c.shortcuts.record))
+      // Any shortcut finishes the recording: the first that's on (control's starts a session instead).
+      setRecordShortcut(displayShortcut(firstShortcut(c, ['dictate', 'compose'])))
       setEngine(c.transcription.engine)
     })
     return off
@@ -134,7 +135,7 @@ export function Preview() {
           <span>
             <span className="red blink">●</span> listening for your edit{' '}
             <span className="dim">
-              · {MOD}+e or {recordShortcut} to finish
+              · {MOD}+e{recordShortcut && ` or ${recordShortcut}`} to finish
             </span>
           </span>
         ) : working ? (

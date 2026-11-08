@@ -10,6 +10,7 @@ import type {
   ControlScope,
   DeepPartial,
   MainSection,
+  Mode,
   PermissionStatus,
   RecordingAction,
   Style
@@ -98,7 +99,7 @@ export function registerIpc(): void {
   handle('testAi', () => testAi())
 
   // Dictation
-  on('toggleRecording', () => controller.toggle())
+  on('toggleRecording', (mode?: Mode) => controller.toggle(mode))
   handle('getOverlayState', () => controller.overlayShown)
   on('cancel', () => controller.cancel())
 

@@ -65,6 +65,20 @@ export const MODES: Array<{ id: Mode; label: string; description: string }> = [
   { id: 'control', label: 'control', description: 'does what you ask, on the computer' }
 ]
 
+/** Each mode's shortcut in the settings (dictation's is `record`). */
+export const MODE_SHORTCUT: Record<Mode, 'record' | 'compose' | 'control'> = { dictate: 'record', compose: 'compose', control: 'control' }
+
+/** The modes that are on, in order. */
+export function modesOn(c: Pick<Config, 'modes'>): Mode[] {
+  return MODES.map((m) => m.id).filter((id) => c.modes[id])
+}
+
+/** The shortcut of the first of these modes that's on and has one ('' when none): what to show as "press … to". */
+export function firstShortcut(c: Pick<Config, 'modes' | 'shortcuts'>, among: Mode[] = ['dictate', 'compose', 'control']): string {
+  for (const m of among) if (c.modes[m] && c.shortcuts[MODE_SHORTCUT[m]]) return c.shortcuts[MODE_SHORTCUT[m]]
+  return ''
+}
+
 export const CONTROL_SCOPES: Array<{ id: ControlScope; label: string; description: string }> = [
   { id: 'app', label: 'app', description: 'the windows of the app in front when it starts: look, click, type' },
   { id: 'screen', label: 'screen', description: 'any window: look, click, type · no files, no commands' },
@@ -94,6 +108,7 @@ export const CODEX_MODELS: AgentModel[] = [
 
 export const DEFAULT_CONFIG: Config = {
   onboarded: false,
+  modes: { dictate: true, compose: true, control: true },
   // The same on every system (Ctrl is ⌘ on a Mac): Ctrl+Shift for all, Alt for the AI modes; Space
   // for the modes that write, Enter for the one that acts. macOS keeps the other Space chords.
   shortcuts: {

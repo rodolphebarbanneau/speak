@@ -307,7 +307,11 @@ function Choices({ config, mode, clipboard, target }: { config: Config; mode: Mo
           ) : (
             <>
               <SheetRow label="mode">
-                <Seg options={MODES.map((m) => ({ id: m.id, label: m.label, title: m.description }))} value={mode} onPick={(m) => api.recordingAction(m)} />
+                <Seg
+                  options={MODES.filter((m) => config.modes[m.id] || m.id === mode).map((m) => ({ id: m.id, label: m.label, title: m.description }))}
+                  value={mode}
+                  onPick={(m) => api.recordingAction(m)}
+                />
               </SheetRow>
               {mode === 'control' ? (
                 <>

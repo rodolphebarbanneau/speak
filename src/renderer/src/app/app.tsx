@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { MODE_SHORTCUT, modesOn } from '@shared/constants'
 import type { MainSection } from '@shared/types'
 import { AppName } from '@themes/components'
 import { Action, displayShortcut, HelpProvider, Key, TitleBar, useWindowFocus } from '../components/ui'
@@ -58,6 +59,9 @@ export function App() {
   }, [settings, view])
 
   if (!config) return null
+  // The first mode that's on: the button starts it, the status line says how.
+  const mode = modesOn(config)[0] ?? 'dictate'
+  const key = displayShortcut(config.shortcuts[MODE_SHORTCUT[mode]])
 
   return (
     <HelpProvider value={setHelp}>
@@ -65,8 +69,8 @@ export function App() {
         <TitleBar
           right={
             <>
-              <Key k="●" onClick={() => api.toggleRecording()}>
-                dictate
+              <Key k="●" onClick={() => api.toggleRecording(mode)}>
+                {mode}
               </Key>
               <Action onClick={() => setSettings(settings ? null : lastSettings)}>settings</Action>
               <button
@@ -91,7 +95,7 @@ export function App() {
           {settings && <SettingsDialog section={settings} onSection={setSettings} onClose={() => setSettings(null)} config={config} update={update} />}
         </div>
         <div className="statusline">
-          <span>{help || `${displayShortcut(config.shortcuts.record)} to dictate anywhere`}</span>
+          <span>{help || (key ? `${key} to ${mode} anywhere` : '')}</span>
           <span>v{version}</span>
         </div>
       </div>

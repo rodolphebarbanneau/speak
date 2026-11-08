@@ -1,7 +1,7 @@
-import { CONTROL_APPROVALS, CONTROL_SCOPES } from '@shared/constants'
+import { CONTROL_APPROVALS, CONTROL_SCOPES, firstShortcut } from '@shared/constants'
 import type { Config, ControlAlwaysAsk, ControlApproval, ControlScope, DeepPartial } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
-import { Check, displayShortcut, Row, Sep } from '../components/ui'
+import { Action, Check, displayShortcut, Row, Sep } from '../components/ui'
 
 const ALWAYS: Array<{ id: keyof ControlAlwaysAsk; label: string; hint: string }> = [
   { id: 'money', label: 'money', hint: 'paying, buying, ordering, transferring' },
@@ -18,11 +18,18 @@ export function ControlSettings({ config, update }: { config: Config; update: (p
   return (
     <>
       <section>
-        <p className="note">
-          say what to do with <span className="acc">{displayShortcut(config.shortcuts.control) || 'the control shortcut'}</span>: the ai does it on the
-          computer, and a panel shows what it does. keep talking to it with{' '}
-          <span className="acc">{displayShortcut(config.shortcuts.record) || 'any shortcut'}</span>: while it's on, every shortcut talks to it.
-        </p>
+        {config.modes.control ? (
+          <p className="note">
+            say what to do with <span className="acc">{displayShortcut(config.shortcuts.control) || 'the control shortcut'}</span>: the ai does it on the
+            computer, and a panel shows what it does. keep talking to it with{' '}
+            <span className="acc">{displayShortcut(firstShortcut(config)) || 'any shortcut'}</span>: while it's on, every shortcut talks to it.
+          </p>
+        ) : (
+          <p className="note">
+            <span className="yellow">control is off</span>: no shortcut, and it isn't offered on the pill or the tray. these settings apply once it's on.{' '}
+            <Action onClick={() => void update({ modes: { control: true } })}>turn on</Action>
+          </p>
+        )}
         <Sep>new sessions</Sep>
         <Row label="scope" hint={scope?.description}>
           <Dropdown<ControlScope>

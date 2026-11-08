@@ -97,11 +97,21 @@ export function Action({ children, onClick, disabled, danger }: { children: Reac
   )
 }
 
-/** `[x]` / `[ ]` */
-export function Check({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+/** `[x]` / `[ ]`, and what it says, if anything (clicking it toggles too). */
+export function Check({
+  checked,
+  onChange,
+  disabled,
+  children
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  disabled?: boolean
+  children?: ReactNode
+}) {
   return (
     <button role="checkbox" aria-checked={checked} className="check" onClick={() => onChange(!checked)} disabled={disabled}>
-      [<b>{checked ? 'x' : ' '}</b>]
+      [<b>{checked ? 'x' : ' '}</b>]{children && <span className="check-label"> {children}</span>}
     </button>
   )
 }
@@ -334,7 +344,17 @@ export function displayShortcut(accel: string): string {
 }
 
 /** Click (or Enter), then press the desired key combination. Global shortcuts are suspended meanwhile. */
-export function ShortcutInput({ value, onChange, allowBare }: { value: string; onChange: (v: string) => void; allowBare?: boolean }) {
+export function ShortcutInput({
+  value,
+  onChange,
+  allowBare,
+  disabled
+}: {
+  value: string
+  onChange: (v: string) => void
+  allowBare?: boolean
+  disabled?: boolean
+}) {
   const [capturing, setCapturing] = useState(false)
   // Latest callback without re-subscribing (and re-suspending shortcuts) on every render.
   const changed = useRef(onChange)
@@ -369,7 +389,12 @@ export function ShortcutInput({ value, onChange, allowBare }: { value: string; o
   }, [capturing, allowBare])
 
   return (
-    <button className={`shortcut ${capturing ? 'capturing' : ''}`} onClick={() => setCapturing((c) => !c)} onBlur={() => setCapturing(false)}>
+    <button
+      className={`shortcut ${capturing ? 'capturing' : ''}`}
+      disabled={disabled}
+      onClick={() => setCapturing((c) => !c)}
+      onBlur={() => setCapturing(false)}
+    >
       {capturing ? 'press keys… (esc to cancel)' : displayShortcut(value)}
     </button>
   )

@@ -54,7 +54,7 @@ const api: SpeakApi = {
   listAgentModels: (id) => invoke('listAgentModels', id),
   testAi: () => invoke('testAi'),
 
-  toggleRecording: () => send('toggleRecording'),
+  toggleRecording: (mode) => send('toggleRecording', mode),
   cancel: () => send('cancel'),
   getOverlayState: () => invoke('getOverlayState'),
   onOverlay: listen('overlay'),
