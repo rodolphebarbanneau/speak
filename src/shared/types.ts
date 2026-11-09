@@ -315,9 +315,15 @@ export interface AiTestResult {
 export interface PermissionStatus {
   microphone: string
   accessibility: boolean | null
+  /** macOS: Screen Recording, which control mode needs to see other apps' windows (null elsewhere). */
+  screen: string | null
   hookAvailable: boolean
   wayland: boolean
+  /** Why control mode can't run on this computer (a Wayland session…), or null. */
+  controlUnavailable: string | null
 }
+
+export type PermissionKind = 'microphone' | 'accessibility' | 'screen'
 
 export interface UpdateState {
   status: 'disabled' | 'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'downloaded' | 'error'

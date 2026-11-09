@@ -6,9 +6,12 @@ import { isAbsolute, resolve } from 'node:path'
 import { shell } from 'electron'
 import type { ControlAlwaysAsk, ControlRisk, ControlScope } from '../../shared/types'
 import { log } from '../log'
-import { delay, run } from '../util'
+import { delay, isMac, isWin } from '../util'
 import { makeFolder, moveItem, trashItem, type FileOp } from './files'
+import { openApp } from './open'
 import {
+  a11y,
+  BridgeTimeout,
   captureWindow,
   click,
   cursorPos,
@@ -24,9 +27,10 @@ import {
   moveMouse,
   pressing,
   pressKeys,
+  refreshWindows,
   scroll,
   shoot,
-  uia,
+  shortcutMod,
   unminimize,
   windowAt,
   windowInfo,
@@ -44,10 +48,10 @@ import {
  *
  * The screen is shared with the user, who may be working on something else meanwhile. So Speak acts
  * in the background whenever it can: it looks at windows without bringing them forward, and
- * presses, fills and scrolls through UI Automation, without the mouse or the keyboard. What needs
- * the real mouse or keyboard borrows them: it waits until the user's hands are still, acts, and
- * gives them back (the pointer where it was, the focus to the user's window); the user touching
- * them meanwhile stops that action there.
+ * presses, fills and scrolls through the system's accessibility API (UI Automation, AX, AT-SPI),
+ * without the mouse or the keyboard. What needs the real mouse or keyboard borrows them: it waits
+ * until the user's hands are still, acts, and gives them back (the pointer where it was, the focus
+ * to the user's window); the user touching them meanwhile stops that action there.
  */
 
 /** An action, as the gate sees it. key: what "always" approves (the same kind of action). */
@@ -115,6 +119,15 @@ interface Tool {
 type Content = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
 
 const text = (t: string): Content[] => [{ type: 'text', text: t }]
+
+/**
+ * A background action that failed: a real click, or typing, does it instead. Unless the bridge
+ * didn't answer in time: the action may have happened anyway, and must not happen twice.
+ */
+const refused = (err: unknown): null => {
+  if (err instanceof BridgeTimeout) throw err
+  return null
+}
 const HELD = 'The user stopped you. Wait for their next order: do nothing more.'
 const obj = (properties: Record<string, unknown>, required: string[] = []) => ({ type: 'object', properties, required, additionalProperties: false })
 const INTENT = { type: 'string', description: 'What this does and why, in a short phrase in the user\'s language: "click Send to send the reply".' }
@@ -185,7 +198,7 @@ export class ToolServer {
   private current: number | null = null
   /** A window whose cursor turned out to be in a password field when Speak was about to type: its next text goes in as a password. */
   private passwordIn: number | null = null
-  /** The elements listed per window, by number (e1, e2…), as the UI Automation bridge keeps them. */
+  /** The elements listed per window, by number (e1, e2…), as the accessibility bridge keeps them. */
   private elements = new Map<number, Element[]>()
   /** One action on the screen at a time: the AI may ask for several at once. */
   private lock: Promise<unknown> = Promise.resolve()
@@ -311,6 +324,7 @@ export class ToolServer {
         description: 'List the windows you may act on: id, app, title, which one the user is in.',
         inputSchema: obj({}),
         run: async () => {
+          await refreshWindows()
           const wins = this.allowedWindows()
           if (!wins.length) return text('No window in your scope is open.')
           return text(
@@ -357,7 +371,9 @@ export class ToolServer {
       },
       {
         name: 'key',
-        description: 'Press a key or a shortcut in a window: "enter", "tab", "escape", "ctrl+s", "ctrl+shift+t". Borrows the keyboard.',
+        description: isMac
+          ? 'Press a key or a shortcut in a window: "enter", "tab", "escape", "cmd+s", "cmd+shift+t" (cmd is ⌘, ctrl is Control). Borrows the keyboard.'
+          : 'Press a key or a shortcut in a window: "enter", "tab", "escape", "ctrl+s", "ctrl+shift+t". Borrows the keyboard.',
         inputSchema: obj({ ...target, keys: { type: 'string' }, intent: INTENT, risky: RISKY }, ['keys', 'intent']),
         run: (a) => this.key(a)
       },
@@ -404,8 +420,7 @@ export class ToolServer {
     else
       tools.push({
         name: 'open',
-        description:
-          'Open an app (by name, e.g. "notepad", "outlook"), a file, a folder or a web address. It opens behind the user\'s window when they are busy.',
+        description: `Open an app (by name, e.g. ${isMac ? '"textedit", "mail"' : isWin ? '"notepad", "outlook"' : '"gedit", "firefox"'}), a file, a folder or a web address. It opens behind the user's window when they are busy.`,
         inputSchema: obj({ target: { type: 'string' }, intent: INTENT }, ['target', 'intent']),
         run: (a) => this.open(a)
       })
@@ -467,7 +482,15 @@ export class ToolServer {
     if (w.pid === process.pid) return false
     const scope = this.host.scope()
     if (scope.kind !== 'app') return true
-    return scope.apps.some((a) => a.pid === w.pid || (a.exe && a.exe.toLowerCase() === w.exe.toLowerCase()))
+    const same = (a: string, b: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase()
+    // Its process, unless that says nothing (no process known), or the apps differ: on Linux a
+    // window's process is what the app says, and sandboxed ones (Flatpak) all say the same.
+    return scope.apps.some((a) => (a.pid > 0 && a.pid === w.pid && (!a.exe || !w.exe || same(a.exe, w.exe))) || same(a.exe, w.exe))
+  }
+
+  /** A minimized window shown again may bring its app forward (macOS): the focus goes back to the user then. */
+  private restored<T>(w: WindowInfo, fn: () => Promise<T>): Promise<T> {
+    return w.minimized ? this.backgroundNow(w, fn) : fn()
   }
 
   private allowedWindows(): WindowInfo[] {
@@ -527,8 +550,8 @@ export class ToolServer {
     let target: number | null = null
     /**
      * Asked before each burst of input, and between steps: once it says stop, it stays so. The
-     * user's hands (what the hook saw, and what Windows says is held down right now, ahead of the
-     * hook), then pause and stop, then the keyboard still on the window it acts on.
+     * user's hands (what the hook saw, and what the system says is held down right now, ahead of
+     * the hook), then pause and stop, then the keyboard still on the window it acts on.
      */
     const stop = (): boolean => {
       if (stopped) return true
@@ -627,7 +650,7 @@ export class ToolServer {
       const w = this.pick(id)
       key = String(w.id)
       label = windowName(w)
-      shot = await captureWindow(w.id)
+      shot = await this.restored(w, () => captureWindow(w.id))
       // An app that doesn't draw for a background picture: it comes forward a moment to be seen.
       if (!shot) {
         forward = true
@@ -651,8 +674,8 @@ export class ToolServer {
   private async listElements(id: number | undefined, filter?: string): Promise<Content[]> {
     if (!(await this.host.hold())) throw new Held()
     const w = this.pick(id)
-    await unminimize(w.id)
-    const all = await uia.elements(w.id, 300)
+    await this.restored(w, () => unminimize(w.id))
+    const all = await a11y.elements(w, 300)
     this.elements.set(w.id, all)
     const shot = this.shots.get(String(w.id))
     const f = filter?.toLowerCase()
@@ -714,7 +737,7 @@ export class ToolServer {
     try {
       // An element with a default action: pressed in the background.
       if (el && !a.double && (!a.button || a.button === 'left')) {
-        const done = await this.background(w, () => uia.press(w.id, el.index)).catch(() => null)
+        const done = await this.background(w, () => a11y.press(w, el.index)).catch(refused)
         if (done) {
           await delay(250)
           this.host.finish(g.step, { ok: true, detail: `${name} pressed in the background` })
@@ -753,7 +776,7 @@ export class ToolServer {
     })
     if (!g.ok) return text(g.reason)
     try {
-      const done = await this.background(w, () => uia.fill(w.id, el.index, value)).catch(() => null)
+      const done = await this.background(w, () => a11y.fill(w, el.index, value)).catch(refused)
       if (done) {
         this.host.finish(g.step, { ok: true, detail: `${secret ? 'password field' : el.e.name || el.e.type} filled in the background` })
         return text(`Filled ${el.e.type} "${el.e.name}".`)
@@ -769,7 +792,7 @@ export class ToolServer {
           if (!(await click(p.x, p.y, 'left', 1, stop))) return 0
           await delay(120)
           if (stop()) return 0
-          pressKeys('ctrl+a')
+          pressKeys(`${shortcutMod()}+a`)
           const sent = await insertText(value, stop, secret)
           check = await this.typedCheck(win, value, sent, secret)
           return sent
@@ -788,7 +811,7 @@ export class ToolServer {
     const el = a.element ? this.element(w, a.element) : null
     const value = String(a.text ?? '')
     // The field with the keyboard counts only when it's in that app: another app's says nothing about it.
-    const focused = el ? null : await uia.focused().catch(() => null)
+    const focused = el ? null : await a11y.focused().catch(() => null)
     const secret = el ? !!el.e.password : (focused?.pid === w.pid && focused.password) || this.passwordIn === w.id
     if (this.passwordIn === w.id) this.passwordIn = null
     const category = secret ? 'secrets' : categoryOf(a.intent)
@@ -810,8 +833,8 @@ export class ToolServer {
         w,
         async (stop, win) => {
           if (el) {
-            // Into that element: focused through UI Automation, else clicked.
-            if (!(await uia.focus(w.id, el.index))) {
+            // Into that element: focused through the accessibility API, else clicked.
+            if (!(await a11y.focus(w, el.index))) {
               const p = center(el.e)
               this.landsOn(win, p)
               if (!(await click(p.x, p.y, 'left', 1, stop))) return 0
@@ -820,7 +843,7 @@ export class ToolServer {
           } else if (!secret) {
             // The window in front now, the field with the keyboard is its own: a password field after all
             // isn't typed into as plain text (it would be pasted when long, and kept in the history).
-            const now = await uia.focused().catch(() => null)
+            const now = await a11y.focused().catch(() => null)
             if (now?.password && now.pid === win.pid) {
               password = true
               return 0
@@ -881,7 +904,7 @@ export class ToolServer {
     const el = a.element ? this.element(w, a.element) : null
     // In the background: the element's list or page, else the window's first.
     if (typeof a.x !== 'number') {
-      const done = await this.background(w, () => uia.scroll(w.id, el?.index, dy)).catch(() => null)
+      const done = await this.background(w, () => a11y.scroll(w, el?.index, dy)).catch(refused)
       if (done) {
         this.host.looked(`scrolled ${windowName(w)}`)
         return text('Scrolled.')
@@ -933,6 +956,7 @@ export class ToolServer {
 
   private async requestApp(id: number | undefined, why: string): Promise<Content[]> {
     if (id === undefined || id === null) {
+      await refreshWindows()
       const others = listWindows().filter((w) => !this.inScope(w) && w.pid !== process.pid)
       return text(
         others.length ? `Open windows outside your scope:\n${others.map((w) => `${w.id} · ${w.exe} · "${w.title}"`).join('\n')}` : 'No other window is open.'
@@ -955,15 +979,12 @@ export class ToolServer {
       if (!(await this.host.handsFree(`open ${target}`))) throw new Held()
       const saved = { fg: foregroundWindow(), cursor: cursorPos(), busy: Date.now() - this.host.lastInput() < BUSY_MS }
       const before = new Set(listWindows().map((w) => w.id))
-      if (/^https?:\/\//i.test(target)) await shell.openExternal(target)
-      else if (isAbsolute(target)) {
-        const error = await shell.openPath(target)
+      // On macOS, it opens without taking the focus while the user works.
+      if (/^https?:\/\//i.test(target)) await shell.openExternal(target, { activate: !saved.busy })
+      else if (isAbsolute(target) || /^~[\/]/.test(target)) {
+        const error = await shell.openPath(target.startsWith('~') ? resolve(homedir(), target.slice(2)) : target)
         if (error) throw new Error(error)
-      } else {
-        // An app by name: as the Run box would (App Paths, PATH).
-        const r = await run('cmd.exe', ['/d', '/c', 'start', '""', target], { timeoutMs: 10_000 })
-        if (r.code !== 0) throw new Error(`Could not open "${target}": ${r.stderr.trim() || `exit ${r.code}`}`)
-      }
+      } else await openApp(target, saved.busy)
       let opened: WindowInfo | undefined
       for (let i = 0; i < 20 && !opened; i++) {
         await delay(250)
@@ -991,11 +1012,18 @@ export class ToolServer {
     let check: Check = null
     if (!secret && sent === typed.length) {
       // Line breaks, tabs and an app's curly quotes aren't a difference.
-      const flat = (s: string) => s.replace(/\s+/g, ' ').replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
+      // Nor are the dashes and ellipses macOS's smart punctuation makes of what's typed.
+      const flat = (s: string) =>
+        s
+          .replace(/\s+/g, ' ')
+          .replace(/[‘’]/g, "'")
+          .replace(/[“”]/g, '"')
+          .replace(/[–—]|--/g, '-')
+          .replace(/…/g, '...')
       const want = flat(typed).slice(-200)
       if (want.trim()) {
         await delay(150) // the last keys reach the app
-        const r = await uia.beforeCursor(want.length + 200).catch(() => null)
+        const r = await a11y.beforeCursor(want.length + 200).catch(() => null)
         const got = r && r.pid === win.pid && !r.password ? (r.text ?? r.value) : undefined
         if (got !== undefined) {
           const ok = r?.text !== undefined ? flat(got).endsWith(want) : flat(got).includes(want)

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { firstShortcut, MODES, modesOn } from '@shared/constants'
-import type { AgentId, Config, DeepPartial, PermissionStatus, ProviderId, Session } from '@shared/types'
+import type { AgentId, Config, DeepPartial, PermissionKind, PermissionStatus, ProviderId, Session } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
 import { Action, Bar, displayShortcut, Key, MOD, percent, Row, Sep, Spinner, useHelpLine } from '../components/ui'
 import { sizeMB } from '../lib/format'
@@ -123,7 +123,16 @@ export function SetupDialog({ config, update, onClose, onSettings }: Props) {
     },
     { id: 'microphone', label: 'microphone', done: micVerdict === 'ok' },
     { id: 'ai', label: 'ai', done: provider === 'none' || agentReady(agents[provider].status) },
-    ...(isMac ? [{ id: 'access' as const, label: 'access', done: !!perm && perm.microphone === 'granted' && !!perm.accessibility }] : []),
+    ...(isMac
+      ? [
+          {
+            id: 'access' as const,
+            label: 'access',
+            // Screen Recording is for control mode only.
+            done: !!perm && perm.microphone === 'granted' && !!perm.accessibility && (!config.modes.control.on || perm.screen === 'granted')
+          }
+        ]
+      : []),
     { id: 'try', label: 'try it', done: !!heard || pasted }
   ]
   const index = steps.findIndex((s) => s.id === step)
@@ -185,7 +194,7 @@ export function SetupDialog({ config, update, onClose, onSettings }: Props) {
               {step === 'speech' && <SpeechStep speech={speech} onSettings={onSettings} />}
               {step === 'microphone' && <MicrophoneStep config={config} update={update} onVerdict={setMicVerdict} />}
               {step === 'ai' && <AiStep provider={provider} agents={agents} onChoose={choose} />}
-              {step === 'access' && perm && <AccessStep perm={perm} onPerm={setPerm} />}
+              {step === 'access' && perm && <AccessStep perm={perm} onPerm={setPerm} control={config.modes.control.on} />}
               {step === 'try' && <TryStep config={config} perm={perm} heard={heard} pasted={pasted} onPaste={() => setPasted(true)} onSettings={onSettings} />}
             </div>
           </div>
@@ -346,9 +355,9 @@ function AgentSetup({ id, agent }: { id: AgentId; agent: Agents[AgentId] }) {
   )
 }
 
-/** macOS: the microphone, and accessibility (to paste, and for hold-to-talk). */
-function AccessStep({ perm, onPerm }: { perm: PermissionStatus; onPerm: (p: PermissionStatus) => void }) {
-  const ask = (kind: 'microphone' | 'accessibility') => void api.requestPermission(kind).then(onPerm)
+/** macOS: the microphone, accessibility (to paste, and for hold-to-talk), and screen recording (for control mode). */
+function AccessStep({ perm, onPerm, control }: { perm: PermissionStatus; onPerm: (p: PermissionStatus) => void; control: boolean }) {
+  const ask = (kind: PermissionKind) => void api.requestPermission(kind).then(onPerm)
   const micDenied = perm.microphone === 'denied' || perm.microphone === 'restricted'
   return (
     <section>
@@ -372,7 +381,17 @@ function AccessStep({ perm, onPerm }: { perm: PermissionStatus; onPerm: (p: Perm
       >
         {perm.accessibility ? <span className="green">allowed</span> : <span className="yellow">not allowed yet</span>}
       </Row>
-      <p className="note">accessibility opens system settings: turn speak on in the list, then come back here.</p>
+      <Row
+        label="screen recording"
+        hint={`for control mode: to see the windows it acts on${control ? '' : ' · only if you use it'}`}
+        actions={perm.screen !== 'granted' && <Action onClick={() => ask('screen')}>allow</Action>}
+      >
+        {perm.screen === 'granted' ? <span className="green">allowed</span> : <span className={control ? 'yellow' : 'dim'}>not allowed yet</span>}
+      </Row>
+      <p className="note">
+        accessibility and screen recording open system settings: turn speak on in the list, then come back here. after screen recording, macos may ask to reopen
+        speak.
+      </p>
     </section>
   )
 }

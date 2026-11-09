@@ -6,6 +6,7 @@ import { configStore } from './config'
 import { seasons } from './season'
 import { resource } from './paths'
 import { log } from './log'
+import { dipToScreen, screenToDip } from './platform/coords'
 import { bringToFront, restoreMouseInput } from './platform/focus'
 import { isMac, isWin } from './util'
 
@@ -391,10 +392,10 @@ function panelWindow(): BrowserWindow {
   return controlPanel
 }
 
-/** Physical screen rect → DIPs (Windows); elsewhere they're the same. */
+/** A rect of the system's screen space (physical pixels on Windows and X11, points on macOS) → DIPs. */
 function toDip(r: { x: number; y: number; w: number; h: number }): Electron.Rectangle {
-  const rect = { x: r.x, y: r.y, width: r.w, height: r.h }
-  return isWin ? screen.screenToDipRect(null, rect) : rect
+  const d = screenToDip({ x: r.x, y: r.y, width: r.w, height: r.h })
+  return { x: Math.round(d.x), y: Math.round(d.y), width: Math.round(d.width), height: Math.round(d.height) }
 }
 
 /** Show the panel, away from `avoid` (the app it acts on, in screen pixels). */
@@ -450,7 +451,7 @@ export function setControlKeyboard(on: boolean): void {
 /** Where the panel is, in screen pixels (a click there is the user's, not a hand on the mouse). */
 export function controlPanelRect(): { x: number; y: number; w: number; h: number } | null {
   if (!controlPanel?.isVisible()) return null
-  const b = isWin ? screen.dipToScreenRect(null, controlPanel.getBounds()) : controlPanel.getBounds()
+  const b = dipToScreen(controlPanel.getBounds())
   return { x: b.x, y: b.y, w: b.width, h: b.height }
 }
 
@@ -490,6 +491,12 @@ export function showFrame(area: { x: number; y: number; w: number; h: number }, 
     frame.on('close', (e) => {
       if (!quitting) e.preventDefault()
     })
+    // Its native handle goes with it (on macOS, a view freed then): nothing may use it after.
+    frame.on('closed', () => {
+      if (frameKeeper) clearInterval(frameKeeper)
+      frameKeeper = null
+      frame = null
+    })
     load(frame, 'frame')
   }
   // Around a window, just outside it; around a button or a field, with room to see it.
@@ -505,7 +512,9 @@ export function showFrame(area: { x: number; y: number; w: number; h: number }, 
     const h = handle.length >= 8 ? Number(handle.readBigUInt64LE(0)) : handle.readUInt32LE(0)
     keep(h)
     // The user brings another window forward, or the one it's around: it follows.
-    frameKeeper = setInterval(() => keep(h), 200)
+    frameKeeper = setInterval(() => {
+      if (frame && !frame.isDestroyed() && frame.isVisible()) keep(h)
+    }, 200)
   }
 }
 

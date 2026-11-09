@@ -89,8 +89,9 @@ Speak enforces the scope itself: the AI acts through Speak's tools, which refuse
 - **It never types where you are.** It types only while the keyboard is on the window it acts on: if another window takes it, it stops. It never presses Enter in a text: long text, or text with line breaks, is pasted in one go (your clipboard is put back after), so a line break never sends a message; sending is its own step, which asks first.
 - **The panel shows where it will act**: an approval comes with a picture of the spot, boxed, and the spot is boxed on the screen too when it's in sight.
 - **Undo.** Files it moves, writes or trashes can be put back from the panel. Its trash is `.speak/control`.
-- **Speak's panel stays out of its screenshots**, and a frame shows when it has the mouse and the keyboard.
-- What it looks at goes to your AI provider: an app scope sends only that app. Control works on Windows for now.
+- **Speak's panel stays out of its screenshots** (on Linux, it's blanked in them), and a frame shows when it has the mouse and the keyboard.
+- What it looks at goes to your AI provider: an app scope sends only that app.
+- **On Windows, macOS and Linux.** On a Mac, it asks first for **Accessibility** (to read the apps' buttons and fields, and to use the mouse and keyboard) and **Screen Recording** (to see their windows): **settings → control** shows both. Shortcuts there are ⌘ ones, and an app's menu bar counts as part of the app. On Linux, it needs an X11 session (Wayland doesn't let an app see or drive other apps' windows), and apps show their buttons and fields to it when the desktop's accessibility is on; without them, it works from what it sees.
 
 ## Get started
 
@@ -99,7 +100,7 @@ Speak enforces the scope itself: the AI acts through Speak's tools, which refuse
    - **Speech recognition:** one click downloads it (about 1 GB, or 1.5 GB for the faster NVIDIA GPU version). It keeps downloading while you do the other steps.
    - **Microphone:** pick it and test it.
    - **AI provider:** Speak checks for Claude Code and Codex and picks the one that's ready. If neither is, it links to the install page and opens the sign-in in a terminal. Without one, Speak still types exactly what you said.
-   - **Access (macOS):** allow the microphone, and accessibility so Speak can paste.
+   - **Access (macOS):** allow the microphone, and accessibility so Speak can paste. For control mode, screen recording too.
    - **Try it:** your first dictation, in a box inside the setup.
 3. **Talk.** Hold Ctrl+Shift+Space in any app.
 
@@ -136,9 +137,9 @@ Speak updates itself: new versions download in the background and install the ne
 
 **Recognition is off, or picks the wrong language**: in the preview or the history, pick the language you spoke under **spoken** to transcribe the recording again. To avoid it next time, set that language in **settings → speech → spoken** instead of auto-detect, and add names and jargon you use to **vocabulary**.
 
-**macOS**: allow Speak in **System Settings → Privacy & Security** for the microphone, and for Accessibility so it can paste and detect when you release the shortcut.
+**macOS**: allow Speak in **System Settings → Privacy & Security** for the microphone, and for Accessibility so it can paste and detect when you release the shortcut. Control mode also needs Screen Recording (**Screen & System Audio Recording** on recent macOS); macOS may ask you to reopen Speak after you allow it.
 
-**Linux on Wayland**: hold-to-talk isn't available, so tapping starts and stops. To paste, install `wtype` or `ydotool`. Your desktop can also bind a shortcut to `speak --toggle`. Speak runs through XWayland so the recording pill can stay above other windows without taking the focus; start it with `--ozone-platform=wayland` to run it natively instead (the pill may then open behind your windows).
+**Linux on Wayland**: hold-to-talk isn't available, so tapping starts and stops, and control mode needs an X11 session (choose it when you log in). To paste, install `wtype` or `ydotool`. Your desktop can also bind a shortcut to `speak --toggle`. Speak runs through XWayland so the recording pill can stay above other windows without taking the focus; start it with `--ozone-platform=wayland` to run it natively instead (the pill may then open behind your windows).
 
 **Something else**: click the bug at the top right of Speak's window (or **Report a bug…** in the tray menu) and say what happened. Your AI provider writes it up with Speak's diagnostics, and it opens as a filled-in issue on GitHub for you to read and submit. Nothing is sent until you do, and what Speak knows to be personal is taken out first; what you dictated is never included.
 
@@ -174,7 +175,10 @@ To test an update without publishing, serve a newer build's `dist/` folder over 
 - **AI**: the user's own, unmodified CLI, run non-interactively without tools, plugins, MCP servers or project settings. Speak never reads or stores credentials.
   - Claude Code: `claude -p --model haiku --effort medium --system-prompt-file … --tools "" --setting-sources "" --strict-mcp-config --disable-slash-commands --no-session-persistence --output-format json`. Each mode has its model (settings → ai → models): by default haiku for dictate, sonnet for compose and control.
   - Codex: `codex exec -m gpt-6-luna -c model_reasoning_effort="medium" -c model_instructions_file="…" --ignore-user-config --ignore-rules --sandbox read-only --ephemeral --skip-git-repo-check -o … -`. By default gpt-6-luna for dictate, and the first model of Codex's catalog, its workhorse, for compose and control.
-  - Control runs a live session: Claude Code with `--input-format stream-json --output-format stream-json --permission-prompt-tool stdio` (its permission prompts come to Speak), Codex through `codex app-server` (approvals as JSON-RPC requests; its own computer use, browser, plugins and the user's MCP servers turned off). Speak serves its tools (screen, undoable file changes, plan, questions) as an MCP server on 127.0.0.1 with a token, and checks the scope and the approval level in each one. The screen: window list and focus through Win32; windows pictured with `PrintWindow` (in the background), the display with `desktopCapturer` (Speak's windows excluded from capture); controls listed and acted on through UI Automation (invoke, toggle, select, expand, value, scroll), by a PowerShell bridge kept for the session; real input through `SendInput`, only once the user's hands are still (libuiohook), and given back after.
+  - Control runs a live session: Claude Code with `--input-format stream-json --output-format stream-json --permission-prompt-tool stdio` (its permission prompts come to Speak), Codex through `codex app-server` (approvals as JSON-RPC requests; its own computer use, browser, plugins and the user's MCP servers turned off). Speak serves its tools (screen, undoable file changes, plan, questions) as an MCP server on 127.0.0.1 with a token, and checks the scope and the approval level in each one. The screen, through each system's own calls (koffi) and accessibility API (in a bridge process kept for the session, so a hung app never blocks Speak), with real input only once the user's hands are still (libuiohook), given back after:
+    - Windows: window list and focus through Win32; windows pictured with `PrintWindow` (in the background), the display with `desktopCapturer` (Speak's windows excluded from capture); controls through UI Automation (invoke, toggle, select, expand, value, scroll), by a PowerShell bridge; input through `SendInput`.
+    - macOS: window list through `CGWindowListCopyWindowInfo`; windows and the display pictured by the window server (`CGWindowListCreateImage`, the display without Speak's windows), else `desktopCapturer`; controls, the menu bar and open menus through Accessibility (AX: press, value, scroll bar, focus), by Electron run as Node; windows brought forward by the window server as window switchers do (SkyLight), else AX and `NSRunningApplication`; input through `CGEventPost`, keys found on the user's layout, its ⌘ keys for shortcuts (`UCKeyTranslate`).
+    - Linux (X11): window list, focus and stacking through the window manager's EWMH hints (else the window tree); windows pictured with `desktopCapturer`; controls through AT-SPI, by Electron run as Node; input through XTEST, characters the layout lacks typed through a spare key lent to them.
 - **Insertion**: the text goes on the clipboard and Speak sends the paste keystroke (Windows: `SendInput` with scan codes). The text stays on the clipboard so a manual Ctrl+V works if the app ignored it, unless **restore clipboard** is on. Compose reads the selection with Ctrl+Insert, which never interrupts a terminal.
 
 ### Command line
@@ -213,8 +217,9 @@ src/
     hotkeys.ts     global shortcuts, hold-to-talk release detection
     stt/           whisper.cpp install and server, parakeet
     ai/            prompts, Claude Code and Codex CLIs
-    control/       control mode: session, approvals, AI sessions, Speak's tools (MCP), screen
-    platform/      focus, paste, selection, keyboard, autostart
+    control/       control mode: session, approvals, AI sessions, Speak's tools (MCP)
+      screen/      the screen on each system: windows, pictures, input, accessibility bridges
+    platform/      focus, paste, selection, keyboard, autostart, screen coordinates
   preload/         typed window.speak bridge
   renderer/src/    overlay (recording pill), preview dialog, main window, control panel
   shared/          types, constants, API contract

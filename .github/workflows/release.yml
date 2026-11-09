@@ -25,6 +25,16 @@ jobs:
 
       - run: npm ci
 
+      # npm installs koffi's native package for this runner's chip only (Apple Silicon), and
+      # the Intel build is packaged from the same folder: add the other chip's. Control mode
+      # reaches macOS through koffi.
+      - name: Add koffi for both Mac chips
+        if: runner.os == 'macOS'
+        run: |
+          v=$(node -p "require('./node_modules/koffi/package.json').version")
+          npm install --no-save --force "@koromix/koffi-darwin-x64@$v" "@koromix/koffi-darwin-arm64@$v"
+          ls node_modules/@koromix
+
       - name: Typecheck
         run: npm run typecheck
 

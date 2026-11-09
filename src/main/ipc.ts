@@ -11,6 +11,7 @@ import type {
   DeepPartial,
   MainSection,
   Mode,
+  PermissionKind,
   PermissionStatus,
   RecordingAction,
   Style
@@ -20,6 +21,7 @@ import { cancelBugReport, noteWindowError, prepareBugReport } from './bug-report
 import { configStore } from './config'
 import { addSource, parseSource, removeSource } from './context'
 import { control } from './control'
+import { requestScreenRecording, screenUnsupported } from './control/screen'
 import { controller } from './controller'
 import { downloads } from './download'
 import { history } from './history'
@@ -36,8 +38,10 @@ function permissions(): PermissionStatus {
   return {
     microphone: isMac || process.platform === 'win32' ? systemPreferences.getMediaAccessStatus('microphone') : 'granted',
     accessibility: accessibilityTrusted(false),
+    screen: isMac ? systemPreferences.getMediaAccessStatus('screen') : null,
     hookAvailable: keyboardHookAvailable(),
-    wayland: isWayland
+    wayland: isWayland,
+    controlUnavailable: screenUnsupported()
   }
 }
 
@@ -76,12 +80,13 @@ export function registerIpc(): void {
   })
   on('suspendShortcuts', (suspended: boolean) => hotkeys.suspend(suspended))
   handle('getPermissions', () => permissions())
-  handle('requestPermission', async (kind: 'microphone' | 'accessibility') => {
+  handle('requestPermission', async (kind: PermissionKind) => {
     if (kind === 'microphone' && isMac) await systemPreferences.askForMediaAccess('microphone')
     if (kind === 'accessibility' && isMac) {
       accessibilityTrusted(true)
       startKeyboardHook()
     }
+    if (kind === 'screen') requestScreenRecording()
     return permissions()
   })
 

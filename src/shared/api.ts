@@ -19,6 +19,7 @@ import type {
   MainSection,
   Mode,
   OverlayState,
+  PermissionKind,
   PermissionStatus,
   PreviewState,
   RecorderCommand,
@@ -69,7 +70,7 @@ export interface SpeakApi {
   onConfig(cb: (config: Config) => void): () => void
   suspendShortcuts(suspended: boolean): void
   getPermissions(): Promise<PermissionStatus>
-  requestPermission(kind: 'microphone' | 'accessibility'): Promise<PermissionStatus>
+  requestPermission(kind: PermissionKind): Promise<PermissionStatus>
 
   // Transcription engine
   getEngineStatus(): Promise<EngineStatus>

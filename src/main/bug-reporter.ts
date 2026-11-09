@@ -9,6 +9,7 @@ import { AGENT_NAMES, agentStatus, askAgent, modelFor } from './ai'
 import { ANALYSIS_PROMPT, analysisMessage, diagnosticsText, dictationsCourse, logTail, parseAnalysis, scrub, titleFrom, type Machine } from './bug-report'
 import { configStore } from './config'
 import { control } from './control'
+import { screenUnsupported } from './control/screen'
 import { controller } from './controller'
 import { history } from './history'
 import { hotkeys } from './hotkeys'
@@ -195,6 +196,8 @@ function permissions(): string {
     `microphone ${microphone}`,
     `accessibility ${accessibility === null ? 'n/a' : accessibility ? 'granted' : 'not granted'}`,
     `keyboard hook ${keyboardHookAvailable() ? 'available' : 'unavailable'}`,
+    isMac ? `screen recording ${systemPreferences.getMediaAccessStatus('screen')}` : '',
+    `control ${screenUnsupported() ? `unavailable (${screenUnsupported()})` : 'available'}`,
     isWayland ? 'wayland session' : '',
     hotkeys.error ? `shortcut error: ${hotkeys.error}` : ''
   ]

@@ -2,13 +2,12 @@ import { randomBytes } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { homedir } from 'node:os'
 import { isAbsolute, resolve } from 'node:path'
-import { screen } from 'electron'
 import { CONTROL_APPROVALS, CONTROL_SCOPES, languageName } from '../../shared/constants'
 import type { ControlAlwaysAsk, ControlAsk, ControlApproval, ControlScope, ControlState, ControlStep, Session } from '../../shared/types'
 import { configStore } from '../config'
 import { history, newSessionId } from '../history'
 import { log } from '../log'
-import { isWin } from '../util'
+import { dipToScreen } from '../platform/coords'
 import {
   broadcast,
   controlPanel,
@@ -26,7 +25,19 @@ import { modelFor } from '../ai'
 import { ClaudeAgent, CodexAgent, type ControlAgent, type NativeAction } from './agents'
 import { backupBeforeWrite, describeOp, undoOp, type FileOp } from './files'
 import { controlPrompt, replyIn } from './prompt'
-import { foregroundWindow, listWindows, onUsersInput, screenSupported, stackAbove, uia, warmScreen, type Rect, type WindowInfo } from './screen'
+import {
+  a11y,
+  foregroundWindow,
+  listWindows,
+  onUsersInput,
+  screenReady,
+  screenUnsupported,
+  setOwnAreas,
+  stackAbove,
+  warmScreen,
+  type Rect,
+  type WindowInfo
+} from './screen'
 import { categoryOf, ToolServer, type ActionRequest, type Gate, type StepResult, type ToolHost } from './tools'
 
 /**
@@ -135,17 +146,18 @@ class Control extends EventEmitter implements ToolHost {
 
   /** The shortcut was pressed for a new session: note the app in front (before anything of Speak's shows). */
   noteTarget(): void {
+    const supported = !screenUnsupported()
     try {
-      this.pendingTarget = screenSupported ? foregroundWindow() : null
+      this.pendingTarget = supported ? foregroundWindow() : null
     } catch {
       this.pendingTarget = null
     }
-    if (screenSupported) warmScreen()
+    if (supported) warmScreen()
   }
 
   /** The app of the window whose title contains `title`, instead of the one in front (`--app=` on the command line). */
   noteTargetByTitle(title: string): boolean {
-    if (!screenSupported) return false
+    if (screenUnsupported()) return false
     const t = title.toLowerCase()
     const found = listWindows().find((w) => w.title.toLowerCase().includes(t))
     if (found) this.pendingTarget = found
@@ -165,6 +177,10 @@ class Control extends EventEmitter implements ToolHost {
     showControlPanel(this.pendingTarget?.rect)
     setOverlayCaptureExcluded(true)
     this.hook()
+    // What the system must allow first (macOS asks the user now): without it, not even the app in
+    // front can be found (macOS hides other apps' window titles without Screen Recording).
+    const blocked = screenReady(true)
+    if (blocked) return this.fail(blocked)
     try {
       this.scopeInfo = this.resolveScope(this.state.scope)
     } catch (err) {
@@ -177,6 +193,10 @@ class Control extends EventEmitter implements ToolHost {
 
   /** The AI is gone (it failed, or never started): start it again for this order, the scope checked again. */
   private async relaunch(order: string): Promise<void> {
+    // The user may have allowed what was missing meanwhile; the app in front is the one now.
+    const blocked = screenReady(true)
+    if (blocked) return this.fail(blocked)
+    if (this.state.scope === 'app' && !this.pendingTarget) this.noteTarget()
     try {
       this.scopeInfo = this.resolveScope(this.state.scope)
     } catch (err) {
@@ -187,6 +207,8 @@ class Control extends EventEmitter implements ToolHost {
   }
 
   private reset(): void {
+    // A session that didn't start yet (a permission missing) acts on nothing of the last one's.
+    this.scopeInfo = { kind: this.state.scope, apps: [], label: '' }
     this.asks = []
     this.paused = false
     this.stopped = false
@@ -248,7 +270,8 @@ class Control extends EventEmitter implements ToolHost {
   }
 
   private resolveScope(kind: ControlScope): ReturnType<ToolHost['scope']> {
-    if (!screenSupported) throw new Error('Control works on Windows for now.')
+    const unsupported = screenUnsupported()
+    if (unsupported) throw new Error(unsupported)
     if (kind === 'app') {
       const t = this.pendingTarget
       if (!t || t.pid === process.pid) throw new Error('Put the app to control in front, then press the control shortcut: it acts on that app.')
@@ -269,7 +292,7 @@ class Control extends EventEmitter implements ToolHost {
     this.agent = null
     this.tools?.stop()
     this.tools = null
-    uia.stop()
+    a11y.stop()
     this.unhook?.()
     this.unhook = null
     if (this.idleTimer) clearTimeout(this.idleTimer)
@@ -819,15 +842,7 @@ class Control extends EventEmitter implements ToolHost {
     this.unhook?.()
     this.unhook = onUsersInput((e) => {
       if (!this.state.active) return
-      if (e.kind !== 'key') {
-        const panel = controlPanelRect()
-        if (panel && e.x >= panel.x && e.x < panel.x + panel.w && e.y >= panel.y && e.y < panel.y + panel.h) return
-        if (overlay?.isVisible()) {
-          const b = overlay.getBounds()
-          const pill = isWin ? screen.dipToScreenRect(null, b) : b
-          if (e.x >= pill.x && e.x < pill.x + pill.width && e.y >= pill.y + pill.height - 90 && e.y < pill.y + pill.height) return
-        }
-      }
+      if (e.kind !== 'key' && speakAreas().some((r) => e.x >= r.x && e.x < r.x + r.w && e.y >= r.y && e.y < r.y + r.h)) return
       this.lastUserInput = Date.now()
     })
   }
@@ -848,6 +863,29 @@ class Control extends EventEmitter implements ToolHost {
     return `control ${this.state.scope}, ${this.state.approval}, ${this.state.status}, ${this.state.steps.length} steps`
   }
 }
+
+/**
+ * Where Speak's own windows take clicks, in screen coordinates: the control panel, and the pill
+ * (the bottom of its window: the rest lets clicks through). A click there answers Speak.
+ */
+function speakAreas(): Rect[] {
+  const areas: Rect[] = []
+  const panel = controlPanelRect()
+  if (panel) areas.push(panel)
+  if (overlay?.isVisible()) {
+    const b = dipToScreen(overlay.getBounds())
+    const pill = Math.min(90 * (b.height / overlay.getBounds().height || 1), b.height)
+    areas.push({ x: b.x, y: b.y + b.height - pill, w: b.width, h: pill })
+  }
+  return areas
+}
+
+// Speak's own windows for the screen: the panel (a click there is Speak's, not the AI's to make).
+// The pill's strip isn't one: most of it lets clicks through to what's under it.
+setOwnAreas(() => {
+  const panel = controlPanelRect()
+  return panel ? [panel] : []
+})
 
 const ALWAYS_ASK_LABEL = { money: 'money', secrets: 'passwords and security', delete: 'deleting', send: 'sending as you' } as const
 

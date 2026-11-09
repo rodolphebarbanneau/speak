@@ -12,6 +12,8 @@ files:
 asarUnpack:
   - node_modules/uiohook-napi/**
   - node_modules/koffi/**
+  # koffi's native code, one package per system and chip (see the macOS step of release.yml).
+  - node_modules/@koromix/**
 # Optional whisper.cpp binaries bundled by CI (scripts/build-whisper.sh); empty folders are fine.
 extraResources:
   - from: vendor/whisper/${os}

@@ -1,6 +1,6 @@
 import { languageName } from '../../shared/constants'
 import type { ControlApproval, ControlScope } from '../../shared/types'
-import { isMac, isWin } from '../util'
+import { isLinux, isMac, isWin } from '../util'
 
 /** The language a control session writes in: that of the user's order, or the one they chose ('same' or a code). */
 export function replyIn(replyLanguage: string): string {
@@ -36,7 +36,7 @@ Don't try to get around this (no other tool, no command, no shortcut to reach be
 
 # Approval
 ${approval}
-${SCREEN}${o.scope === 'full' ? FILES : ''}
+${SCREEN}${SYSTEM}${o.scope === 'full' ? FILES : ''}
 # Acting tools
 Every acting tool takes "intent": a short phrase in the user's language saying what the action does and why ("click Send to send the reply to Marc"). Set "risky": true when the action sends, posts or publishes something as the user, pays or buys, deletes for good, or changes passwords or security settings.
 
@@ -57,7 +57,16 @@ The user shares the computer with you and may be working in another window meanw
 - type never presses Enter: long text, or text with line breaks, is pasted in one go. To send, submit or confirm, press Enter with key, as its own step (sending as the user asks first).
 - type writes where the cursor is, or into an element you give (a document, an email body): use it for long text in editors; use fill for form fields.
 - After an action that changes the window, look again (or list its elements) before deciding the next one. Use wait when something loads.
-- Speak's own panel is not on the screenshots and can't be clicked.
+- Speak's own panel is not on the screenshots${isLinux ? ' (or is a dark rectangle there)' : ''} and can't be clicked.
+`
+
+/** What differs on the user's system: its shortcuts, and what it names things. */
+const SYSTEM = isMac
+  ? `- On macOS, shortcuts use cmd (⌘): cmd+c, cmd+v, cmd+s, cmd+w. ctrl is a different key there. "delete" is the key that erases backwards. An app's menus are in the menu bar at the top of the screen, outside its windows: elements lists them too (pressing one opens it; elements again lists what's in it).
+`
+  : isWin
+    ? ''
+    : `- On Linux, shortcuts use ctrl as on Windows; super is the key with the system's logo. In a terminal, copy and paste are ctrl+shift+c and ctrl+shift+v.
 `
 
 const FILES = `

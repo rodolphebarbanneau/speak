@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react'
 import { CONTROL_APPROVALS, CONTROL_SCOPES, firstShortcut } from '@shared/constants'
-import type { Config, ControlAlwaysAsk, ControlApproval, ControlScope, DeepPartial } from '@shared/types'
+import type { Config, ControlAlwaysAsk, ControlApproval, ControlScope, DeepPartial, PermissionKind, PermissionStatus } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
 import { outputOptions } from '../lib/languages'
 import { Action, Check, displayShortcut, Row, Sep } from '../components/ui'
@@ -11,14 +12,32 @@ const ALWAYS: Array<{ id: keyof ControlAlwaysAsk; label: string; hint: string }>
   { id: 'send', label: 'sending as you', hint: 'emails, messages, posts, comments' }
 ]
 
+const api = window.speak
+const isMac = api.platform === 'darwin'
+
 /** Control mode: what a new session may touch, when it asks first, and what always asks. */
 export function ControlSettings({ config, update }: { config: Config; update: (patch: DeepPartial<Config>) => Promise<void> }) {
   const c = config.control
   const scope = CONTROL_SCOPES.find((s) => s.id === c.scope)
   const approval = CONTROL_APPROVALS.find((a) => a.id === c.approval)
+  // What the system allows changes in its own settings: look again when the window comes back.
+  const [perm, setPerm] = useState<PermissionStatus | null>(null)
+  useEffect(() => {
+    const look = () => void api.getPermissions().then(setPerm)
+    look()
+    window.addEventListener('focus', look)
+    return () => window.removeEventListener('focus', look)
+  }, [])
+  const ask = (kind: PermissionKind) => void api.requestPermission(kind).then(setPerm)
   return (
     <>
       <section>
+        {perm?.controlUnavailable && (
+          <p className="note">
+            <span className="yellow">control can't run on this computer</span>:{' '}
+            {perm.controlUnavailable.charAt(0).toLowerCase() + perm.controlUnavailable.slice(1)}
+          </p>
+        )}
         {config.modes.control.on ? (
           <p className="note">
             say what to do with <span className="acc">{displayShortcut(config.modes.control.shortcut) || 'the control shortcut'}</span>: the ai does it on the
@@ -73,6 +92,26 @@ export function ControlSettings({ config, update }: { config: Config; update: (p
           <Check checked={c.readAloud} onChange={(v) => update({ control: { readAloud: v } })} />
         </Row>
       </section>
+
+      {isMac && perm && (
+        <section>
+          <Sep>macos access</Sep>
+          <Row
+            label="accessibility"
+            hint="to read the controls of other apps, and to use the mouse and the keyboard"
+            actions={!perm.accessibility && <Action onClick={() => ask('accessibility')}>allow</Action>}
+          >
+            {perm.accessibility ? <span className="green">allowed</span> : <span className="yellow">not allowed yet</span>}
+          </Row>
+          <Row
+            label="screen recording"
+            hint="to see the windows it acts on · macos may ask to reopen speak after"
+            actions={perm.screen !== 'granted' && <Action onClick={() => ask('screen')}>allow</Action>}
+          >
+            {perm.screen === 'granted' ? <span className="green">allowed</span> : <span className="yellow">not allowed yet</span>}
+          </Row>
+        </section>
+      )}
 
       <section>
         <Sep>always asks</Sep>
