@@ -67,7 +67,7 @@ export function registerIpc(): void {
 
   // Updates
   handle('getUpdateState', () => updater.state)
-  on('checkForUpdates', () => void updater.check())
+  on('checkForUpdates', () => void updater.check(true))
   on('downloadUpdate', () => void updater.download())
   on('installUpdate', () => void updater.install())
   on('openReleases', () => void shell.openExternal(RELEASES_URL))

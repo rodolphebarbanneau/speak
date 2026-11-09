@@ -91,7 +91,7 @@ export function About({ config, update }: { config: Config; update: (patch: Deep
         <Row label="status" hint="new versions come from the github releases of speak" actions={updateAction}>
           {state && <UpdateStatus state={state} />}
         </Row>
-        <Row label="automatic" hint="download updates in the background and install them when speak quits">
+        <Row label="automatic" hint="download updates in the background and install them when speak quits · check now always asks before downloading">
           <Check checked={config.updates.auto} onChange={(v) => update({ updates: { auto: v } })} />
         </Row>
       </section>

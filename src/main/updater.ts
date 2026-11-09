@@ -15,7 +15,9 @@ const CHECK_EVERY_MS = 4 * 3600_000
 /**
  * Updates from GitHub Releases via electron-updater: the release workflow uploads installers
  * and their update manifests (latest.yml…); the app checks them, downloads in the background
- * and installs on quit (or right away on request). Disabled in development builds.
+ * and installs on quit (or right away on request). A check the user asks for (settings → about)
+ * downloads nothing by itself: it shows the new version, and waits for their "download".
+ * Disabled in development builds.
  */
 class Updater extends EventEmitter {
   state: UpdateState = { status: app.isPackaged ? 'idle' : 'disabled', current: app.getVersion() }
@@ -37,7 +39,15 @@ class Updater extends EventEmitter {
     this.applyConfig()
     autoUpdater.on('checking-for-update', () => this.set({ status: 'checking', error: undefined }))
     autoUpdater.on('update-not-available', () => this.set({ status: 'latest', checkedAt: new Date().toISOString() }))
-    autoUpdater.on('update-available', (info: UpdateInfo) => this.set({ status: 'available', latest: info.version, checkedAt: new Date().toISOString() }))
+    // Downloading by itself (a background check, updates automatic): no "download" to offer.
+    autoUpdater.on('update-available', (info: UpdateInfo) =>
+      this.set({
+        status: autoUpdater.autoDownload ? 'downloading' : 'available',
+        percent: 0,
+        latest: info.version,
+        checkedAt: new Date().toISOString()
+      })
+    )
     autoUpdater.on('download-progress', (p: ProgressInfo) => this.set({ status: 'downloading', percent: Math.round(p.percent) }))
     autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
       this.set({ status: 'downloaded', latest: info.version, percent: 100 })
@@ -55,16 +65,24 @@ class Updater extends EventEmitter {
     setInterval(() => void this.check(), CHECK_EVERY_MS).unref()
   }
 
-  /** Follow the "install updates automatically" setting. */
+  /**
+   * Follow the "install updates automatically" setting. Whether a check downloads is decided as it
+   * starts (see check): turning the setting on doesn't make the user's own check download.
+   */
   applyConfig(): void {
     if (!this.updater) return
-    const auto = configStore.get().updates.auto
-    this.updater.autoDownload = auto
-    this.updater.autoInstallOnAppQuit = auto
+    this.updater.autoInstallOnAppQuit = configStore.get().updates.auto
   }
 
-  async check(): Promise<void> {
+  /**
+   * Look for a new version. `byUser`: the user asked (settings → about): what it finds waits for
+   * their "download". Otherwise (the checks in the background), it downloads by itself when updates
+   * are automatic.
+   */
+  async check(byUser = false): Promise<void> {
     if (!this.updater || this.state.status === 'checking' || this.state.status === 'downloading' || this.state.status === 'downloaded') return
+    // Read by electron-updater while the check runs, when it finds a new version.
+    this.updater.autoDownload = !byUser && configStore.get().updates.auto
     try {
       await this.updater.checkForUpdates()
     } catch {

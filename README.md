@@ -127,7 +127,7 @@ Hold a shortcut while you speak, or tap it to start and again to stop. You can c
 
 ## Updates
 
-Speak updates itself: new versions download in the background and install the next time you quit, or right away from the tray menu. You can turn this off in **settings → about**.
+Speak updates itself: new versions download in the background and install the next time you quit, or right away from the tray menu. You can turn this off in **settings → about**. **Check now** there downloads nothing by itself: it shows the new version, and downloads it when you click **download**.
 
 ## Troubleshooting
 
