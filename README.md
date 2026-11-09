@@ -95,9 +95,12 @@ Speak enforces the scope itself: the AI acts through Speak's tools, which refuse
 ## Get started
 
 1. **Download** Speak for your system from the [latest release](https://github.com/rodolphebarbanneau/speak/releases/latest): the `.exe` installer for Windows, the `.dmg` for macOS (`arm64` for Apple Silicon, `x64` for Intel), or the `.AppImage` / `.deb` for Linux.
-2. **Open it.** Speak lives in your system tray. On the first launch, click **set up speak**:
-   - **Speech recognition:** one click downloads it (about 1 GB, or 1.5 GB for the faster NVIDIA GPU version).
-   - **AI provider:** pick Claude Code or Codex. Speak shows whether it's installed and signed in. Without one, Speak still types exactly what you said.
+2. **Open it.** Speak lives in your system tray. On the first launch, a short guided setup opens:
+   - **Speech recognition:** one click downloads it (about 1 GB, or 1.5 GB for the faster NVIDIA GPU version). It keeps downloading while you do the other steps.
+   - **Microphone:** pick it and test it.
+   - **AI provider:** Speak checks for Claude Code and Codex and picks the one that's ready. If neither is, it links to the install page and opens the sign-in in a terminal. Without one, Speak still types exactly what you said.
+   - **Access (macOS):** allow the microphone, and accessibility so Speak can paste.
+   - **Try it:** your first dictation, in a box inside the setup.
 3. **Talk.** Hold Ctrl+Shift+Space in any app.
 
 Speak isn't code-signed yet, so on the first launch Windows shows "Windows protected your PC" (click **More info → Run anyway**), and macOS asks for confirmation (Control-click Speak in Applications, then **Open**; on macOS 15 or later, open it once, then click **Open Anyway** in **System Settings → Privacy & Security**).

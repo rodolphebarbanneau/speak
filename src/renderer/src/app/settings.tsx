@@ -10,7 +10,7 @@ import { General } from './general'
 import { SpeechSettings } from './speech-settings'
 import { WritingSettings } from './writing-settings'
 
-export type SettingsSection = Exclude<MainSection, 'history' | 'bug'>
+export type SettingsSection = Exclude<MainSection, 'history' | 'bug' | 'setup'>
 
 /**
  * The tabs: the app and its modes, then what turns speech into text (speech, ai), then the modes'
@@ -36,12 +36,15 @@ export const isSettings = (s: MainSection): s is SettingsSection => SETTINGS.som
 export function SettingsDialog({
   section,
   onSection,
+  onNavigate,
   onClose,
   config,
   update
 }: {
   section: SettingsSection
   onSection: (s: SettingsSection) => void
+  /** Elsewhere in the window: the guided setup. */
+  onNavigate: (s: MainSection) => void
   onClose: () => void
   config: Config
   update: (patch: DeepPartial<Config>) => Promise<void>
@@ -59,8 +62,8 @@ export function SettingsDialog({
   }, [])
 
   const page = SETTINGS.find((p) => p.id === section)!
-  // Within the main window's other pages, General's setup sends to speech or ai: here, the same dialog.
-  const go = (s: MainSection) => isSettings(s) && onSection(s)
+  // General's setup list sends to speech or ai, here in the same dialog, or to the guided setup.
+  const go = (s: MainSection) => (isSettings(s) ? onSection(s) : onNavigate(s))
   return (
     <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div

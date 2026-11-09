@@ -134,6 +134,8 @@ export function Sep({ children, tail }: { children: ReactNode; tail?: ReactNode 
 // Help line: rows publish their description to the window's status line on hover/focus.
 const HelpContext = createContext<(text: string) => void>(() => undefined)
 export const HelpProvider = HelpContext.Provider
+/** Set the status line's help yourself: '' clears it (e.g. when the page under the pointer changes). */
+export const useHelpLine = () => useContext(HelpContext)
 
 function useHelp(hint?: string) {
   const setHelp = useContext(HelpContext)

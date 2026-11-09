@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { firstShortcut, modesOn } from '@shared/constants'
-import type { AgentStatus, Config, DeepPartial, EngineStatus, MainSection, Mode, PermissionStatus, RecordMode } from '@shared/types'
+import type { Config, DeepPartial, MainSection, Mode, PermissionStatus, RecordMode } from '@shared/types'
 import { SCHEDULE } from '@themes/schedule'
 import { Dropdown } from '../components/dropdown'
 import { Action, Bar, Check, displayShortcut, formatSize, List, ListRow, Row, Sep, ShortcutInput } from '../components/ui'
-import { ipcError, sizeMB } from '../lib/format'
+import { sizeMB } from '../lib/format'
 import type { TestVerdict } from '../lib/microphone'
-import { useDownloads } from './hooks'
+import { agentReady, useAgentStatus, useSpeechSetup } from './hooks'
 
 const api = window.speak
 
@@ -30,38 +30,13 @@ interface Props {
 }
 
 function Setup({ config, update, onNavigate, micVerdict }: Props) {
-  const [engine, setEngine] = useState<EngineStatus | null>(null)
-  const [agent, setAgent] = useState<AgentStatus | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const downloads = useDownloads()
-  useEffect(() => {
-    void api.getEngineStatus().then(setEngine)
-    if (config.ai.provider !== 'none') void api.getAgentStatus(config.ai.provider).then(setAgent)
-    return api.onDownload((p) => {
-      if (p.state === 'done') void api.getEngineStatus().then(setEngine)
-    })
-  }, [config.ai.provider])
+  const speech = useSpeechSetup(config)
+  const { engine, model, build } = speech
+  const provider = config.ai.provider
+  // (With no provider, claude code's status, unused.)
+  const agent = useAgentStatus(provider === 'none' ? 'claude-code' : provider)
 
-  const modelId = config.speech.models[config.speech.engine]
-  const model = engine?.models.find((m) => m.id === modelId)
-  const engineOk = !!engine?.binary.found
-  const build = engine?.binaryOptions.find((o) => o.variant === engine.recommendedVariant)
-
-  // Speech recognition = the engine + the selected model: one step, installed together.
-  const pending = ['binary', 'model:vad', `model:${modelId}`].map((id) => downloads[id]).filter((d) => d && d.state !== 'error')
-  const received = pending.reduce((n, d) => n + d.received, 0)
-  const total = pending.reduce((n, d) => n + d.total, 0)
-  const extracting = pending.some((d) => d.state === 'extracting')
-  const installSize = (engineOk ? 0 : (build?.sizeMB ?? 0)) + (model?.installed ? 0 : (model?.sizeMB ?? 0))
-  const installSpeech = () => {
-    setError(null)
-    api
-      .installModel(modelId)
-      .catch((e: Error) => !/cancel/i.test(e.message) && setError(ipcError(e)))
-      .finally(() => void api.getEngineStatus().then(setEngine))
-  }
-
-  const aiOk = config.ai.provider === 'none' || !!agent?.loggedIn
+  const aiOk = provider === 'none' || agentReady(agent.status)
   const steps = [
     {
       ok: micVerdict === 'ok',
@@ -71,13 +46,17 @@ function Setup({ config, update, onNavigate, micVerdict }: Props) {
       action: <Action onClick={() => onNavigate('speech')}>test</Action>
     },
     {
-      ok: engineOk && !!model?.installed,
+      ok: speech.ready,
       label: 'speech recognition',
-      meta: pending.length ? <Bar value={received} total={total} label={extracting ? 'installing the engine…' : undefined} /> : sizeMB(installSize),
+      meta: speech.downloading ? (
+        <Bar value={speech.received} total={speech.total} label={speech.extracting ? 'installing the engine…' : undefined} />
+      ) : (
+        sizeMB(speech.installSize)
+      ),
       hint: `whisper.cpp${engine?.binary.found ? '' : build ? ` (${build.label.toLowerCase()})` : ''} + ${model?.label.toLowerCase() ?? 'a speech model'}, running on this computer`,
       // Without a downloadable engine build (e.g. macOS dev runs), the speech page explains the options.
-      action: pending.length ? null : engineOk || build ? (
-        <Action onClick={installSpeech}>install</Action>
+      action: speech.downloading ? null : speech.canInstall ? (
+        <Action onClick={speech.install}>install</Action>
       ) : (
         <Action onClick={() => onNavigate('speech')}>set up</Action>
       )
@@ -94,8 +73,17 @@ function Setup({ config, update, onNavigate, micVerdict }: Props) {
 
   return (
     <section>
-      <Sep tail={<Action onClick={() => update({ state: { onboarded: true } })}>{done ? 'done' : 'hide'}</Action>}>setup</Sep>
-      {error && <p className="line error">✗ {error}</p>}
+      <Sep
+        tail={
+          <>
+            <Action onClick={() => onNavigate('setup')}>guided setup</Action>
+            <Action onClick={() => update({ state: { onboarded: true } })}>{done ? 'done' : 'hide'}</Action>
+          </>
+        }
+      >
+        setup
+      </Sep>
+      {speech.error && <p className="line error">✗ {speech.error}</p>}
       <List>
         {steps.map((s) => (
           <ListRow key={s.label} hint={s.hint} meta={!s.ok && s.meta} actions={s.ok ? <span className="green">ready</span> : s.action}>
@@ -140,7 +128,7 @@ function StoredRow() {
 }
 
 export function General(props: Props) {
-  const { config, update, micVerdict } = props
+  const { config, update, onNavigate, micVerdict } = props
   const [perm, setPerm] = useState<PermissionStatus | null>(null)
   const [shortcutError, setShortcutError] = useState<string | undefined>()
 
@@ -227,6 +215,14 @@ export function General(props: Props) {
         <Row label="easter eggs" hint={`a seasonal look around ${HOLIDAYS} · click its logo, top left, to turn it off · off: never shown`}>
           <Check checked={config.app.easterEggs} onChange={(v) => update({ app: { easterEggs: v } })} />
         </Row>
+        {/* Until it's done or hidden, the setup list at the top opens it. */}
+        {config.state.onboarded && (
+          <Row
+            label="guided setup"
+            hint="the walk-through of the first launch: speech, microphone, ai, a first dictation"
+            actions={<Action onClick={() => onNavigate('setup')}>open</Action>}
+          />
+        )}
       </section>
 
       <section>

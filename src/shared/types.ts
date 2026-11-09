@@ -106,12 +106,14 @@ export interface Config {
   /** Download updates in the background and install them when Speak quits. */
   updates: { auto: boolean }
   /**
-   * Speak's own bookkeeping, not settings. onboarded: the setup list was done or hidden ·
+   * Speak's own bookkeeping, not settings. onboarded: the guided setup was finished or skipped (or
+   * the setup list in settings → general done or hidden) ·
    * lastVersion: the version that last started, to tell when an update was just installed ·
    * themeOff: the season of the theme the user turned off by clicking its logo ("christmas-2026"),
-   * off until the next season.
+   * off until the next season · formatBeforeNone: the format picking no ai provider switched to
+   * verbatim, put back when an ai is picked again ('' when none was switched).
    */
-  state: { onboarded: boolean; lastVersion: string; themeOff: string }
+  state: { onboarded: boolean; lastVersion: string; themeOff: string; formatBeforeNone: Format | '' }
 }
 
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] }
@@ -341,7 +343,8 @@ export type RecorderCommand =
   | { type: 'sound'; name: 'start' | 'stop' | 'error' | 'done' }
 
 /** bug: "report a bug", from the title row's bug or the tray. */
-export type MainSection = 'history' | 'general' | 'speech' | 'ai' | 'writing' | 'context' | 'control' | 'about' | 'bug'
+/** What the main window can open: history, a settings page, the bug report, or the guided setup. */
+export type MainSection = 'history' | 'general' | 'speech' | 'ai' | 'writing' | 'context' | 'control' | 'about' | 'bug' | 'setup'
 
 // ------------------------------------------------------------------ control mode
 

@@ -159,7 +159,7 @@ export const DEFAULT_CONFIG: Config = {
     handsSeconds: 2
   },
   updates: { auto: true },
-  state: { onboarded: false, lastVersion: '', themeOff: '' }
+  state: { onboarded: false, lastVersion: '', themeOff: '', formatBeforeNone: '' }
 }
 
 /** claude-opus-5-5 → opus 5.5 (other model names are returned unchanged). */

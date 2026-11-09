@@ -132,9 +132,11 @@ export function BugReportDialog({ config, screen, onClose }: { config: Config; s
   const keys = useRef(onKeyDown)
   keys.current = onKeyDown
   useEffect(() => {
+    // Only when it's in front: settings or the setup can open over it. And not a key a dialog in
+    // front already took: closing, it may be gone by the time this listener runs.
     const listener = (e: KeyboardEvent) => {
-      const other = e.target instanceof Element && e.target.closest('[role="dialog"]')
-      if (!other || other === box.current) keys.current(e)
+      const dialogs = document.querySelectorAll('[role="dialog"]')
+      if (!e.defaultPrevented && dialogs[dialogs.length - 1] === box.current) keys.current(e)
     }
     window.addEventListener('keydown', listener)
     return () => window.removeEventListener('keydown', listener)

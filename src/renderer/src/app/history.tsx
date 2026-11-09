@@ -350,7 +350,7 @@ function ControlDetail({ session, onChanged }: { session: Session; onChanged: (s
   )
 }
 
-/** `onSetup` opens settings → general, where a new install finishes its setup. */
+/** `onSetup` opens the guided setup, where a new install finishes its setup. */
 export function History({ config, onSetup }: { config: Config; onSetup: () => void }) {
   const [sessions, setSessions] = useState<Session[]>([])
   const [query, setQuery] = useState('')

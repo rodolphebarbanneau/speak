@@ -988,6 +988,41 @@ section + section {
   padding: 6px var(--s3);
   border-top: 1px solid var(--sel);
 }
+/* Pushes the keys after it to the right end of the bar. */
+.keys-bar .keys-gap {
+  flex: 1;
+}
+
+/* ---------- guided setup ---------- */
+
+/* The steps on the left, the step on the right, its keys along the bottom. */
+.dialog.setup {
+  max-width: 980px;
+  flex-direction: column;
+}
+.setup-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.setup .nav-foot {
+  margin-top: auto;
+  padding: var(--s2) var(--s3) 0 var(--edge);
+}
+.setup .block-text {
+  margin-bottom: var(--s3);
+}
+.setup .field {
+  display: block;
+  padding: 0 var(--inset);
+  margin-bottom: var(--s2);
+}
+/* The first dictation lands here: as tall as what it holds, up to a height where it scrolls. */
+.setup textarea.try {
+  field-sizing: content;
+  min-height: 7em;
+  max-height: 240px;
+}
 
 /* ---------- main window ---------- */
 
