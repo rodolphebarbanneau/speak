@@ -1,6 +1,6 @@
 /**
- * Small synthesized sounds for themes (Web Audio, no files): organ pipes, chimes and bells,
- * noise bursts, through a little hall reverb. A press (`hold`) keeps its notes ringing until it's
+ * Small sounds for themes (Web Audio, no files): organ pipes, chimes and bells, horns, noise
+ * bursts and fire, synthesized, and short clips kept in the code, through a little hall reverb. A press (`hold`) keeps its notes ringing until it's
  * let go. Silent while recording (the microphone would hear them) and when the user turned sounds
  * off.
  */
@@ -308,4 +308,149 @@ export function tune(notes: number[], held: number[]) {
       return step
     }
   }
+}
+
+/**
+ * A horn from below: three sawtooths a little out of tune, through a filter that opens as it's
+ * blown, held for `length` seconds (longer if a press holds it), then released.
+ */
+export function horn(freq: number, delay: number, length: number, level = 0.03): void {
+  const g = graph()
+  if (!g) return
+  const { c, out } = g
+  const at = c.currentTime + delay
+  const env = c.createGain()
+  env.gain.setValueAtTime(0, at)
+  env.gain.linearRampToValueAtTime(level, at + 0.04)
+  const tone = c.createBiquadFilter()
+  tone.type = 'lowpass'
+  tone.Q.value = 3
+  tone.frequency.setValueAtTime(freq * 1.5, at)
+  tone.frequency.exponentialRampToValueAtTime(freq * 7, at + 0.07)
+  tone.frequency.exponentialRampToValueAtTime(freq * 3, at + 0.5)
+  env.connect(tone).connect(out)
+  const reeds = [-11, 0, 8].map((cents) => {
+    const osc = c.createOscillator()
+    osc.type = 'sawtooth'
+    osc.frequency.value = freq
+    osc.detune.value = cents
+    osc.connect(env)
+    osc.start(at)
+    return osc
+  })
+  ending(c, at + length, (end) => {
+    env.gain.setValueAtTime(level, end)
+    env.gain.exponentialRampToValueAtTime(0.0001, end + 0.3)
+    for (const reed of reeds) reed.stop(end + 0.32)
+  })
+}
+
+/**
+ * The ground shaking: a low roar over `length` seconds, loudest `peak` of the way through (0 to 1),
+ * with a boom under it, falling.
+ */
+export function rumble(delay: number, length: number, level = 0.2, peak = 0.3): void {
+  const g = graph()
+  if (!g) return
+  const { c, out } = g
+  const at = c.currentTime + delay
+  const top = at + length * peak
+  const end = at + length
+  const src = c.createBufferSource()
+  src.buffer = c.createBuffer(1, Math.max(1, Math.round(c.sampleRate * length)), c.sampleRate)
+  const data = src.buffer.getChannelData(0)
+  // Brown noise: white noise, summed and leaking, all rumble and no hiss.
+  let last = 0
+  for (let i = 0; i < data.length; i++) {
+    last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02
+    data[i] = last * 3.5
+  }
+  const low = c.createBiquadFilter()
+  low.type = 'lowpass'
+  low.frequency.value = 150
+  const roar = c.createGain()
+  roar.gain.setValueAtTime(0.0001, at)
+  roar.gain.exponentialRampToValueAtTime(level, top)
+  roar.gain.exponentialRampToValueAtTime(0.0001, end)
+  src.connect(low).connect(roar).connect(out)
+  src.start(at)
+  const boom = c.createOscillator()
+  boom.frequency.setValueAtTime(72, at)
+  boom.frequency.exponentialRampToValueAtTime(30, top + 0.4)
+  const thud = c.createGain()
+  thud.gain.setValueAtTime(0.0001, at)
+  thud.gain.exponentialRampToValueAtTime(level * 0.9, at + 0.05)
+  thud.gain.exponentialRampToValueAtTime(0.0001, Math.min(end, top + 1.2))
+  boom.connect(thud).connect(out)
+  boom.start(at)
+  boom.stop(end)
+}
+
+/** A gust of fire: noise roaring up through a rising band, from `from` to `to` Hz, and dying down. */
+export function whoosh(delay: number, length: number, level = 0.08, from = 220, to = 2400): void {
+  const g = graph()
+  if (!g) return
+  const { c, out } = g
+  const at = c.currentTime + delay
+  const src = c.createBufferSource()
+  src.buffer = c.createBuffer(1, Math.max(1, Math.round(c.sampleRate * length)), c.sampleRate)
+  const data = src.buffer.getChannelData(0)
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1
+  const band = c.createBiquadFilter()
+  band.type = 'bandpass'
+  band.Q.value = 0.9
+  band.frequency.setValueAtTime(from, at)
+  band.frequency.exponentialRampToValueAtTime(to, at + length * 0.35)
+  band.frequency.exponentialRampToValueAtTime(from * 1.5, at + length)
+  const env = c.createGain()
+  env.gain.setValueAtTime(0.0001, at)
+  env.gain.exponentialRampToValueAtTime(level, at + length * 0.3)
+  env.gain.exponentialRampToValueAtTime(0.0001, at + length)
+  src.connect(band).connect(env).connect(out)
+  src.start(at)
+}
+
+/** Fire crackling: `count` tiny snaps scattered over `length` seconds. */
+export function crackle(delay: number, length: number, count = 14, level = 0.06): void {
+  for (let i = 0; i < count; i++)
+    noise(delay + Math.random() * length, 0.008 + Math.random() * 0.02, 2500 + Math.random() * 4000, 1.2, level * (0.4 + Math.random() * 0.6))
+}
+
+/** Clips (base64), decoded once. */
+const clips = new Map<string, Promise<AudioBuffer>>()
+
+/**
+ * A recorded clip (base64: Ogg Opus, WAV…), played `delay` seconds from now. `cavern` sends it
+ * into a long, deep echo as well (0: none, 1: as loud as the sound).
+ */
+export function clip(data: string, delay = 0, level = 1, cavern = 0): void {
+  const g = graph()
+  if (!g) return
+  const { c, out } = g
+  const at = c.currentTime + delay
+  let decoded = clips.get(data)
+  if (!decoded) {
+    decoded = c.decodeAudioData(Uint8Array.from(atob(data), (ch) => ch.charCodeAt(0)).buffer)
+    decoded.catch(() => clips.delete(data))
+    clips.set(data, decoded)
+  }
+  void decoded.then(
+    (buffer) => {
+      if (!allowed || recording) return
+      const src = c.createBufferSource()
+      src.buffer = buffer
+      const gain = c.createGain()
+      gain.gain.value = level
+      src.connect(gain).connect(out)
+      if (cavern) {
+        const echo = c.createConvolver()
+        echo.buffer = hall(c, 3.4)
+        const wet = c.createGain()
+        wet.gain.value = cavern
+        gain.connect(echo).connect(wet).connect(out)
+      }
+      src.start(Math.max(at, c.currentTime))
+    },
+    () => undefined
+  )
 }

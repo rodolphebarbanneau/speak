@@ -1,7 +1,7 @@
 /**
  * Renderer side of the easter egg themes (see shared.ts): applies the theme in season while it's
- * on, plays its click sounds (held for as long as the mouse button is), and turns it off or back
- * on from the title row.
+ * on, plays its click sounds (held for as long as the mouse button is), turns it off or back on
+ * from the title row, and summons a secret theme from the history search.
  */
 import { useSyncExternalStore } from 'react'
 import type { Config } from '@shared/types'
@@ -22,9 +22,11 @@ interface ThemeState {
   shown: boolean
   /** A theme is in season and easter eggs are allowed: "speak" can bring it back. */
   available: boolean
+  /** A secret theme coming (see summon): its scene plays over the window. */
+  summoning: Theme | null
 }
 
-let state: ThemeState = { theme: null, season: null, shown: false, available: false }
+let state: ThemeState = { theme: null, season: null, shown: false, available: false, summoning: null }
 const listeners = new Set<() => void>()
 
 function subscribe(cb: () => void): () => void {
@@ -36,16 +38,57 @@ export function useTheme(): ThemeState {
   return useSyncExternalStore(subscribe, () => state)
 }
 
-/** Turn the theme off (its logo) or back on ("speak"), for this season: the choice is saved. */
-export function setThemeShown(on: boolean): void {
-  const { theme, season } = state
-  if (!theme || !season) return
+function notify(): void {
+  listeners.forEach((cb) => cb())
+}
+
+/** The palette fades into the next one (themes.css). */
+function fade(): void {
   const root = document.documentElement
   root.classList.add('theme-fade')
   setTimeout(() => root.classList.remove('theme-fade'), 900)
+}
+
+/**
+ * Turn the theme off (its logo) or back on ("speak"), for this season: the choice is saved. A
+ * summoned theme, sent away, is gone until it's summoned again.
+ */
+export function setThemeShown(on: boolean): void {
+  const { theme, season } = state
+  if (!theme || !season) return
+  fade()
   if (on) theme.sounds.on()
   else theme.sounds.off()
-  void api.setConfig({ state: { themeOff: on ? '' : season.key } })
+  if (!on && settings?.state.summoned === season.id) void api.setConfig({ state: { summoned: '' } })
+  else void api.setConfig({ state: { themeOff: on ? '' : season.key } })
+}
+
+let summonEnds = 0
+
+/**
+ * A secret theme's word (see types.ts), typed in the history search, then Ctrl+Enter (⌘+Enter):
+ * the theme comes, while easter eggs are allowed. It shows over any theme in season and stays, even
+ * after a restart (the main process keeps it, see season.ts), until its logo sends it away. Returns
+ * whether one came.
+ */
+export function summon(text: string): boolean {
+  const word = text.trim().toLowerCase()
+  const found = Object.entries(themes).find(([, t]) => t.secret && t.secret.word === word)
+  if (!settings?.app.easterEggs || !word || !found) return false
+  const [path, theme] = found
+  fade()
+  theme.sounds.on()
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    state = { ...state, summoning: theme }
+    notify()
+    clearTimeout(summonEnds)
+    summonEnds = window.setTimeout(() => {
+      state = { ...state, summoning: null }
+      notify()
+    }, theme.secret!.ms)
+  }
+  void api.setConfig({ state: { summoned: path.split('/')[1] } })
+  return true
 }
 
 let painted: string[] = []
@@ -73,11 +116,17 @@ let season: Season | null = null
 function update(): void {
   if (!settings) return
   const theme = (season && themes[`./${season.id}/index.tsx`]) || null
-  const next: ThemeState = { theme, season, shown: !!theme && themeShown(settings, season), available: !!theme && settings.app.easterEggs }
+  const next: ThemeState = {
+    theme,
+    season,
+    shown: !!theme && themeShown(settings, season),
+    available: !!theme && settings.app.easterEggs,
+    summoning: state.summoning
+  }
   if (next.theme === state.theme && next.season?.key === state.season?.key && next.shown === state.shown && next.available === state.available) return
   state = next
   paint(settings, season)
-  listeners.forEach((cb) => cb())
+  notify()
 }
 
 export function initThemes(view: string): void {

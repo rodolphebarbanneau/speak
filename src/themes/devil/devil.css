@@ -1,0 +1,346 @@
+/* The devil, a secret theme: its head for a logo, the recording pill at the gates of hell
+   (fire, embers, gargoyles, a trident and a pitchfork), and hellfire over the window as it comes. */
+
+.devil-head {
+  display: inline-flex;
+  animation: devil-aura 2.6s ease-in-out infinite;
+}
+.devil-head .eyes rect,
+.devil-hellfire .face .eyes rect {
+  animation: devil-smoulder 2.2s ease-in-out infinite;
+}
+.devil-head .mouth rect,
+.devil-hellfire .face .mouth rect {
+  animation: devil-hellmouth 1.7s linear infinite;
+}
+/* Laughing: the head shakes with it, its eyes flare white hot, the fire in its mouth roars. */
+.devil-head.laugh svg {
+  animation: devil-laugh 0.16s steps(1) 7;
+}
+.devil-head.laugh .eyes rect {
+  animation: none;
+  fill: #fff6c8;
+}
+.devil-head.laugh .mouth rect {
+  animation: devil-hellmouth 0.4s linear infinite;
+}
+@keyframes devil-aura {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 2px rgba(255, 74, 28, 0.35));
+  }
+  50% {
+    filter: drop-shadow(0 0 4px rgba(255, 74, 28, 0.7));
+  }
+}
+@keyframes devil-smoulder {
+  0%,
+  100% {
+    fill: #ffd23f;
+  }
+  50% {
+    fill: #ff8a1c;
+  }
+}
+@keyframes devil-hellmouth {
+  0%,
+  100% {
+    fill: #7a1408;
+  }
+  12% {
+    fill: #ff6a1a;
+  }
+  20% {
+    fill: #c8200e;
+  }
+  38% {
+    fill: #ffb53a;
+  }
+  46% {
+    fill: #a3180a;
+  }
+  64% {
+    fill: #ff7a24;
+  }
+  80% {
+    fill: #5a0e06;
+  }
+}
+@keyframes devil-laugh {
+  50% {
+    transform: translateY(-1px);
+  }
+}
+
+/* Hellfire around the pill, and in its meter. */
+html[data-theme='devil'] .osd {
+  animation: devil-heat-glow 2.4s ease-in-out infinite;
+}
+html[data-theme='devil'] .osd .levels:not(.paused) > i {
+  background: linear-gradient(to top, #c8200e, #ff6a1a 55%, #ffc23a);
+}
+@keyframes devil-heat-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 10px rgba(255, 74, 28, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(255, 74, 28, 0.6);
+  }
+}
+
+/* A flame: its three drawings one after the other, and it swells and settles from its base. */
+.devil-flame {
+  position: absolute;
+  transform-origin: 50% 100%;
+  animation: devil-breathe var(--breathe) ease-in-out var(--delay) infinite alternate;
+}
+.devil-flame .frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  animation: devil-frame var(--pace) steps(1) var(--delay) infinite;
+}
+.devil-flame .f0 {
+  position: relative;
+}
+.devil-flame .f1 {
+  animation-delay: calc(var(--delay) - var(--pace) * 2 / 3);
+}
+.devil-flame .f2 {
+  animation-delay: calc(var(--delay) - var(--pace) / 3);
+}
+@keyframes devil-frame {
+  0% {
+    opacity: 1;
+  }
+  33.3%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes devil-breathe {
+  from {
+    transform: scale(0.92, 0.85);
+  }
+  to {
+    transform: scale(1.04, 1.12);
+  }
+}
+
+/* The glow of the fire on whatever is behind the pill. */
+.devil-heat {
+  position: absolute;
+  background: radial-gradient(ellipse at 50% 70%, rgba(255, 90, 20, 0.4), rgba(200, 32, 14, 0.15) 45%, transparent 70%);
+  animation: devil-flicker 1.9s ease-in-out infinite;
+}
+@keyframes devil-flicker {
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+  30% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 0.65;
+  }
+  75% {
+    opacity: 0.95;
+  }
+}
+
+/* Embers, flying up, drifting and dying out. */
+.devil-ember {
+  position: absolute;
+  opacity: 0;
+  background: #ff6a1a;
+  box-shadow: 0 0 3px #ff4a1c;
+  animation-name: devil-ember;
+  animation-timing-function: ease-out;
+  animation-iteration-count: infinite;
+}
+.devil-ember.hot {
+  background: #ffd23f;
+  box-shadow: 0 0 4px #ff9a2a;
+}
+@keyframes devil-ember {
+  0% {
+    opacity: 0;
+    transform: none;
+  }
+  10% {
+    opacity: 1;
+  }
+  60% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--drift), var(--rise));
+  }
+}
+
+/* The gargoyles: stone, outlined for light windows; the one on the right faces the other way.
+   Their eyes burn, and now and then flare, as if they'd seen you. */
+.devil-perch {
+  position: absolute;
+  filter: drop-shadow(0 0 1px rgba(17, 7, 7, 0.9));
+}
+.devil-perch.right {
+  transform: scaleX(-1);
+}
+.devil-perch .fork {
+  position: absolute;
+}
+.devil-perch .gargoyle {
+  position: relative;
+}
+.devil-perch .eyes rect {
+  animation: devil-watch 6.5s ease-in-out infinite;
+}
+.devil-perch.right .eyes rect {
+  animation-delay: -3.1s;
+}
+.devil-perch .tips rect {
+  animation: devil-red-hot 1.6s ease-in-out infinite;
+}
+@keyframes devil-watch {
+  0%,
+  80%,
+  100% {
+    fill: #c8200e;
+  }
+  86%,
+  92% {
+    fill: #ffd23f;
+  }
+}
+@keyframes devil-red-hot {
+  0%,
+  100% {
+    fill: #ff4a1c;
+  }
+  50% {
+    fill: #ffb53a;
+  }
+}
+
+/* The devil coming, over the window: it all fades in and out as the scene ends. */
+.devil-hellfire {
+  position: absolute;
+  inset: 0;
+  animation: devil-scene 3.8s linear forwards;
+}
+.devil-hellfire .glow {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 115%, rgba(255, 74, 28, 0.6), transparent 60%),
+    radial-gradient(circle at 50% 40%, rgba(30, 4, 4, 0.7), rgba(70, 0, 0, 0.55) 45%, rgba(17, 7, 7, 0.8) 100%);
+  animation: devil-flicker 0.9s ease-in-out infinite;
+}
+.devil-hellfire .wall {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  animation: devil-rise 3.8s ease-out forwards;
+}
+.devil-hellfire .row0 {
+  filter: brightness(0.6) saturate(1.2);
+}
+.devil-hellfire .face {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 0 18px rgba(255, 74, 28, 0.8));
+  animation: devil-loom 3.8s ease-in-out forwards;
+}
+/* The window shakes as the ground does. */
+body:has(.devil-hellfire) #root {
+  animation: devil-quake 0.6s linear;
+}
+@keyframes devil-scene {
+  0% {
+    opacity: 0;
+  }
+  5%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes devil-rise {
+  0% {
+    transform: translateY(100%);
+  }
+  14%,
+  80% {
+    transform: none;
+  }
+  100% {
+    transform: translateY(70%);
+  }
+}
+@keyframes devil-loom {
+  0%,
+  12% {
+    opacity: 0;
+    transform: translate(-50%, -45%) scale(0.85);
+  }
+  30%,
+  78% {
+    opacity: 0.95;
+  }
+  92%,
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+}
+@keyframes devil-quake {
+  0%,
+  100% {
+    transform: none;
+  }
+  10% {
+    transform: translate(-3px, 2px);
+  }
+  20% {
+    transform: translate(3px, -2px);
+  }
+  30% {
+    transform: translate(-2px, -2px);
+  }
+  45% {
+    transform: translate(2px, 2px);
+  }
+  60% {
+    transform: translate(-1px, 1px);
+  }
+  80% {
+    transform: translate(1px, -1px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .devil-head,
+  .devil-head .eyes rect,
+  .devil-head .mouth rect,
+  .devil-head.laugh svg,
+  html[data-theme='devil'] .osd {
+    animation: none;
+  }
+  .devil-head .eyes rect {
+    fill: #ffd23f;
+  }
+  .devil-head .mouth rect {
+    fill: #c8200e;
+  }
+}

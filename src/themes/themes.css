@@ -88,3 +88,15 @@ html.theme-fade {
 .pill-decor svg {
   display: block;
 }
+
+/* A secret theme's scene, as it's summoned: over the whole window, never in the way of a click. */
+.theme-scene {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  overflow: hidden;
+  pointer-events: none;
+}
+.theme-scene svg {
+  display: block;
+}

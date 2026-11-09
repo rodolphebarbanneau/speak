@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
 import { CONTROL_APPROVALS, CONTROL_SCOPES, firstShortcut, languageName, shortModel, STYLES } from '@shared/constants'
 import type { Config, ControlStep, EngineId, Session, Style } from '@shared/types'
+import { summon } from '@themes/index'
 import { Dropdown } from '../components/dropdown'
 import { Action, displayShortcut, Row, Sep, Spinner, Track } from '../components/ui'
 import { CONTEXT_KINDS, ipcError } from '../lib/format'
@@ -369,7 +370,15 @@ export function History({ config, onSetup }: { config: Config; onSetup: () => vo
       <div className="history-list">
         <label className="search">
           <span className="acc">/</span>
-          <input placeholder="search" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input
+            placeholder="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              // A secret theme's word, then Ctrl+Enter (⌘+Enter): see themes/index.ts.
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && summon(query)) setQuery('')
+            }}
+          />
         </label>
         <div className="history-items">
           {!config.history.enabled && <p className="empty">history is off · settings → general → keep history</p>}

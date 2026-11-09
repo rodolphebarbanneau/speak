@@ -1,28 +1,38 @@
 import { useLayoutEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { setThemeShown, useTheme } from '.'
 import type { PillBox } from './types'
 
 /**
  * The app name in the title row: "speak", or the theme's logo while it's on. Clicking the logo
- * turns the theme off; clicking "speak" while the theme is in season brings it back.
+ * turns the theme off; clicking "speak" while the theme is in season brings it back. A secret theme
+ * summoned plays its scene over the window.
  */
 export function AppName() {
-  const { theme, shown, available } = useTheme()
-  if (theme && shown) {
-    return (
-      <button className="theme-toggle logo" title={theme.offTitle} aria-label={theme.offTitle} onClick={() => setThemeShown(false)}>
-        <theme.Logo />
-      </button>
-    )
-  }
-  if (theme && available) {
-    return (
-      <button className="theme-toggle" title={theme.onTitle} onClick={() => setThemeShown(true)}>
+  const { theme, shown, available, summoning } = useTheme()
+  const Scene = summoning?.secret?.Scene
+  return (
+    <>
+      {theme && shown ? (
+        <button className="theme-toggle logo" title={theme.offTitle} aria-label={theme.offTitle} onClick={() => setThemeShown(false)}>
+          <theme.Logo />
+        </button>
+      ) : theme && available ? (
+        <button className="theme-toggle" title={theme.onTitle} onClick={() => setThemeShown(true)}>
+          <b>speak</b>
+        </button>
+      ) : (
         <b>speak</b>
-      </button>
-    )
-  }
-  return <b>speak</b>
+      )}
+      {Scene &&
+        createPortal(
+          <div className="theme-scene" aria-hidden>
+            <Scene />
+          </div>,
+          document.body
+        )}
+    </>
+  )
 }
 
 /** The theme's decorations around the recording pill (the element), drawn behind it. */

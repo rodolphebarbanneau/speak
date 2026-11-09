@@ -111,9 +111,10 @@ export interface Config {
    * lastVersion: the version that last started, to tell when an update was just installed ·
    * themeOff: the season of the theme the user turned off by clicking its logo ("christmas-2026"),
    * off until the next season · formatBeforeNone: the format picking no ai provider switched to
-   * verbatim, put back when an ai is picked again ('' when none was switched).
+   * verbatim, put back when an ai is picked again ('' when none was switched) · summoned: the
+   * secret theme the user summoned (src/themes/index.ts), shown until its logo sends it away.
    */
-  state: { onboarded: boolean; lastVersion: string; themeOff: string; formatBeforeNone: Format | '' }
+  state: { onboarded: boolean; lastVersion: string; themeOff: string; formatBeforeNone: Format | ''; summoned: string }
 }
 
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] }
