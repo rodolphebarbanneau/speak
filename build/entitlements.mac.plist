@@ -1,14 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  What the hardened runtime lets Speak and its helpers do (whisper.cpp's too), and nothing more:
+  - allow-jit: JavaScript's compiler. koffi writes no code at runtime (its callbacks are static).
+  - audio-input: the microphone.
+  - automation.apple-events: asking Terminal to run an AI's sign-in (src/main/ai/cli.ts).
+  Library validation stays on: everything Speak loads is signed with its own team ID, or Apple's
+  (the system frameworks koffi opens). Ad hoc builds have no team ID: they get
+  entitlements.adhoc.mac.plist instead (scripts/package-release.sh).
+-->
 <plist version="1.0">
   <dict>
     <key>com.apple.security.cs.allow-jit</key>
     <true/>
-    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-    <true/>
-    <key>com.apple.security.cs.disable-library-validation</key>
-    <true/>
     <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <key>com.apple.security.automation.apple-events</key>
     <true/>
   </dict>
 </plist>

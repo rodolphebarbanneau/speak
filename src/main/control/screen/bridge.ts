@@ -1,11 +1,12 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn } from 'node:child_process'
+import { utilityProcess } from 'electron'
 import { log } from '../../log'
 import type { Accessibility, BeforeCursor, Element, Focused, WindowInfo } from './types'
 
 /**
- * A helper process kept for the session, answering JSON lines: Speak's bridge to the system's
+ * A helper process kept for the session, answering Speak's requests: its bridge to the system's
  * accessibility API (UI Automation through PowerShell on Windows, AX on macOS, AT-SPI on Linux,
- * the last two through Electron run as Node). Out of Speak's process: an app that hangs, or a
+ * the last two in an Electron utility process). Out of Speak's process: an app that hangs, or a
  * crash in the native calls, only stops the bridge, which starts again on the next request.
  */
 
@@ -28,25 +29,88 @@ export interface BridgeReply {
  */
 export class BridgeTimeout extends Error {}
 
-export interface BridgeSpec {
-  /** For messages: "UI Automation". */
-  label: string
-  command: string
-  args: string[]
-  env?: NodeJS.ProcessEnv
+/**
+ * A program answering one JSON line on its standard output for each one on its input (PowerShell),
+ * or one of Speak's own bridge scripts (see nodeBridge). `label` is for messages: "UI Automation".
+ */
+export type BridgeSpec = { label: string; command: string; args: string[] } | { label: string; script: string }
+
+/**
+ * One of Speak's own bridge scripts (serve.ts): an Electron utility process, a child of Speak's
+ * that macOS counts as Speak for its permissions. Never Electron run as Node: packaged builds turn
+ * that off (see electronFuses in electron-builder.yml).
+ */
+export function nodeBridge(label: string, script: string): BridgeSpec {
+  return { label, script }
 }
 
-/** How to run one of Speak's own bridge scripts: Electron as plain Node, which still reads the app's archive. */
-export function nodeBridge(label: string, script: string): BridgeSpec {
-  return { label, command: process.execPath, args: [script], env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } }
+/** A message from the bridge: its `ready`, or the reply to a request (its id). */
+type BridgeMessage = BridgeReply & { id?: number; ready?: boolean }
+
+/** A running bridge, however it was started. */
+interface Link {
+  send(req: Record<string, unknown>): void
+  kill(): void
+}
+
+interface LinkEvents {
+  message(m: BridgeMessage): void
+  /** Stopped, or never started: what it was answering is lost. */
+  gone(why: string): void
+}
+
+function spawnProgram(spec: { label: string; command: string; args: string[] }, on: LinkEvents): Link {
+  const proc = spawn(spec.command, spec.args, { windowsHide: true })
+  let buf = ''
+  proc.stdout.setEncoding('utf8')
+  proc.stdout.on('data', (d: string) => {
+    buf += d
+    let i: number
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i).trim()
+      buf = buf.slice(i + 1)
+      if (!line) continue
+      let m: BridgeMessage
+      try {
+        m = JSON.parse(line)
+      } catch {
+        continue // not ours
+      }
+      on.message(m)
+    }
+  })
+  proc.stderr.on('data', (d) => log.warn(`Control ${spec.label}:`, String(d).trim().slice(0, 300)))
+  // Gone between two requests: what's written to it then is lost, not an error of Speak's.
+  proc.stdin.on('error', (err) => log.warn(`Control ${spec.label}:`, err.message))
+  proc.on('error', (err) => {
+    // Never started (no exit follows).
+    log.warn(`Control ${spec.label} could not start:`, err.message)
+    on.gone(`could not start: ${err.message}`)
+  })
+  proc.on('exit', (code) => {
+    if (code) log.warn(`Control ${spec.label} stopped (exit ${code})`)
+    on.gone('stopped')
+  })
+  return { send: (req) => proc.stdin.write(JSON.stringify(req) + '\n'), kill: () => proc.kill() }
+}
+
+function forkScript(spec: { label: string; script: string }, on: LinkEvents): Link {
+  const child = utilityProcess.fork(spec.script, [], { serviceName: `Speak ${spec.label}`, stdio: ['ignore', 'ignore', 'pipe'] })
+  child.stderr?.on('data', (d) => log.warn(`Control ${spec.label}:`, String(d).trim().slice(0, 300)))
+  child.on('message', (m: BridgeMessage) => on.message(m))
+  child.on('exit', (code) => {
+    if (code) log.warn(`Control ${spec.label} stopped (exit ${code})`)
+    on.gone('stopped')
+  })
+  return { send: (req) => child.postMessage(req), kill: () => void child.kill() }
 }
 
 export class Bridge {
-  private proc: ChildProcessWithoutNullStreams | null = null
+  private link: Link | null = null
   private ready: Promise<void> | null = null
-  private buf = ''
   private seq = 0
-  private waiting = new Map<number, (r: BridgeReply) => void>()
+  /** Each request waiting for its reply, with the bridge it went to. */
+  private waiting = new Map<number, { link: Link; done: (r: BridgeReply) => void }>()
   private label = 'The bridge'
 
   constructor(private spec: () => BridgeSpec) {}
@@ -55,88 +119,77 @@ export class Bridge {
     if (this.ready) return this.ready
     const spec = this.spec()
     this.label = spec.label
-    const proc = spawn(spec.command, spec.args, { windowsHide: true, env: spec.env ?? process.env })
-    this.proc = proc
-    this.ready = new Promise<void>((resolve, reject) => {
+    let link: Link | null = null
+    const ready = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error(`${spec.label} did not start`))
         // Gone for good: the next request starts it again.
-        proc.kill()
+        link?.kill()
       }, 15_000)
-      proc.stdout.setEncoding('utf8')
-      proc.stdout.on('data', (d: string) => {
-        this.buf += d
-        let i: number
-        while ((i = this.buf.indexOf('\n')) >= 0) {
-          const line = this.buf.slice(0, i).trim()
-          this.buf = this.buf.slice(i + 1)
-          if (!line) continue
-          try {
-            const m = JSON.parse(line)
-            if (m.ready) {
-              clearTimeout(timer)
-              resolve()
-            } else this.waiting.get(m.id)?.(m)
+      const on: LinkEvents = {
+        message: (m) => {
+          if (m.ready) {
+            clearTimeout(timer)
+            resolve()
+          } else if (m.id !== undefined) {
+            this.waiting.get(m.id)?.done(m)
             this.waiting.delete(m.id)
-          } catch {
-            // not ours
+          }
+        },
+        gone: (why) => {
+          clearTimeout(timer)
+          reject(new Error(`${spec.label} ${why}`))
+          for (const [id, w] of this.waiting) {
+            if (w.link !== link) continue
+            w.done({ error: `${spec.label} ${why}` })
+            this.waiting.delete(id)
+          }
+          // The next request starts it again (unless it was already replaced).
+          if (link && this.link === link) {
+            this.link = null
+            this.ready = null
           }
         }
-      })
-      proc.stderr.on('data', (d) => log.warn(`Control ${spec.label}:`, String(d).trim().slice(0, 300)))
-      // Gone between two requests: what's written to it then is lost, not an error of Speak's.
-      proc.stdin.on('error', (err) => log.warn(`Control ${spec.label}:`, err.message))
-      proc.on('error', (err) => {
-        // Never started (no exit follows): the next request tries again.
-        log.warn(`Control ${spec.label} could not start:`, err.message)
-        clearTimeout(timer)
-        reject(new Error(`${spec.label} could not start: ${err.message}`))
-        for (const done of this.waiting.values()) done({ error: `${spec.label} could not start` })
-        this.waiting.clear()
-        if (this.proc === proc) {
-          this.proc = null
-          this.ready = null
-          this.buf = ''
-        }
-      })
-      proc.on('exit', (code) => {
-        clearTimeout(timer)
-        if (code) log.warn(`Control ${spec.label} stopped (exit ${code})`)
-        reject(new Error(`${spec.label} stopped`))
-        for (const done of this.waiting.values()) done({ error: `${spec.label} stopped` })
-        this.waiting.clear()
-        if (this.proc === proc) {
-          this.proc = null
-          this.ready = null
-          this.buf = ''
-        }
-      })
+      }
+      try {
+        link = 'script' in spec ? forkScript(spec, on) : spawnProgram(spec, on)
+      } catch (err) {
+        on.gone(`could not start: ${(err as Error).message}`)
+      }
     })
-    return this.ready
+    // Didn't start: refused now, tried again on the next request.
+    if (!link) return ready
+    this.link = link
+    this.ready = ready
+    return ready
   }
 
   /** The request carries its deadline (`until`): past it, the bridge drops it unstarted (it would act too late). */
   async ask(req: Record<string, unknown>, timeoutMs = 8000): Promise<BridgeReply> {
     await this.start()
+    const link = this.link
+    if (!link) return { error: `${this.label} stopped` }
     const id = ++this.seq
     return new Promise<BridgeReply>((resolve) => {
       const timer = setTimeout(() => {
         this.waiting.delete(id)
         resolve({ error: `${this.label} took too long (the app may not expose its controls)`, timedOut: true })
       }, timeoutMs)
-      this.waiting.set(id, (r) => {
-        clearTimeout(timer)
-        resolve(r)
+      this.waiting.set(id, {
+        link,
+        done: (r) => {
+          clearTimeout(timer)
+          resolve(r)
+        }
       })
-      this.proc?.stdin.write(JSON.stringify({ ...req, id, until: Date.now() + timeoutMs }) + '\n')
+      link.send({ ...req, id, until: Date.now() + timeoutMs })
     })
   }
 
   stop(): void {
-    this.proc?.kill()
-    this.proc = null
+    this.link?.kill()
+    this.link = null
     this.ready = null
-    this.buf = ''
   }
 }
 

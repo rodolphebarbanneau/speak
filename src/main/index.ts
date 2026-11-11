@@ -5,6 +5,7 @@ import { themeShown } from '../themes/shared'
 import { decodeWav } from './audio'
 import { configStore } from './config'
 import { control } from './control'
+import { checkScreen } from './control/screen'
 import { controller } from './controller'
 import { history } from './history'
 import { hotkeys, type RecordAction } from './hotkeys'
@@ -14,7 +15,7 @@ import { log } from './log'
 import { seasons } from './season'
 import { ensureDirs } from './paths'
 import { setLaunchAtLogin } from './platform/autostart'
-import { startKeyboardHook, stopKeyboardHook } from './platform/keyboard'
+import { checkKeyboardHook, startKeyboardHook, stopKeyboardHook } from './platform/keyboard'
 import { engine } from './stt/engine'
 import { createTray } from './tray'
 import { updater } from './updater'
@@ -31,6 +32,7 @@ import { applyChrome, broadcast, createOverlay, createPreview, showMain } from '
  *   --control                                 start control (an order by voice), or talk to the session under way
  *   --order=<text>                            give control a typed order: a new session on the app in front, or the one under way
  *   --app=<title>                             with --order: the app of the window whose title contains this, instead of the one in front
+ *   --self-check                              start, check control mode's native parts, and quit (exit code 1 if they fail)
  */
 function handleArgs(argv: string[]): void {
   const has = (flag: string) => argv.includes(flag)
@@ -77,7 +79,27 @@ function relaunchOnXWayland(): boolean {
   return true
 }
 
-if (!app.requestSingleInstanceLock()) {
+/**
+ * A packaged Speak refuses the switches that let another program drive it: Chromium's debugger, or
+ * a program of its own wrapped around Speak's processes. That program would act as Speak, with what
+ * people allowed Speak (the microphone, and on macOS accessibility and screen recording). Node's
+ * own switches and variables are already off in the binary (electronFuses in electron-builder.yml).
+ */
+function openToOthers(): string | undefined {
+  if (!app.isPackaged) return undefined
+  return ['remote-debugging-port', 'remote-debugging-pipe', 'gpu-launcher', 'renderer-cmd-prefix', 'utility-cmd-prefix'].find((s) =>
+    app.commandLine.hasSwitch(s)
+  )
+}
+
+/** `--self-check` (see selfCheck below). */
+const selfChecking = process.argv.includes('--self-check')
+
+const refused = openToOthers()
+if (refused) {
+  log.warn(`Not starting: --${refused} is refused in a packaged Speak`)
+  app.exit(1)
+} else if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else if (relaunchOnXWayland()) {
   // Starting again through XWayland.
@@ -135,7 +157,8 @@ if (!app.requestSingleInstanceLock()) {
           label('connecting your shortcuts', 'listening for your shortcut'),
           () => {
             startKeyboardHook()
-            applyShortcuts(config)
+            // A self-check leaves the shortcuts to the Speak that may already be running.
+            if (!selfChecking) applyShortcuts(config)
             hotkeys.on('press', (action: RecordAction) => controller.onShortcutPress(action))
             hotkeys.on('release', (ms: number) => controller.onShortcutRelease(ms))
             hotkeys.on('cancel', () => controller.cancel())
@@ -163,6 +186,7 @@ if (!app.requestSingleInstanceLock()) {
     if (config.state.lastVersion !== version) configStore.update({ state: { lastVersion: version } })
     setInterval(() => void history.prune(), 6 * 3600_000).unref()
 
+    if (selfChecking) return selfCheck()
     handleArgs(process.argv)
   })
 
@@ -170,6 +194,19 @@ if (!app.requestSingleInstanceLock()) {
     engine.stopServer()
     stopKeyboardHook()
   })
+}
+
+/**
+ * `--self-check`: once started, check what a build can break without crashing: the native modules
+ * (the keyboard hook, the screen's calls) and control mode's accessibility bridge, a process of its
+ * own (signed on its own on macOS). Quits with 0 when they work, else 1. The release workflow runs
+ * it on each build (scripts/check-release.mjs).
+ */
+async function selfCheck(): Promise<void> {
+  const problems = [checkKeyboardHook(), await checkScreen()].filter((p) => p !== null)
+  if (problems.length) log.error(`Self-check failed: ${problems.join('; ')}`)
+  else log.info('Self-check passed')
+  app.exit(problems.length ? 1 : 0)
 }
 
 /** What the speech engine runs with: the microphone, the language and the vocabulary aren't. */

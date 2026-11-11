@@ -46,24 +46,37 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Signed once the repository has a system's secrets and variables (docs/signing.md), else
+      # unsigned (macOS: ad hoc). The script gives each system only its own.
       - name: Package & publish (draft release)
         shell: bash
-        # Secrets that aren't configured arrive as empty strings, and electron-builder reads an
-        # empty CSC_LINK as a certificate path: unset them. Without a certificate, macOS builds
-        # are signed ad-hoc: Apple Silicon Macs then open them after the "unidentified developer"
-        # prompt, instead of reporting an unsigned app as damaged.
-        run: |
-          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
-            [ -n "${!v}" ] || unset "$v"
-          done
-          args=()
-          if [ "$RUNNER_OS" = macOS ] && [ -z "${CSC_LINK:-}" ]; then args+=(-c.mac.identity=-); fi
-          npx electron-builder --publish always "${args[@]}"
+        run: bash scripts/package-release.sh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional code signing — set these secrets to sign/notarize:
+          # macOS: Developer ID certificate, then notarization by Apple ID or App Store Connect API key.
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          # Windows: Azure Artifact Signing, or a certificate file.
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          WIN_PUBLISHER_NAME: ${{ vars.WIN_PUBLISHER_NAME }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      # The packages as people will get them: Electron's fuses, the signature when signed, and that
+      # Speak starts with control mode's native parts working. The draft is already uploaded: if
+      # this fails, don't publish it.
+      - name: Check the packages
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a node scripts/check-release.mjs; else node scripts/check-release.mjs; fi

@@ -21,11 +21,32 @@ extraResources:
     filter: ['**/*', '!.gitkeep']
 npmRebuild: false
 
+# Electron's switches ("fuses"), set in the packaged binary: Speak can't be started as plain Node,
+# can't take Node options or a debugger from its environment or command line, and runs only the
+# app archive it shipped with, checked against its hash. Otherwise any program could run its own
+# code as Speak, with what people allowed Speak: the microphone, and on macOS accessibility and
+# screen recording, which a signed Speak keeps from one version to the next. Control mode's
+# bridges run as Electron utility processes instead (control/screen/bridge.ts). Cookies stay
+# unencrypted (Speak keeps nothing there) and file:// pages keep their rights (Speak's own pages).
+# scripts/check-release.mjs checks these values on each release build.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+
 win:
   target:
     - target: nsis
       arch: [x64]
   icon: build/icon.ico
+  # When the release workflow signs (docs/signing.md): the native modules and Electron's libraries
+  # too, not only the .exe files, for Smart App Control and antivirus software.
+  signExts: ['.dll', '.node']
+  # The keyboard hook's builds for other systems stay out of each package (and of its signing).
+  files:
+    - '!node_modules/uiohook-napi/prebuilds/{darwin,linux}-*/**'
 nsis:
   oneClick: false
   perMachine: false
@@ -42,12 +63,17 @@ mac:
       arch: [arm64, x64]
   category: public.app-category.productivity
   icon: build/icon.icns
+  files:
+    - '!node_modules/uiohook-napi/prebuilds/{win32,linux}-*/**'
+  # Signed with a Developer ID and notarized when the release workflow has Apple's secrets
+  # (docs/signing.md). Without them it signs ad hoc, with entitlements.adhoc.mac.plist.
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     NSMicrophoneUsageDescription: Speak records your voice to transcribe it on this computer.
+    NSAppleEventsUsageDescription: Speak opens Terminal for you to sign in to Claude Code or Codex.
     LSUIElement: true
 # Name both installers by chip (the default leaves x64 unnamed).
 dmg:
@@ -59,6 +85,8 @@ linux:
     - deb
   category: Utility
   icon: build/icon.png
+  files:
+    - '!node_modules/uiohook-napi/prebuilds/{win32,darwin}-*/**'
   synopsis: Voice dictation with local transcription and AI cleanup
   maintainer: Rodolphe Barbanneau
   desktop:

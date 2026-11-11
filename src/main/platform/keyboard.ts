@@ -32,6 +32,12 @@ export function keyboardHookAvailable(): boolean {
   return started
 }
 
+/** For `--self-check`: the hook's native module loads (on macOS, even before Accessibility lets it start). Null when it does. */
+export function checkKeyboardHook(): string | null {
+  if (isWayland) return null
+  return load() ? null : "the keyboard hook's native module didn't load (uiohook-napi)"
+}
+
 export function accessibilityTrusted(prompt = false): boolean | null {
   if (!isMac) return null
   return systemPreferences.isTrustedAccessibilityClient(prompt)

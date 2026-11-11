@@ -4,6 +4,7 @@ import { dipToScreen } from '../../platform/coords'
 import { keyboardHookAvailable, startKeyboardHook } from '../../platform/keyboard'
 import { restoreClipboard, snapshotClipboard } from '../../platform/paste'
 import { delay, isLinux, isMac, isWin } from '../../util'
+import { BridgeAccessibility } from './bridge'
 import { MAX_SHOT } from './capture'
 import { inRect, intersect, unavailable } from './common'
 import { setAnchor } from './hands'
@@ -517,4 +518,24 @@ export const a11y: Accessibility = {
 export function warmScreen(): void {
   const m = make()
   if (!m.error) m.backend.a11y.warm()
+}
+
+/**
+ * For `--self-check` (see index.ts): the screen's native calls load, and the accessibility bridge,
+ * a process of its own, starts and answers. Null when they do, else what failed.
+ */
+export async function checkScreen(): Promise<string | null> {
+  const m = make()
+  if (m.error) return m.error
+  const a = m.backend.a11y
+  if (!(a instanceof BridgeAccessibility)) return null
+  try {
+    // Any answer will do, a refusal too: the request is unknown, and accessibility may not be allowed yet.
+    const r = await a.bridge.ask({ op: 'check' }, 20_000)
+    return r.timedOut ? (r.error ?? 'no answer') : null
+  } catch (err) {
+    return (err as Error).message
+  } finally {
+    a.stop()
+  }
 }
