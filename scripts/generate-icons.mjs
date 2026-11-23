@@ -1,7 +1,7 @@
 // Generates the app and tray icons (no dependencies): node scripts/generate-icons.mjs
 // Design: [ ··· ], three square dots inside the [ ] brackets of the app's buttons, on a
-// rounded Tokyo Night tile. Each size is laid out on whole pixels (no blur), and the Windows
-// .ico / macOS .icns carry one image per size.
+// rounded tile, in the colors of brbnn.com: paper brackets and blue dots on ink. Each size is
+// laid out on whole pixels (no blur), and the Windows .ico / macOS .icns carry one image per size.
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -60,12 +60,12 @@ function layout(scale, hint = {}) {
 // ---------------------------------------------------------------- rendering
 
 const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]
-const TILE = hex('#1a1b26')
-const TOKYO = { B: hex('#c0caf5'), A: hex('#7aa2f7') }
+const TILE = hex('#12110e') // ink
+const LOGO = { B: hex('#ece7db'), A: hex('#6b8cff') } // paper brackets, blue dots
 const mono = (rgb) => ({ B: rgb, A: rgb })
 const WHITE = [255, 255, 255]
 const BLACK = [0, 0, 0]
-const RED = hex('#f7768e')
+const RED = hex('#f0603c')
 
 /** Coverage of a rounded square tile (4×4 supersampled; the glyph itself is pixel-exact). */
 function tileCoverage(size, x, y) {
@@ -105,7 +105,7 @@ function render(size, palette, { tile = false, ratio, hint }) {
 }
 
 /** App icon: the design at its native proportions on the tile. Tray: no tile, so the glyph is larger. */
-const app = (size) => render(size, TOKYO, { tile: true, ratio: 0.65, hint: APP_HINTS[size] })
+const app = (size) => render(size, LOGO, { tile: true, ratio: 0.65, hint: APP_HINTS[size] })
 const tray = (size, rgb, ratio = 0.84) => render(size, mono(rgb), { ratio, hint: TRAY_HINTS[size] })
 /** macOS menu-bar icons keep ~2 pt of margin around the glyph. */
 const MAC_RATIO = 0.76
