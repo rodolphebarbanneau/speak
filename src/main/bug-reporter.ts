@@ -183,6 +183,7 @@ function settings(): string {
         .join('+') || 'none'
     }, answers ${ctl.language}`,
     `history ${onOff(c.history.enabled)}${c.history.keepAudio ? ' with audio' : ''}`,
+    `colors ${c.app.appearance}`,
     `theme ${seasons.current && themeShown(c, seasons.current) ? seasons.current.id : 'none'}`,
     `launch at login ${onOff(c.app.launchAtLogin)}`,
     `auto updates ${onOff(c.updates.auto)}`

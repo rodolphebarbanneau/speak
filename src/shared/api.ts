@@ -27,7 +27,7 @@ import type {
   Session,
   Style
 } from './types'
-import type { Season } from '../themes/shared'
+import type { Palette, Season } from '../themes/shared'
 import type { BugReport, BugReportRequest } from './bug-report'
 
 /** API exposed to renderers as `window.speak` by the preload script. */
@@ -55,6 +55,9 @@ export interface SpeakApi {
   /** The easter egg theme in season (themes/schedule.ts), if any. */
   getSeason(): Promise<Season | null>
   onSeason(cb: (season: Season | null) => void): () => void
+  /** The colors in use as this window loads: the user's, or the easter egg theme's while it's on. */
+  palette: Palette
+  onPalette(cb: (palette: Palette) => void): () => void
 
   // Updates
   getUpdateState(): Promise<UpdateState>

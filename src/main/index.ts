@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { app, Notification, session } from 'electron'
+import { app, nativeTheme, Notification, session } from 'electron'
 import type { Config } from '../shared/types'
 import { themeShown } from '../themes/shared'
 import { decodeWav } from './audio'
@@ -128,6 +128,8 @@ if (refused) {
     log.info(`Speak ${version} starting (${process.platform}-${process.arch}, electron ${process.versions.electron}${display})`)
     const config = configStore.load()
     seasons.start() // the easter egg theme in season, before any window takes its colors
+    applyChrome()
+    nativeTheme.on('updated', applyChrome) // the computer went light or dark
     if (isMac) app.dock?.hide()
     // Right after "restart & update", say so: the new version shows up instead of reappearing silently.
     const updated = !!config.state.lastVersion && config.state.lastVersion !== version
@@ -170,7 +172,7 @@ if (refused) {
               if (next.app.launchAtLogin !== prev.app.launchAtLogin) setLaunchAtLogin(next.app.launchAtLogin)
               if (engineSettings(next) !== engineSettings(prev)) engine.stopServer()
               if (next.updates.auto !== prev.updates.auto) updater.applyConfig()
-              if (themeShown(next, seasons.current) !== themeShown(prev, seasons.current)) applyChrome()
+              if (themeShown(next, seasons.current) !== themeShown(prev, seasons.current) || next.app.appearance !== prev.app.appearance) applyChrome()
             })
             seasons.on('change', (season) => {
               applyChrome()

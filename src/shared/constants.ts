@@ -124,7 +124,7 @@ export const DEFAULT_CONFIG: Config = {
     control: { on: true, shortcut: 'CommandOrControl+Shift+Alt+Enter' }
   },
   recording: { press: 'hybrid', cancel: 'Escape', maxSeconds: 600, sounds: true, indicator: true },
-  app: { launchAtLogin: false, easterEggs: true },
+  app: { launchAtLogin: false, appearance: 'system', easterEggs: true },
   history: { enabled: true, keepAudio: true, retentionDays: 90 },
   speech: {
     microphone: { id: 'default', label: '' },

@@ -55,8 +55,8 @@ export interface Config {
     /** The pill at the bottom of the screen while recording and processing. */
     indicator: boolean
   }
-  /** easterEggs: allow the seasonal themes (src/themes/schedule.ts). */
-  app: { launchAtLogin: boolean; easterEggs: boolean }
+  /** appearance: the colors of every window · easterEggs: allow the seasonal themes (src/themes/schedule.ts), which show over them. */
+  app: { launchAtLogin: boolean; appearance: Appearance; easterEggs: boolean }
   history: { enabled: boolean; keepAudio: boolean; retentionDays: number }
   /** From the voice to text, in every mode: the microphone, the language spoken, the engine. */
   speech: {
@@ -116,6 +116,9 @@ export interface Config {
    */
   state: { onboarded: boolean; lastVersion: string; themeOff: string; formatBeforeNone: Format | ''; summoned: string }
 }
+
+/** The colors of Speak's windows. system: light or dark, as the computer is set. */
+export type Appearance = 'system' | 'light' | 'dark' | 'omarchy'
 
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] }
 

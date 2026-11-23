@@ -1,7 +1,7 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, screen, type IpcMainEvent } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, screen, type IpcMainEvent } from 'electron'
 import type { MainSection } from '../shared/types'
-import { activePalette } from '../themes/shared'
+import { activePalette, nativeScheme } from '../themes/shared'
 import { configStore } from './config'
 import { seasons } from './season'
 import { resource } from './paths'
@@ -37,8 +37,8 @@ function webPreferences(): Electron.WebPreferences {
   }
 }
 
-// Tokyo Night (Omarchy default theme), or the easter egg theme in season while it's on.
-const palette = () => activePalette(configStore.get(), seasons.current)
+/** The user's colors (settings → general → app), or the easter egg theme in season while it's on. */
+export const palette = () => activePalette(configStore.get(), seasons.current, nativeTheme.shouldUseDarkColors)
 export const TITLE_BAR_HEIGHT = 32
 /** Windows picks the right size from the multi-resolution .ico; elsewhere a PNG is used. */
 const APP_ICON = isWin ? 'icon.ico' : 'icon.png'
@@ -67,15 +67,28 @@ function followActivation(win: BrowserWindow): void {
   win.on('blur', () => win.setAccentColor(false))
 }
 
-/** Repaint the native chrome (background, caption buttons, active border) after the palette changes. */
+let painted = ''
+
+/**
+ * Settings, the season or the system's colors changed: when that changes the palette, repaint the
+ * native chrome (background, caption buttons, active border) and every window's page.
+ */
 export function applyChrome(): void {
-  const { '--bg': background, '--fg': foreground, '--accent': accent } = palette()
+  const scheme = nativeScheme(configStore.get(), seasons.current)
+  if (nativeTheme.themeSource !== scheme) nativeTheme.themeSource = scheme
+  const colors = palette()
+  const key = JSON.stringify(colors)
+  if (key === painted) return
+  painted = key
+  const { '--bg': background, '--fg': foreground, '--accent': accent } = colors
   for (const win of [mainWindow, preview]) {
     if (!win || win.isDestroyed()) continue
     win.setBackgroundColor(background)
     if (!isMac) win.setTitleBarOverlay({ color: background, symbolColor: foreground, height: TITLE_BAR_HEIGHT })
     if (isWin && win.isFocused()) win.setAccentColor(accent)
   }
+  if (controlPanel && !controlPanel.isDestroyed()) controlPanel.setBackgroundColor(background)
+  broadcast('palette', colors)
 }
 
 function cursorDisplay(): Electron.Display {

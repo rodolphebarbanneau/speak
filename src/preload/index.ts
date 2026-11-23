@@ -27,6 +27,8 @@ const api: SpeakApi = {
   loaderReady: () => send('loaderReady'),
   getSeason: () => invoke('getSeason'),
   onSeason: listen('season'),
+  palette: ipcRenderer.sendSync('speak:getPalette'),
+  onPalette: listen('palette'),
 
   getUpdateState: () => invoke('getUpdateState'),
   checkForUpdates: () => send('checkForUpdates'),

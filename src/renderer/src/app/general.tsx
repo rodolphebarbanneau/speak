@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { firstShortcut, modesOn } from '@shared/constants'
-import type { Config, DeepPartial, MainSection, Mode, PermissionStatus, RecordMode } from '@shared/types'
+import type { Appearance, Config, DeepPartial, MainSection, Mode, PermissionStatus, RecordMode } from '@shared/types'
+import { useTheme } from '@themes/index'
 import { SCHEDULE } from '@themes/schedule'
 import { Dropdown } from '../components/dropdown'
 import { Action, Bar, Check, displayShortcut, formatSize, List, ListRow, Row, Sep, ShortcutInput } from '../components/ui'
@@ -131,6 +132,7 @@ export function General(props: Props) {
   const { config, update, onNavigate, micVerdict } = props
   const [perm, setPerm] = useState<PermissionStatus | null>(null)
   const [shortcutError, setShortcutError] = useState<string | undefined>()
+  const { shown: eggShown } = useTheme()
 
   useEffect(() => {
     void api.getPermissions().then(setPerm)
@@ -209,6 +211,25 @@ export function General(props: Props) {
 
       <section>
         <Sep>app</Sep>
+        <Row
+          label="theme"
+          hint={
+            eggShown
+              ? 'the seasonal look is showing over it · click its logo, top left, to see your theme'
+              : 'the colors of every window · system follows your computer’s light or dark mode'
+          }
+        >
+          <Dropdown<Appearance>
+            value={config.app.appearance}
+            onChange={(v) => update({ app: { appearance: v } })}
+            options={[
+              { value: 'system', label: 'system' },
+              { value: 'light', label: 'light' },
+              { value: 'dark', label: 'dark' },
+              { value: 'omarchy', label: 'omarchy' }
+            ]}
+          />
+        </Row>
         <Row label="launch at login" hint="speak runs in the system tray">
           <Check checked={config.app.launchAtLogin} onChange={(v) => update({ app: { launchAtLogin: v } })} />
         </Row>

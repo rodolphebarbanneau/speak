@@ -17,6 +17,12 @@
   --green: #9ece6a;
   --yellow: #e0af68;
   --purple: #bb9af7; /* control mode */
+  --backdrop: rgba(0, 0, 0, 0.55); /* behind a dialog */
+  --shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+  /* Under the pointer: a button's mark (its key, its brackets, an icon), and an action's text.
+     The light and dark themes, whose accent is black or white, make both blue. */
+  --hot: var(--accent);
+  --hot-fg: var(--hi);
 
   /* spacing scale */
   --s1: 4px;
@@ -150,6 +156,9 @@ button:disabled {
   background: var(--sel);
   color: var(--hi);
 }
+.key:not(.primary, .danger):hover:not(:disabled) kbd {
+  color: var(--hot);
+}
 .key.primary {
   background: var(--accent);
   color: var(--bg);
@@ -180,14 +189,21 @@ button:disabled {
   color: var(--muted);
 }
 .action:hover:not(:disabled) {
-  color: var(--hi);
+  color: var(--hot-fg);
 }
 .action:hover:not(:disabled)::before,
 .action:hover:not(:disabled)::after {
-  color: var(--accent);
+  color: var(--hot);
 }
 .action.danger {
   color: var(--red);
+}
+.action.danger:hover:not(:disabled) {
+  color: var(--hi);
+}
+.action.danger:hover:not(:disabled)::before,
+.action.danger:hover:not(:disabled)::after {
+  color: var(--accent);
 }
 
 /* Inline controls whose text starts exactly at the value column; the hover background
@@ -218,7 +234,7 @@ button:disabled {
 }
 .dropdown:hover:not(:disabled) .caret,
 .dropdown.open .caret {
-  color: var(--accent);
+  color: var(--hot);
 }
 .dropdown-list {
   z-index: 1000;
@@ -444,7 +460,7 @@ html:not(.focused) .titlebar .title b {
 }
 .icon-button:hover,
 .icon-button.on {
-  color: var(--accent);
+  color: var(--hot);
 }
 .pixel-icon {
   fill: currentColor;
@@ -543,7 +559,7 @@ html[data-view='overlay'] body {
 .osd .summary:hover .mode,
 .osd .summary:hover .chev,
 .osd .summary.open .chev {
-  color: var(--accent);
+  color: var(--hot);
 }
 /* pause or resume · done: stop and process the recording · cancel it */
 .osd .controls {
@@ -1041,7 +1057,7 @@ section + section {
   z-index: 20;
   display: flex;
   padding: max(var(--s4), 4vh) max(var(--s5), 5vw);
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--backdrop);
 }
 .dialog {
   flex: 1;
@@ -1052,7 +1068,7 @@ section + section {
   display: flex;
   background: var(--bg);
   border: 1px solid var(--accent);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow);
 }
 .dialog:focus {
   outline: none;
@@ -1269,7 +1285,7 @@ html[data-view='control'] body {
 }
 .cchoice:hover,
 .cchoice.open {
-  color: var(--accent);
+  color: var(--hot);
 }
 .cicon {
   padding: 0 var(--s1);

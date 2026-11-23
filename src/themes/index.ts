@@ -6,7 +6,7 @@
 import { useSyncExternalStore } from 'react'
 import type { Config } from '@shared/types'
 import { hold, setRecording, setSoundsAllowed } from './audio'
-import { activePalette, themeShown, type Season, type ThemeSettings } from './shared'
+import { themeShown, type Palette, type Season, type ThemeSettings } from './shared'
 import type { Theme } from './types'
 import './themes.css'
 
@@ -42,11 +42,14 @@ function notify(): void {
   listeners.forEach((cb) => cb())
 }
 
+let fadeEnds = 0
+
 /** The palette fades into the next one (themes.css). */
 function fade(): void {
   const root = document.documentElement
   root.classList.add('theme-fade')
-  setTimeout(() => root.classList.remove('theme-fade'), 900)
+  clearTimeout(fadeEnds)
+  fadeEnds = window.setTimeout(() => root.classList.remove('theme-fade'), 900)
 }
 
 /**
@@ -56,7 +59,6 @@ function fade(): void {
 export function setThemeShown(on: boolean): void {
   const { theme, season } = state
   if (!theme || !season) return
-  fade()
   if (on) theme.sounds.on()
   else theme.sounds.off()
   if (!on && settings?.state.summoned === season.id) void api.setConfig({ state: { summoned: '' } })
@@ -76,7 +78,6 @@ export function summon(text: string): boolean {
   const found = Object.entries(themes).find(([, t]) => t.secret && t.secret.word === word)
   if (!settings?.app.easterEggs || !word || !found) return false
   const [path, theme] = found
-  fade()
   theme.sounds.on()
   if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
     state = { ...state, summoning: theme }
@@ -93,17 +94,12 @@ export function summon(text: string): boolean {
 
 let painted: string[] = []
 
-/** Put the theme's palette over styles.css (or take it off). */
-function paint(settings: ThemeSettings, season: Season | null): void {
+/** Put the palette the main process worked out over styles.css. */
+function paint(palette: Palette): void {
   const root = document.documentElement
   for (const name of painted) root.style.removeProperty(name)
   painted = []
-  if (!season || !themeShown(settings, season)) {
-    delete root.dataset.theme
-    return
-  }
-  root.dataset.theme = season.id
-  for (const [name, value] of Object.entries(activePalette(settings, season))) {
+  for (const [name, value] of Object.entries(palette)) {
     root.style.setProperty(name, value)
     painted.push(name)
   }
@@ -125,11 +121,17 @@ function update(): void {
   }
   if (next.theme === state.theme && next.season?.key === state.season?.key && next.shown === state.shown && next.available === state.available) return
   state = next
-  paint(settings, season)
+  if (next.shown && season) document.documentElement.dataset.theme = season.id
+  else delete document.documentElement.dataset.theme
   notify()
 }
 
 export function initThemes(view: string): void {
+  paint(api.palette) // before anything shows, so a window never opens in the wrong colors
+  api.onPalette((palette) => {
+    fade()
+    paint(palette)
+  })
   const onConfig = (config: Config) => {
     settings = { app: config.app, state: config.state }
     setSoundsAllowed(config.recording.sounds)

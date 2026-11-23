@@ -32,7 +32,7 @@ import { seasons } from './season'
 import { engine } from './stt/engine'
 import { updater } from './updater'
 import { isMac, isWayland } from './util'
-import { broadcast, mainWindow, setOverlayInteractive, showMain } from './windows'
+import { broadcast, mainWindow, palette, setOverlayInteractive, showMain } from './windows'
 
 function permissions(): PermissionStatus {
   return {
@@ -51,6 +51,8 @@ export function registerIpc(): void {
 
   // App
   handle('getSeason', () => seasons.current)
+  // Answered at once: a page waits for it before its first paint (preload).
+  ipcMain.on('speak:getPalette', (e) => (e.returnValue = palette()))
   handle('getInfo', () => ({ version: app.getVersion(), platform: process.platform, dataDir: paths.home, shortcutError: hotkeys.error }))
   on('openMain', (section?: MainSection) => showMain(section))
   on('openDataDir', () => void shell.openPath(paths.home))

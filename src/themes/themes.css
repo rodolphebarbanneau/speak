@@ -1,7 +1,7 @@
-/* Shared by the easter egg themes. Each theme's palette (palette.ts) is set on <html> while
-   it's on; its own styles are in its folder. */
+/* Shared by the easter egg themes. The palette in use (the user's colors, or a theme's while
+   it's on) is set on <html>; a theme's own styles are in its folder. */
 
-/* Registered so the palette can fade when the theme is turned off or back on. Initial values
+/* Registered so the palette can fade when it changes. Initial values
    are styles.css's (Tokyo Night). */
 @property --bg {
   syntax: '<color>';
@@ -58,8 +58,28 @@
   inherits: true;
   initial-value: #e0af68;
 }
+@property --red {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #f7768e;
+}
+@property --green {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #9ece6a;
+}
+@property --purple {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #bb9af7;
+}
+@property --backdrop {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(0, 0, 0, 0.55);
+}
 html.theme-fade {
-  transition-property: --bg, --bg-dark, --bg-light, --sel, --hover, --muted, --dim, --fg, --hi, --accent, --yellow;
+  transition-property: --bg, --bg-dark, --bg-light, --sel, --hover, --muted, --dim, --fg, --hi, --accent, --red, --green, --yellow, --purple, --backdrop;
   transition-duration: 0.6s;
 }
 
