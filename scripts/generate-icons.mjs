@@ -1,6 +1,6 @@
 // Generates the app and tray icons (no dependencies): node scripts/generate-icons.mjs
 // Design: [ ··· ], three square dots inside the [ ] brackets of the app's buttons, on a
-// rounded tile, in the colors of brbnn.com: paper brackets and blue dots on ink. Each size is
+// rounded tile, in the colors of brbnn.com: paper brackets and red dots on ink. Each size is
 // laid out on whole pixels (no blur), and the Windows .ico / macOS .icns carry one image per size.
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -61,11 +61,11 @@ function layout(scale, hint = {}) {
 
 const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]
 const TILE = hex('#12110e') // ink
-const LOGO = { B: hex('#ece7db'), A: hex('#6b8cff') } // paper brackets, blue dots
+const RED = hex('#f0603c')
+const LOGO = { B: hex('#ece7db'), A: RED } // paper brackets, red dots
 const mono = (rgb) => ({ B: rgb, A: rgb })
 const WHITE = [255, 255, 255]
 const BLACK = [0, 0, 0]
-const RED = hex('#f0603c')
 
 /** Coverage of a rounded square tile (4×4 supersampled; the glyph itself is pixel-exact). */
 function tileCoverage(size, x, y) {
