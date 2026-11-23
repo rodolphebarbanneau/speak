@@ -208,6 +208,9 @@ async function selfCheck(): Promise<void> {
   const problems = [checkKeyboardHook(), await checkScreen()].filter((p) => p !== null)
   if (problems.length) log.error(`Self-check failed: ${problems.join('; ')}`)
   else log.info('Self-check passed')
+  // app.exit() skips will-quit: without this, the hook's thread kept sending keys and pointer
+  // moves to an engine being torn down, and Speak crashed on its way out (exit code 134).
+  stopKeyboardHook()
   app.exit(problems.length ? 1 : 0)
 }
 
