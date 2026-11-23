@@ -38,6 +38,7 @@ export type PaletteVar =
   | '--shadow'
   | '--hot'
   | '--hot-fg'
+  | '--hot-on'
 
 /**
  * A theme's colors. Background, text and accent are required: the native window chrome uses them.

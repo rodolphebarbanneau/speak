@@ -19,10 +19,12 @@
   --purple: #bb9af7; /* control mode */
   --backdrop: rgba(0, 0, 0, 0.55); /* behind a dialog */
   --shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
-  /* Under the pointer: a button's mark (its key, its brackets, an icon), and an action's text.
-     The light and dark themes, whose accent is black or white, make both blue. */
+  /* Under the pointer, in every theme, the control's mark takes --hot: its brackets, key, caret,
+     icon. --hot-fg is for buttons that are only text, --hot-on for a key on a filled button.
+     Most themes' accent shows the hover by itself; light and dark, in black and white, set blue. */
   --hot: var(--accent);
   --hot-fg: var(--hi);
+  --hot-on: var(--bg);
 
   /* spacing scale */
   --s1: 4px;
@@ -171,6 +173,9 @@ button:disabled {
   background: var(--hi);
   color: var(--bg);
 }
+.key.primary:hover:not(:disabled) kbd {
+  color: var(--hot-on);
+}
 .key.danger,
 .key.danger kbd {
   color: var(--red);
@@ -189,7 +194,7 @@ button:disabled {
   color: var(--muted);
 }
 .action:hover:not(:disabled) {
-  color: var(--hot-fg);
+  color: var(--hi);
 }
 .action:hover:not(:disabled)::before,
 .action:hover:not(:disabled)::after {
@@ -197,13 +202,6 @@ button:disabled {
 }
 .action.danger {
   color: var(--red);
-}
-.action.danger:hover:not(:disabled) {
-  color: var(--hi);
-}
-.action.danger:hover:not(:disabled)::before,
-.action.danger:hover:not(:disabled)::after {
-  color: var(--accent);
 }
 
 /* Inline controls whose text starts exactly at the value column; the hover background
@@ -271,6 +269,9 @@ button:disabled {
 .shortcut {
   color: var(--accent);
 }
+.shortcut:hover:not(.capturing) {
+  color: var(--hot);
+}
 .shortcut.capturing {
   color: var(--yellow);
 }
@@ -283,8 +284,8 @@ button:disabled {
   color: var(--accent);
   font-weight: 700;
 }
-.check:hover {
-  color: var(--dim);
+.check:hover:not(:disabled) {
+  color: var(--hot);
 }
 .check-label {
   color: var(--fg);
@@ -294,7 +295,8 @@ button:disabled {
 .radio {
   color: var(--muted);
 }
-.radio.on {
+.radio.on,
+.radio.on span {
   color: var(--accent);
 }
 .choice {
@@ -302,6 +304,9 @@ button:disabled {
 }
 .choice:hover {
   color: var(--hi);
+}
+.choice:hover .radio {
+  color: var(--hot);
 }
 
 input,
@@ -458,8 +463,10 @@ html:not(.focused) .titlebar .title b {
   padding: 2px;
   color: var(--dim);
 }
-.icon-button:hover,
 .icon-button.on {
+  color: var(--accent);
+}
+.icon-button:hover {
   color: var(--hot);
 }
 .pixel-icon {
@@ -661,7 +668,7 @@ html[data-view='overlay'] body {
   color: var(--dim);
 }
 .pill-sheet .sback:hover {
-  color: var(--accent);
+  color: var(--hot);
 }
 .pill-sheet .slist {
   max-height: 200px;
@@ -1292,7 +1299,7 @@ html[data-view='control'] body {
   color: var(--dim);
 }
 .cicon:hover {
-  color: var(--hi);
+  color: var(--hot-fg);
 }
 .cmenu {
   position: absolute;
@@ -1369,7 +1376,7 @@ html[data-view='control'] body {
   color: var(--accent);
 }
 .clink:hover {
-  color: var(--hi);
+  color: var(--hot-fg);
 }
 .cshot {
   display: block;
@@ -1401,7 +1408,7 @@ html[data-view='control'] body {
   color: var(--fg);
 }
 .ckey:hover:not(:disabled) {
-  color: var(--hi);
+  color: var(--hot-fg);
 }
 .ckey.green {
   color: var(--green);

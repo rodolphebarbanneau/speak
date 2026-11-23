@@ -118,7 +118,11 @@ export function Check({
 
 /** `(•)` / `( )` */
 export function Radio({ on }: { on: boolean }) {
-  return <span className={`radio ${on ? 'on' : ''}`}>{on ? '(•)' : '( )'}</span>
+  return (
+    <span className={`radio ${on ? 'on' : ''}`}>
+      (<span>{on ? '•' : ' '}</span>)
+    </span>
+  )
 }
 
 /** Section separator: ── title ──────── */
