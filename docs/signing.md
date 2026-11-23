@@ -36,7 +36,7 @@ The draft release is uploaded before the check runs. If the check fails, don't p
 
 Signed builds use the hardened runtime with `build/entitlements.mac.plist`: JavaScript's compiler, the microphone, and Apple Events (for opening Terminal to sign in to an AI provider). Library validation stays on. Ad hoc builds use `build/entitlements.adhoc.mac.plist`, which turns library validation off, because their signature has no team ID.
 
-**The first signed version.** Macs running an ad hoc version (0.5.x or earlier) can't update to it by themselves: Speak's updater installs an update only if it's signed like the app it replaces. Those users download it once from the releases page, then allow its permissions once more, because macOS ties permissions to the signature. After that, updates install by themselves and the permissions stay.
+**The first signed version.** Macs running an ad hoc version can't update to it by themselves: Speak's updater installs an update only if it's signed like the app it replaces. Those users download it once from the releases page, then allow its permissions once more, because macOS ties permissions to the signature. After that, updates install by themselves and the permissions stay.
 
 ## Windows
 

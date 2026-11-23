@@ -1,27 +1,48 @@
 <p align="center">
-  <img src="docs/banner.png" alt="Speak: talk instead of typing, in any app" width="100%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/banner-light.png">
+    <img src="docs/banner-light.png" alt="Speak: talk instead of typing, in any app. The history and preview windows, with the recording pill" width="100%">
+  </picture>
+</p>
+
+<h3 align="center">Talk instead of typing. In any app, in your language, on your own computer.</h3>
+
+<p align="center">
+  <a href="https://github.com/rodolphebarbanneau/speak/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/rodolphebarbanneau/speak?style=flat-square&label=latest&color=d63c1e"></a>
+  <img alt="Windows, macOS and Linux" src="https://img.shields.io/badge/windows%20%C2%B7%20macos%20%C2%B7%20linux-12110e?style=flat-square">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-12110e?style=flat-square"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/rodolphebarbanneau/speak/releases/latest"><b>Download for Windows, macOS and Linux</b></a>
+  <a href="https://github.com/rodolphebarbanneau/speak/releases/latest"><b>Download Speak</b></a>
   &nbsp;·&nbsp; free and open source
+  &nbsp;·&nbsp; <a href="#get-started">get started</a>
 </p>
 
 # Speak
 
-Speak turns your voice into clean, ready-to-send text in whatever app you're using. Press a shortcut, talk the way you normally do, with the "um"s, the pauses and the "no wait, I mean…", and Speak types what you meant, right where your cursor is.
+Talking is about three times faster than typing, but raw dictation reads like raw dictation. Speak closes that gap. Press a shortcut, talk the way you normally do, with the "um"s, the pauses and the "no wait, I mean…", and Speak types what you meant, right where your cursor is.
 
-It's made for people who write a lot: messages, emails, notes, and prompts for AI assistants like Claude Code, Codex or ChatGPT. Talking is about three times faster than typing.
+It's made for people who write all day: messages, emails, notes, and prompts for AI assistants like Claude Code, Codex or ChatGPT.
+
+| You say                                                                         | You get                                                |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| "so um can we, can we move the meeting to Monday, no sorry, Tuesday at three"   | Can we move the meeting to Tuesday at 3?               |
+| "Est-ce que tu peux ajouter un bouton pour exporter l'historique en CSV ?"      | Can you add a button to export the history as CSV?     |
+| "Write a short email to Sarah, the release moves to Thursday, keep it friendly" | A friendly email to Sarah, ready to send               |
+| "Put the PDFs on my desktop in a folder"                                        | It's done on your computer, asking first as you choose |
 
 ## Why Speak
 
-- **Works everywhere.** Any text field in any app: chat, email, documents, your code editor, an AI prompt box.
+- **Works everywhere.** Any text field in any app: chat, email, documents, your code editor, an AI prompt box. Nothing to integrate.
 - **Writes what you meant.** Hesitations, repetitions and self-corrections disappear, and punctuation is fixed. "the sum, no sorry, the average" becomes "the average".
-- **Speaks your language.** Dictate in English, French or dozens of other languages, and translate as you speak: talk in French, get English.
+- **Speaks your language.** Dictate in any of 26 languages, and translate as you speak: talk in French, get English.
 - **Writes for you.** In compose mode, describe what you need ("reply to this email, politely say no") and get the text written.
 - **Acts for you.** In control mode, say what to do ("tidy my desktop", "reply to Marc that Thursday works") and the AI does it on your computer, asking first as you choose.
 - **Private by design.** Speech recognition runs on your own computer. Your voice is never uploaded.
-- **No new subscription.** The AI cleanup uses the Claude Code or Codex you already have, signed in with your own account. No API keys to manage.
+- **No new subscription.** The AI cleanup uses the Claude Code or Codex you already have, signed in with your own account. No API keys to manage, and no account with us.
+- **Feels at home.** A quiet, keyboard-first interface, in light or dark, that follows your system.
 - **Free and open source**, under the MIT license.
 
 ## How it works
@@ -30,12 +51,32 @@ It's made for people who write a lot: messages, emails, notes, and prompts for A
 2. Hold **Ctrl+Shift+Space** (**⌘⇧Space** on a Mac) and talk. Let go when you're done. You can also tap it once to start and again to stop.
 3. Your text appears. Speak can paste it straight away, or show it to you first: change the format or the language, fix it by voice ("make it shorter"), then insert it.
 
-Speak has three modes, each with its own shortcut: **dictate** writes what you said, **compose** writes what you ask for, and **control** does what you ask, on the computer.
+Speak has three modes, each with its own shortcut:
+
+| Mode        | What it does                        | Windows and Linux    | macOS    |
+| ----------- | ----------------------------------- | -------------------- | -------- |
+| **Dictate** | Writes what you said                | Ctrl+Shift+Space     | ⌘⇧Space  |
+| **Compose** | Writes what you ask for             | Ctrl+Shift+Alt+Space | ⌘⇧⌥Space |
+| **Control** | Does what you ask, on your computer | Ctrl+Shift+Alt+Enter | ⌘⇧⌥Enter |
 
 While you talk, a small bar at the bottom of the screen shows the recording. Click the mode, the format, the languages, what happens then (preview or paste) or the context on it to change them, and use its buttons to pause, finish or cancel.
 
 <p align="center">
-  <img src="docs/preview.png" alt="The preview: spoken in French, written in English, ready to insert" width="720">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/pill-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/pill-light.png">
+    <img src="docs/pill-light.png" alt="The recording bar: timer, sound level, mode, and buttons to pause, finish or cancel" width="520">
+  </picture>
+</p>
+
+By default, the preview shows you the text first, so you can check it, change it, or fix it by voice.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/preview-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/preview-light.png">
+    <img src="docs/preview-light.png" alt="The preview: spoken in French, written in English, ready to insert" width="720">
+  </picture>
 </p>
 
 ### Compose
@@ -73,6 +114,14 @@ Context is read-only. Speak and the AI never change anything in your folders: Cl
 
 Press **Ctrl+Shift+Alt+Enter** (**⌘⇧⌥Enter** on a Mac) and say what to do: "reply to Marc's last email, tell him Thursday works", "put the PDFs of my desktop in a folder", "turn on dark mode in this app". A panel opens and stays on top. It shows what the AI says and does, asks for your approval, and lets you **pause**, **stop**, **restart** or **end** control. Keep talking to it with **Ctrl+Shift+Space** (**⌘⇧Space**), or type in it: while control is on, every Speak shortcut talks to it.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/control-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/control-light.png">
+    <img src="docs/control-light.png" alt="The control panel: the AI wrote a reply to Marc and asks for approval before sending it" width="560">
+  </picture>
+</p>
+
 **What it may touch** (the scope, on the bar or the panel):
 
 | Scope      | What the AI can do                                                                    |
@@ -92,6 +141,14 @@ Speak enforces the scope itself: the AI acts through Speak's tools, which refuse
 - **Speak's panel stays out of its screenshots** (on Linux, it's blanked in them), and a frame shows when it has the mouse and the keyboard.
 - What it looks at goes to your AI provider: an app scope sends only that app.
 - **On Windows, macOS and Linux.** On a Mac, it asks first for **Accessibility** (to read the apps' buttons and fields, and to use the mouse and keyboard) and **Screen Recording** (to see their windows): **settings → control** shows both. Shortcuts there are ⌘ ones, and an app's menu bar counts as part of the app. On Linux, it needs an X11 session (Wayland doesn't let an app see or drive other apps' windows), and apps show their buttons and fields to it when the desktop's accessibility is on; without them, it works from what it sees.
+
+## Light or dark
+
+Speak follows your system's light or dark setting. You can also choose for yourself in **settings → general → theme**. And keep an eye out around the holidays.
+
+<p align="center">
+  <img src="docs/themes.png" alt="Speak's history window, half in the dark theme and half in the light theme" width="100%">
+</p>
 
 ## Get started
 
