@@ -124,7 +124,7 @@ export const DEFAULT_CONFIG: Config = {
     control: { on: true, shortcut: 'CommandOrControl+Shift+Alt+Enter' }
   },
   recording: { press: 'hybrid', cancel: 'Escape', maxSeconds: 600, sounds: true, indicator: true },
-  app: { launchAtLogin: false, appearance: 'system', easterEggs: true },
+  app: { launchAtLogin: false, appearance: 'system', easterEggs: true, hideFromSharing: true },
   history: { enabled: true, keepAudio: true, retentionDays: 90 },
   speech: {
     microphone: { id: 'default', label: '' },
@@ -144,10 +144,11 @@ export const DEFAULT_CONFIG: Config = {
     claudeCode: { path: '', home: '', models: { dictate: '', compose: '', control: '' }, effort: 'medium' },
     codex: { path: '', home: '', models: { dictate: '', compose: '', control: '' }, effort: 'medium' },
     instructions: '',
-    timeoutSeconds: 90
+    timeoutSeconds: 90,
+    fallback: true
   },
   // The result stays on the clipboard, so Ctrl+V pastes it again if the app ignored Speak's paste.
-  writing: { format: 'clean', language: 'same', then: 'preview', pasteKeys: 'auto', restoreClipboard: false },
+  writing: { format: 'clean', language: 'same', then: 'preview', pasteKeys: 'auto', restoreClipboard: false, pasteLast: '' },
   context: { current: '', recent: [] },
   control: {
     scope: 'app',

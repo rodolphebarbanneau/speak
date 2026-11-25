@@ -5,12 +5,14 @@ import { PillDecor } from '@themes/components'
 import { Boundary, Spinner } from '../components/ui'
 import { CONTEXT_KINDS, ipcError, shorten } from '../lib/format'
 import { microphoneError } from '../lib/microphone'
-import { cancelCapture, pauseCapture, playSound, setLevelListener, startCapture, stopCapture, Superseded } from './recorder'
+import { cancelCapture, pauseCapture, playSound, setLevelListener, skipCue, startCapture, stopCapture, Superseded } from './recorder'
 
 const api = window.speak
 const LEVELS = 10
 /** Longest a microphone order waits for the one before it (see the recorder's commands). */
 const ORDER_WAIT_MS = 10_000
+/** After the start cue, how long the microphone may still hear it (the sound output's delay). */
+const CUE_ECHO_MS = 200
 /** Bar heights, in eighths like the ▁…█ block characters. */
 const STEPS = 8
 
@@ -433,8 +435,15 @@ export function Overlay() {
       if (cmd.type === 'start') {
         setLevels(Array(LEVELS).fill(0))
         try {
-          if (cmd.sounds) playSound('start')
-          const device = await startCapture(cmd.deviceId, cmd.deviceLabel, (d) => api.recorderNoSignal(d))
+          const device = await startCapture(
+            cmd.deviceId,
+            cmd.deviceLabel,
+            (d) => api.recorderNoSignal(d),
+            (d) => api.recorderLost(d)
+          )
+          // Once the microphone listens: the cue says "go", and no first word is lost to its opening.
+          // The microphone may hear it (speakers): left out of the recording, with the output's delay.
+          if (cmd.sounds) skipCue(playSound('start') + CUE_ECHO_MS)
           api.recorderStarted(true, undefined, device)
         } catch (err) {
           if (!(err instanceof Superseded)) api.recorderStarted(false, microphoneError(err))
@@ -454,7 +463,7 @@ export function Overlay() {
       }
     }
     return api.onRecorderCommand((cmd) => {
-      if (cmd.type === 'sound') return playSound(cmd.name)
+      if (cmd.type === 'sound') return void playSound(cmd.name)
       const before = queue
       // An order that throws mustn't leave the queue rejected: every later order would be skipped.
       queue = Promise.race([before, new Promise((r) => setTimeout(r, ORDER_WAIT_MS))])

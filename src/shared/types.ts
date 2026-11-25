@@ -55,8 +55,11 @@ export interface Config {
     /** The pill at the bottom of the screen while recording and processing. */
     indicator: boolean
   }
-  /** appearance: the colors of every window · easterEggs: allow the seasonal themes (src/themes/schedule.ts), which show over them. */
-  app: { launchAtLogin: boolean; appearance: Appearance; easterEggs: boolean }
+  /**
+   * appearance: the colors of every window · easterEggs: allow the seasonal themes (src/themes/schedule.ts), which show over them ·
+   * hideFromSharing: the pill and the preview, which show what was dictated, stay off screen shares, recordings and screenshots.
+   */
+  app: { launchAtLogin: boolean; appearance: Appearance; easterEggs: boolean; hideFromSharing: boolean }
   history: { enabled: boolean; keepAudio: boolean; retentionDays: number }
   /** From the voice to text, in every mode: the microphone, the language spoken, the engine. */
   speech: {
@@ -83,6 +86,8 @@ export interface Config {
     /** Added to every request. */
     instructions: string
     timeoutSeconds: number
+    /** When the provider fails (signed out, limit reached…), the other one writes the dictation, if it's installed and signed in. */
+    fallback: boolean
   }
   /** The modes that write, dictate and compose: the text, and how it gets where the cursor is. */
   writing: {
@@ -94,6 +99,8 @@ export interface Config {
     then: OutputMode
     pasteKeys: PasteKeys
     restoreClipboard: boolean
+    /** Shortcut that pastes the last dictation again, in the app in front ('' = none). */
+    pasteLast: string
   }
   /**
    * The context the AI reads along with what you say. current: the location of a recent source,

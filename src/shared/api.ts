@@ -154,6 +154,8 @@ export interface SpeakApi {
   recorderStarted(ok: boolean, error?: string, device?: string): void
   /** The microphone delivers digital silence (muted, or an idle virtual device). */
   recorderNoSignal(device: string): void
+  /** The microphone stopped during the recording (unplugged…). */
+  recorderLost(device: string): void
   recorderResult(reqId: number, samples: Float32Array | null, error?: string): void
   /** The pointer is over the pill: catch clicks there instead of passing them through. */
   overlayInteractive(interactive: boolean): void

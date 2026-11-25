@@ -113,10 +113,50 @@ export function aiConfigured(): boolean {
   return configStore.get().ai.provider !== 'none'
 }
 
+const OTHER: Record<AgentId, AgentId> = { 'claude-code': 'codex', codex: 'claude-code' }
+/** A provider that failed for want of an account (signed out, limit reached, gone) is left aside this long, when the other can write. */
+const RESTING_MS = 30 * 60_000
+const resting = new Map<AgentId, number>()
+
+/** The provider can't write for now, whatever is asked: its account, its limits, its install. */
+function unavailable(message: string): boolean {
+  return / not signed in| not found|limit|quota|usage|credit|billing|429|exceeded/i.test(message)
+}
+
+/**
+ * Run the request on the chosen provider. When it fails (signed out, weekly limit reached, an
+ * error), the other provider writes it instead (settings → ai → fall back): tried right away, as
+ * asking whether it's signed in takes as long as a CLI start, and one not installed fails at once.
+ * A provider that failed for want of an account is tried second for a while, not waited for every
+ * time. A cancel or a timeout is no reason to switch: it would only make the wait longer.
+ */
 async function complete(system: string, user: string, mode: Mode, signal?: AbortSignal, readDir?: string): Promise<AiResult> {
   const ai = configStore.get().ai
   const provider: ProviderId = ai.provider
   if (provider === 'none') throw new Error('AI processing is off. Pick Claude Code or Codex in Speak → settings → ai, or use the verbatim format.')
+  if (!ai.fallback) return completeWith(provider, system, user, mode, signal, readDir)
+  const [first, second] = (resting.get(provider) ?? 0) > Date.now() ? [OTHER[provider], provider] : [provider, OTHER[provider]]
+  try {
+    return await completeWith(first, system, user, mode, signal, readDir)
+  } catch (err) {
+    const message = (err as Error).message
+    if (signal?.aborted || /timed out/i.test(message)) throw err
+    if (first === provider && unavailable(message)) {
+      resting.set(provider, Date.now() + RESTING_MS)
+      log.warn(`${AGENT_NAMES[provider]} is unavailable: ${AGENT_NAMES[second]} is tried first for the next ${RESTING_MS / 60_000} minutes`)
+    } else log.warn(`${AGENT_NAMES[first]} failed: ${AGENT_NAMES[second]} writes this one`)
+    try {
+      return await completeWith(second, system, user, mode, signal, readDir)
+    } catch (again) {
+      log.warn(`${AGENT_NAMES[second]} failed too:`, (again as Error).message)
+      // The chosen provider's error says what to fix.
+      throw first === provider ? err : again
+    }
+  }
+}
+
+async function completeWith(provider: AgentId, system: string, user: string, mode: Mode, signal?: AbortSignal, readDir?: string): Promise<AiResult> {
+  const ai = configStore.get().ai
   const agent = AGENTS[provider]
   const model = await modelFor(provider, mode)
   const started = Date.now()
@@ -126,8 +166,10 @@ async function complete(system: string, user: string, mode: Mode, signal?: Abort
   const text = cleanOutput(result.text)
   if (!text) throw new Error('The AI returned an empty result.')
   const ms = Date.now() - started
-  log.info(`AI ${ai.provider}/${result.model} took ${ms}ms${readDir ? ' (reading the context folder)' : ''}`)
-  return { text, provider: ai.provider, model: result.model, ms }
+  log.info(`AI ${provider}/${result.model} took ${ms}ms${readDir ? ' (reading the context folder)' : ''}`)
+  // It answered: it is no longer left aside.
+  resting.delete(provider)
+  return { text, provider, model: result.model, ms }
 }
 
 /** The provider's name as people know it. */

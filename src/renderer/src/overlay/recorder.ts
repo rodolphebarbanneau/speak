@@ -53,6 +53,8 @@ let onLevel: ((level: number) => void) | null = null
 let flushResolve: (() => void) | null = null
 /** Counts the starts, stops and cancels: a start that finishes after a later order closes what it opened. */
 let generation = 0
+/** Until then, what the microphone hears is the start cue, not the user's words: dropped. */
+let skipUntil = 0
 
 /** A start overtaken by a stop or a cancel while the microphone opened: nothing to report. */
 export class Superseded extends Error {
@@ -70,10 +72,17 @@ const NO_SIGNAL_AFTER_MS = 1500
 
 /**
  * Start recording. Returns the label of the microphone actually opened; `onNoSignal` fires
- * once if that microphone delivers only digital silence (muted, or an idle virtual device).
+ * once if that microphone delivers only digital silence (muted, or an idle virtual device), and
+ * `onLost` if it stops during the recording (unplugged, its Bluetooth link dropped).
  */
-export async function startCapture(deviceId: string, deviceLabel: string, onNoSignal: (device: string) => void): Promise<string> {
+export async function startCapture(
+  deviceId: string,
+  deviceLabel: string,
+  onNoSignal: (device: string) => void,
+  onLost: (device: string) => void
+): Promise<string> {
   const mine = ++generation
+  skipUntil = 0
   await stopTracks()
   chunks = []
   const opened = await openMicrophone(await resolveDeviceId(deviceId, deviceLabel))
@@ -83,6 +92,10 @@ export async function startCapture(deviceId: string, deviceLabel: string, onNoSi
   }
   stream = opened
   const device = cleanLabel(stream.getAudioTracks()[0]?.label || 'microphone')
+  // Our own stop ends the track too, but without this event: 'ended' is the device going away.
+  stream.getAudioTracks()[0]?.addEventListener('ended', () => {
+    if (mine === generation) onLost(device)
+  })
   ctx = new AudioContext()
   const url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }))
   await ctx.audioWorklet.addModule(url)
@@ -98,7 +111,7 @@ export async function startCapture(deviceId: string, deviceLabel: string, onNoSi
   let checked = false
   node.port.onmessage = (e: MessageEvent<{ data: Float32Array; flush?: boolean }>) => {
     const data = e.data.data
-    if (data.length) {
+    if (data.length && performance.now() >= skipUntil) {
       chunks.push(data)
       let sum = 0
       for (let i = 0; i < data.length; i++) {
@@ -119,6 +132,11 @@ export async function startCapture(deviceId: string, deviceLabel: string, onNoSi
   source.connect(node)
   node.connect(mute).connect(ctx.destination)
   return device
+}
+
+/** The start cue plays (`ms` long) on an open microphone: what it hears meanwhile is left out. */
+export function skipCue(ms: number): void {
+  skipUntil = performance.now() + ms
 }
 
 /** Pause or resume: the microphone stays open, its audio is dropped meanwhile. */
@@ -181,8 +199,8 @@ async function resample(pcm: Float32Array, rate: number): Promise<Float32Array> 
 let soundCtx: AudioContext | null = null
 let soundRest = 0
 
-/** Short UI cues synthesized with Web Audio. */
-export function playSound(name: 'start' | 'stop' | 'error' | 'done'): void {
+/** Short UI cues synthesized with Web Audio. Returns how long the cue lasts, in ms. */
+export function playSound(name: 'start' | 'stop' | 'error' | 'done'): number {
   soundCtx ??= new AudioContext()
   const c = soundCtx
   if (c.state === 'suspended') void c.resume()
@@ -203,4 +221,5 @@ export function playSound(name: 'start' | 'stop' | 'error' | 'done'): void {
     osc.start(t)
     osc.stop(t + 0.13)
   })
+  return (notes[name].length - 1) * 90 + 130
 }

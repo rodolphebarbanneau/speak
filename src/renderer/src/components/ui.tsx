@@ -401,7 +401,7 @@ export function ShortcutInput({
       onClick={() => setCapturing((c) => !c)}
       onBlur={() => setCapturing(false)}
     >
-      {capturing ? 'press keys… (esc to cancel)' : displayShortcut(value)}
+      {capturing ? 'press keys… (esc to cancel)' : displayShortcut(value) || 'none'}
     </button>
   )
 }

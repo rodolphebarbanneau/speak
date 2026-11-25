@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { MODES, shortModel } from '@shared/constants'
 import type { AgentId, AgentModel, AgentModels, AiTestResult, Config, DeepPartial, Effort, Mode, ProviderId } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
-import { Action, List, ListRow, Radio, Row, Sep, Spinner, TextInput } from '../components/ui'
+import { Action, Check, List, ListRow, Radio, Row, Sep, Spinner, TextInput } from '../components/ui'
 import { ipcError } from '../lib/format'
 import { useAgentStatus } from './hooks'
 
@@ -314,6 +314,12 @@ export function AiSettings({ config, update }: { config: Config; update: Update 
               onChange={(v) => update({ ai: { timeoutSeconds: Number(v) } })}
               options={[30, 60, 90, 180].map((s) => ({ value: String(s), label: `${s}s` }))}
             />
+          </Row>
+          <Row
+            label="fall back"
+            hint={`when ${provider === 'codex' ? 'codex' : 'claude code'} fails (signed out, limit reached), ${provider === 'codex' ? 'claude code' : 'codex'} writes the dictation, if it's installed and signed in`}
+          >
+            <Check checked={config.ai.fallback} onChange={(v) => update({ ai: { fallback: v } })} />
           </Row>
           <AiTest key={provider} />
         </section>

@@ -94,6 +94,7 @@ const api: SpeakApi = {
   onRecorderCommand: listen('recorder'),
   recorderStarted: (ok, error, device) => send('recorderStarted', ok, error, device),
   recorderNoSignal: (device) => send('recorderNoSignal', device),
+  recorderLost: (device) => send('recorderLost', device),
   overlayInteractive: (interactive) => send('overlayInteractive', interactive),
   recordingAction: (action) => send('recordingAction', action),
 

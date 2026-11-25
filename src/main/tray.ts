@@ -236,6 +236,12 @@ function buildMenu(phase: Phase): Menu {
       click: () => configStore.update({ app: { launchAtLogin: !cfg.app.launchAtLogin } })
     },
     { type: 'separator' },
+    {
+      label: 'Paste last result',
+      enabled: controller.canPasteLast,
+      accelerator: prettyShortcut(cfg.writing.pasteLast),
+      click: () => void controller.pasteLast(true)
+    },
     { label: 'Copy last result', enabled: !!controller.lastResult(), click: () => void copyToClipboard(controller.lastResult()) },
     { label: 'History', click: () => showMain('history') },
     { label: 'Settings', click: () => showMain('general') },

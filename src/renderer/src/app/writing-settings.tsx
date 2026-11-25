@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { FORMATS } from '@shared/constants'
 import type { Config, DeepPartial, Format, PasteKeys, PermissionStatus } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
-import { Action, Check, Row, Sep } from '../components/ui'
+import { Action, Check, Row, Sep, ShortcutInput } from '../components/ui'
 import { outputOptions } from '../lib/languages'
 
 const api = window.speak
@@ -54,6 +54,13 @@ export function WritingSettings({ config, update }: { config: Config; update: (p
         </Row>
         <Row label="restore clipboard" hint="put back what was on the clipboard after pasting · off: the text stays on it, so ctrl+v pastes it again if needed">
           <Check checked={config.writing.restoreClipboard} onChange={(v) => update({ writing: { restoreClipboard: v } })} />
+        </Row>
+        <Row
+          label="paste last"
+          hint="pastes your last dictation again in the app in front · also in the tray menu · click, then press the keys"
+          actions={config.writing.pasteLast ? <Action onClick={() => update({ writing: { pasteLast: '' } })}>clear</Action> : undefined}
+        >
+          <ShortcutInput value={config.writing.pasteLast} onChange={(v) => update({ writing: { pasteLast: v } })} />
         </Row>
         {isMac && perm && (
           <Row

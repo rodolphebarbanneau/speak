@@ -233,6 +233,12 @@ export function General(props: Props) {
         <Row label="launch at login" hint="speak runs in the system tray">
           <Check checked={config.app.launchAtLogin} onChange={(v) => update({ app: { launchAtLogin: v } })} />
         </Row>
+        <Row
+          label="hide from screen sharing"
+          hint="the pill and the preview show what you dictate: they stay off screen shares, recordings and screenshots · you still see them"
+        >
+          <Check checked={config.app.hideFromSharing} onChange={(v) => update({ app: { hideFromSharing: v } })} />
+        </Row>
         <Row label="easter eggs" hint={`a seasonal look around ${HOLIDAYS} · click its logo, top left, to turn it off · off: never shown`}>
           <Check checked={config.app.easterEggs} onChange={(v) => update({ app: { easterEggs: v } })} />
         </Row>

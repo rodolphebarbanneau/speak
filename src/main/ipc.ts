@@ -177,6 +177,7 @@ export function registerIpc(): void {
   // Recorder
   on('recorderStarted', (ok: boolean, error?: string, device?: string) => controller.recorderStarted(ok, error, device))
   on('recorderNoSignal', (device: string) => controller.recorderNoSignal(device))
+  on('recorderLost', (device: string) => controller.recorderLost(device))
   on('overlayInteractive', (interactive: boolean) => setOverlayInteractive(interactive))
   on('recordingAction', (action: RecordingAction) => controller.recordingAction(action))
   on('recorderResult', (reqId: number, samples: Float32Array | null, error?: string) => controller.recorderResult(reqId, samples, error))

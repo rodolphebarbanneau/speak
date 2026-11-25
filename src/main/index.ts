@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { app, nativeTheme, Notification, session } from 'electron'
+import { app, nativeTheme, Notification, powerMonitor, session } from 'electron'
 import type { Config } from '../shared/types'
 import { themeShown } from '../themes/shared'
 import { decodeWav } from './audio'
@@ -21,7 +21,7 @@ import { engine } from './stt/engine'
 import { createTray } from './tray'
 import { updater } from './updater'
 import { isLinux, isMac, isWayland, isWin, loadShellEnv } from './util'
-import { applyChrome, broadcast, createOverlay, createPreview, showMain } from './windows'
+import { applyChrome, broadcast, createOverlay, createPreview, hideFromSharing, showMain } from './windows'
 
 /*
  * Command line (also forwarded to the running instance):
@@ -158,6 +158,7 @@ if (refused) {
             session.defaultSession.setPermissionCheckHandler((_wc, permission) => permission === 'media' || permission === 'clipboard-sanitized-write')
             createOverlay()
             createPreview()
+            hideFromSharing(config.app.hideFromSharing)
             createTray()
           }
         ],
@@ -170,12 +171,17 @@ if (refused) {
             hotkeys.on('press', (action: RecordAction) => controller.onShortcutPress(action))
             hotkeys.on('release', (ms: number) => controller.onShortcutRelease(ms))
             hotkeys.on('cancel', () => controller.cancel())
+            hotkeys.on('paste-last', () => void controller.pasteLast(false))
+            powerMonitor.on('lock-screen', () => controller.screenLocked())
+            powerMonitor.on('suspend', () => controller.screenLocked())
             configStore.on('change', (next: Config, prev: Config) => {
-              if (JSON.stringify(next.modes) !== JSON.stringify(prev.modes) || next.recording.cancel !== prev.recording.cancel) applyShortcuts(next)
+              const shortcuts = (c: Config) => JSON.stringify([c.modes, c.recording.cancel, c.writing.pasteLast])
+              if (shortcuts(next) !== shortcuts(prev)) applyShortcuts(next)
               // Control turned off: a session under way ends.
               if (!next.modes.control.on && prev.modes.control.on && control.active) void control.end()
               if (next.control.language !== prev.control.language) control.setReplyLanguage(next.control.language)
               if (next.app.launchAtLogin !== prev.app.launchAtLogin) setLaunchAtLogin(next.app.launchAtLogin)
+              if (next.app.hideFromSharing !== prev.app.hideFromSharing) hideFromSharing(next.app.hideFromSharing)
               if (engineSettings(next) !== engineSettings(prev)) engine.stopServer()
               if (next.updates.auto !== prev.updates.auto) updater.applyConfig()
               if (themeShown(next, seasons.current) !== themeShown(prev, seasons.current) || next.app.appearance !== prev.app.appearance) applyChrome()
@@ -230,7 +236,7 @@ function engineSettings(c: Config): string {
 }
 
 function applyShortcuts(config: Config): void {
-  const error = hotkeys.apply(config.modes, config.recording.cancel)
+  const error = hotkeys.apply(config.modes, config.recording.cancel, config.writing.pasteLast)
   if (error && Notification.isSupported())
     new Notification({ title: 'Speak shortcut unavailable', body: `${error} Change it in Speak → settings → general.` }).show()
 }

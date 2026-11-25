@@ -61,10 +61,12 @@ const HELD_UNSURE_MS = 1500
  *  - 'press' (action)    dictate, compose or control shortcut pressed
  *  - 'release' (heldMs)  that shortcut released (only when the keyboard hook is available)
  *  - 'cancel'            cancel shortcut pressed (only while a dictation is under way, see setCancel)
+ *  - 'paste-last'        the shortcut that pastes the last dictation again
  */
 class Hotkeys extends EventEmitter {
   private shortcuts: Record<RecordAction, string> = { dictate: '', compose: '', control: '' }
   private cancel = ''
+  private pasteLast = ''
   private cancelMode: CancelMode = 'off'
   private suspended = false
   /** Keys of the combination being held, while the keyboard hook can report its release. */
@@ -120,13 +122,14 @@ class Hotkeys extends EventEmitter {
   }
 
   /** The shortcuts of the modes that are on (one that's off leaves its keys to other apps). */
-  apply(modes: Config['modes'], cancel: string): string | undefined {
+  apply(modes: Config['modes'], cancel: string, pasteLast: string): string | undefined {
     this.shortcuts = {
       dictate: modes.dictate.on ? modes.dictate.shortcut : '',
       compose: modes.compose.on ? modes.compose.shortcut : '',
       control: modes.control.on ? modes.control.shortcut : ''
     }
     this.cancel = cancel
+    this.pasteLast = pasteLast
     this.registerAll()
     return this.error
   }
@@ -151,6 +154,16 @@ class Hotkeys extends EventEmitter {
         }
       } catch {
         errors.push(`Invalid ${NAMES[action]} shortcut: ${accelerator}`)
+      }
+    }
+    if (this.pasteLast) {
+      try {
+        if (Object.values(this.shortcuts).includes(this.pasteLast) || this.pasteLast === this.cancel)
+          errors.push(`The paste-last shortcut ${this.pasteLast} is already one of Speak's.`)
+        else if (!globalShortcut.register(this.pasteLast, () => this.emit('paste-last')))
+          errors.push(`The paste-last shortcut ${this.pasteLast} is already used by another application.`)
+      } catch {
+        errors.push(`Invalid paste-last shortcut: ${this.pasteLast}`)
       }
     }
     this.error = errors.join(' ') || undefined

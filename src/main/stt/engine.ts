@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { chmod, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { request } from 'node:http'
 import { availableParallelism } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { app } from 'electron'
@@ -19,6 +20,42 @@ import { fitModel } from './fit'
 const exe = (name: string) => (isWin ? `${name}.exe` : name)
 const SERVER = exe('whisper-server')
 const PARAKEET = exe('parakeet-cli')
+/**
+ * How long a transcription may take: a while, plus a few times the recording's length (the model
+ * the speed test picks keeps up with speech). Past it, the engine is taken for stuck.
+ */
+const DEADLINE_BASE_MS = 2 * 60_000
+const DEADLINE_PER_AUDIO = 3
+
+function deadlineFor(wav: Buffer): number {
+  const byteRate = wav.length > 44 ? wav.readUInt32LE(28) : 0
+  const audioMs = byteRate ? ((wav.length - 44) / byteRate) * 1000 : 0
+  return Math.round(DEADLINE_BASE_MS + DEADLINE_PER_AUDIO * audioMs)
+}
+
+/** The server went away during the request (crashed, killed), rather than answering. */
+function connectionLost(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException)?.code
+  return code === 'ECONNREFUSED' || code === 'ECONNRESET' || code === 'EPIPE'
+}
+
+/**
+ * POST over node:http. fetch gives up on any response that takes over 5 minutes, which a long
+ * recording on a slow processor can: here only `signal` ends the wait.
+ */
+function post(port: number, path: string, body: Buffer, type: string, signal?: AbortSignal): Promise<{ status: number; text: string }> {
+  return new Promise((resolve, reject) => {
+    const req = request({ host: '127.0.0.1', port, path, method: 'POST', headers: { 'content-type': type, 'content-length': body.length }, signal }, (res) => {
+      const chunks: Buffer[] = []
+      res.on('data', (c: Buffer) => chunks.push(c))
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, text: Buffer.concat(chunks).toString('utf8') }))
+      res.on('error', reject)
+    })
+    req.on('error', reject)
+    req.end(body)
+  })
+}
+
 const MANAGED_DIR = join(paths.bin, 'whisper-cpp')
 const MANIFEST = join(MANAGED_DIR, 'installed.json')
 
@@ -346,14 +383,34 @@ class Engine {
   }
 
   private async transcribeWhisper(wav: Buffer, model: string, bin: BinaryLocation, opts: TranscribeOptions): Promise<{ text: string; detected?: string }> {
+    const limitMs = deadlineFor(wav)
     this.waiting++
     try {
-      const ready = this.ensureServer(model, bin)
-      // Already loading its model in the background (warmup): someone waits on it now.
-      this.prioritize()
-      await ready
-      this.touch()
-      return await this.infer(this.serverPort, wav, opts)
+      for (let attempt = 1; ; attempt++) {
+        const ready = this.ensureServer(model, bin)
+        // Already loading its model in the background (warmup): someone waits on it now.
+        this.prioritize()
+        await ready
+        this.touch()
+        const deadline = AbortSignal.timeout(limitMs)
+        try {
+          return await this.infer(this.serverPort, wav, { ...opts, signal: opts.signal ? AbortSignal.any([opts.signal, deadline]) : deadline })
+        } catch (err) {
+          if (opts.signal?.aborted) throw err
+          if (deadline.aborted) {
+            // Stuck, or far too slow for this computer: the next transcription gets a new one.
+            log.warn(`whisper-server gave no transcript within ${Math.round(limitMs / 1000)}s: stopped`)
+            this.stopServer()
+            throw new Error(`The speech engine took over ${Math.round(limitMs / 60_000)} minutes and was stopped.`)
+          }
+          if (attempt === 1 && connectionLost(err)) {
+            log.warn('whisper-server went away during a transcription: starting it again', (err as Error).message)
+            this.stopServer()
+            continue
+          }
+          throw err
+        }
+      }
     } finally {
       this.touch()
       this.waiting--
@@ -381,9 +438,11 @@ class Engine {
     form.append('temperature_inc', '0.2')
     form.append('language', opts.language || 'auto')
     if (opts.prompt) form.append('prompt', opts.prompt)
-    const res = await fetch(`http://127.0.0.1:${port}/inference`, { method: 'POST', body: form, signal: opts.signal })
-    const body = await res.text()
-    if (!res.ok) throw new Error(`Transcription failed (${res.status}): ${body.slice(0, 300)}`)
+    // The multipart body as fetch would send it.
+    const encoded = new Request('http://127.0.0.1/', { method: 'POST', body: form })
+    const res = await post(port, '/inference', Buffer.from(await encoded.arrayBuffer()), encoded.headers.get('content-type') ?? '', opts.signal)
+    const body = res.text
+    if (res.status !== 200) throw new Error(`Transcription failed (${res.status}): ${body.slice(0, 300)}`)
     let parsed: { text?: string; language?: string; error?: string }
     try {
       parsed = JSON.parse(body)
@@ -402,7 +461,7 @@ class Engine {
       const args = ['-m', model, '-t', String(threads()), '-np', '-f', file]
       if (!configStore.get().speech.useGpu) args.push('-ng')
       // Started for each transcription, someone waiting on it: normal priority (see prioritize).
-      const r = await run(join(bin.dir, PARAKEET), args, { cwd: bin.dir, env: childEnv(bin.dir), timeoutMs: 300_000, signal: opts.signal })
+      const r = await run(join(bin.dir, PARAKEET), args, { cwd: bin.dir, env: childEnv(bin.dir), timeoutMs: deadlineFor(wav), signal: opts.signal })
       if (r.code !== 0) throw new Error(`parakeet-cli failed: ${(r.stderr || r.stdout).trim().split('\n').slice(-3).join(' ')}`)
       return r.stdout
         .split('\n')

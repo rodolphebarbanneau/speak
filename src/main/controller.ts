@@ -80,6 +80,11 @@ class Controller extends EventEmitter {
   private starting: Promise<boolean> | null = null
   /** Label of the microphone used by the current/last recording. */
   private device = ''
+  /**
+   * Why this dictation's text goes to the preview, not pasted: something happened during it (the
+   * microphone stopped, the computer locked). Said at the top of the preview.
+   */
+  private review: string | null = null
   private overlayTimer: NodeJS.Timeout | null = null
   /** What the pill shows, for its page when it (re)loads. */
   overlayShown: OverlayState = { phase: 'idle' }
@@ -94,6 +99,8 @@ class Controller extends EventEmitter {
   /** The preview's text as typed, not yet a version (see previewDraft). */
   private draft: string | null = null
   private lastText = ''
+  /** Where the last dictation was written (its window), to paste it there again from the tray. */
+  private lastTarget: FocusTarget | null = null
 
   constructor() {
     super()
@@ -263,6 +270,7 @@ class Controller extends EventEmitter {
     this.purpose = purpose
     this.compose = purpose === 'dictation' && compose
     this.useClipboard = false
+    this.review = null
     this.setPhase('recording')
     if (purpose === 'dictation') {
       // Read the context while the user speaks: it's ready when the transcript is.
@@ -318,6 +326,30 @@ class Controller extends EventEmitter {
     const message = noSignalMessage(device)
     if (this.purpose === 'edit') this.updatePreviewBusy(null, message)
     this.fail(message, 7000)
+  }
+
+  /**
+   * The microphone stopped during the recording (unplugged, its Bluetooth link dropped): what it
+   * heard until then is transcribed, for review, instead of recording silence until the stop.
+   */
+  recorderLost(device: string): void {
+    if (this.phase !== 'recording') return
+    log.warn(`The microphone "${device}" stopped during the recording`)
+    this.review = `the microphone (${device}) stopped during the recording: this is what it heard`
+    void this.stopRecording()
+  }
+
+  /**
+   * The computer locked or went to sleep. A recording under way stops, and its text waits in the
+   * preview: nothing is pasted behind the lock, nor into whatever is in front when it's unlocked.
+   * An order for control mode is dropped: nothing acts on a locked computer.
+   */
+  screenLocked(): void {
+    if (this.phase === 'idle') return
+    if (this.purpose === 'control') return this.cancel()
+    log.info(`The computer locked during the ${this.phase === 'recording' ? 'recording' : 'dictation'}`)
+    this.review = 'the computer locked during the dictation: insert puts the text where you started'
+    if (this.phase === 'recording') void this.stopRecording()
   }
 
   /** The pill's page crashed and is reloading: the microphone it held is gone, and so is the recording. */
@@ -416,7 +448,13 @@ class Controller extends EventEmitter {
       }
       const wav = encodeWav(prepared.samples)
       const language = cfg.speech.language
-      const t = await engine.transcribe(wav, { language, prompt: this.whisperPrompt(), signal: abort.signal })
+      let t: Awaited<ReturnType<typeof engine.transcribe>>
+      try {
+        t = await engine.transcribe(wav, { language, prompt: this.whisperPrompt(), signal: abort.signal })
+      } catch (err) {
+        if (abort.signal.aborted || purpose !== 'dictation') throw err
+        return await this.keepUntranscribed(raw, prepared.durationMs, language, compose, err as Error)
+      }
       const transcript = cleanTranscript(t.text)
       log.info(`Transcribed ${Math.round(prepared.durationMs)}ms of audio in ${t.ms}ms (${t.engine}/${t.model})`)
       if (abort.signal.aborted) return
@@ -516,10 +554,10 @@ class Controller extends EventEmitter {
         this.overlayState({ phase: 'idle' })
         // Another window came in front while the dictation was worked on: the text would land
         // there. The preview shows it instead, and its insert goes back to where it started.
-        if (await focusMoved(this.target)) {
-          log.info('Another window came in front during the dictation: the preview opens instead of pasting')
-          return this.openPreview(session, wav, 'another window came in front: insert puts the text where you started')
-        }
+        const moved = !this.review && (await focusMoved(this.target))
+        if (moved) log.info('Another window came in front during the dictation: the preview opens instead of pasting')
+        const review = this.review ?? (moved ? 'another window came in front: insert puts the text where you started' : null)
+        if (review) return this.openPreview(session, wav, review)
         const ok = await pasteText(session.text, { keys: cfg.writing.pasteKeys, restoreClipboard: cfg.writing.restoreClipboard })
         await this.finish(session, ok ? 'pasted' : 'copied')
         if (ok) this.sound('done')
@@ -527,7 +565,7 @@ class Controller extends EventEmitter {
         return
       }
       this.overlayState({ phase: 'idle' })
-      this.openPreview(session, wav)
+      this.openPreview(session, wav, this.review ?? undefined)
     } catch (err) {
       if (abort.signal.aborted) return
       this.setPhase('idle')
@@ -536,6 +574,37 @@ class Controller extends EventEmitter {
     } finally {
       if (this.abort === abort) this.abort = null
     }
+  }
+
+  /**
+   * The speech engine failed on a dictation: its recording waits in the history (when recordings
+   * are kept), where "run" transcribes it again, instead of being lost with the error.
+   */
+  private async keepUntranscribed(raw: Float32Array, durationMs: number, language: string, compose: boolean, err: Error): Promise<void> {
+    const cfg = configStore.get()
+    const kept = cfg.history.enabled && cfg.history.keepAudio
+    if (kept) {
+      const now = new Date().toISOString()
+      const id = cfg.speech.engine
+      await history.save(
+        {
+          id: newSessionId(),
+          createdAt: now,
+          updatedAt: now,
+          durationMs: Math.round(durationMs),
+          hasAudio: true,
+          transcription: { engine: id, model: cfg.speech.models[id], language, ms: 0, text: '' },
+          style: compose ? 'compose' : cfg.writing.format,
+          outputLanguage: cfg.writing.language,
+          versions: [],
+          text: '',
+          error: `Not transcribed: ${err.message} Re-process → run transcribes it again.`
+        },
+        encodeWav(raw)
+      )
+    }
+    this.setPhase('idle')
+    this.fail(kept ? `${err.message} The recording is in the history: transcribe it again from there.` : err.message, 8000)
   }
 
   // ---------------------------------------------------------------- context
@@ -913,7 +982,10 @@ class Controller extends EventEmitter {
   private async finish(session: Session, action: SessionAction): Promise<void> {
     session.action = action
     session.updatedAt = new Date().toISOString()
-    if (action !== 'cancelled') this.lastText = session.text
+    if (action !== 'cancelled') {
+      this.lastText = session.text
+      this.lastTarget = this.target
+    }
     await history.save(session)
     if (this.current === session) {
       this.current = null
@@ -925,6 +997,30 @@ class Controller extends EventEmitter {
 
   lastResult(): string {
     return this.lastText
+  }
+
+  /** The last dictation's window is still there: the tray can paste into it. */
+  get canPasteLast(): boolean {
+    return !!this.lastText && !!this.lastTarget
+  }
+
+  /**
+   * Paste the last dictation again (it went to the wrong place, or is wanted twice). From the
+   * shortcut: in the app in front. From the tray, whose menu takes the focus: back in the window
+   * it was dictated into. After a restart, the last one in the history.
+   */
+  async pasteLast(intoItsWindow: boolean): Promise<void> {
+    let text = this.lastText
+    if (!text) {
+      const last = (await history.list('', 20)).find((s) => s.action !== 'cancelled' && s.text.trim())
+      text = last?.text ?? ''
+    }
+    if (!text) return this.flash({ phase: 'info', message: 'Nothing dictated yet' })
+    const cfg = configStore.get().writing
+    if (intoItsWindow) await restoreFocus(this.lastTarget, () => undefined)
+    log.info(`Pasting the last dictation again (${text.length} characters)`)
+    const ok = await pasteText(text, { keys: cfg.pasteKeys, restoreClipboard: cfg.restoreClipboard })
+    if (!ok) this.pasteFailed()
   }
 
   /**
@@ -948,6 +1044,7 @@ class Controller extends EventEmitter {
     this.compose = this.purpose === 'dictation' && !!opts.compose
     this.useClipboard = false
     this.device = ''
+    this.review = null
     if (this.purpose === 'edit') return this.handleAudio(samples)
     const target = await captureFocus()
     await this.handleAudio(samples, { target })
@@ -957,7 +1054,9 @@ class Controller extends EventEmitter {
   async reprocessHistory(id: string, style: Style, outputLanguage: string, inputLanguage?: string): Promise<Session> {
     const session = await history.get(id)
     if (!session) throw new Error('Session not found')
-    if (inputLanguage && inputLanguage !== session.transcription.language) {
+    // Never transcribed (the engine failed): its recording is transcribed, in any language.
+    const untranscribed = !session.transcription.text
+    if (inputLanguage && (inputLanguage !== session.transcription.language || untranscribed)) {
       const recording = await history.audio(id)
       if (!recording) throw new Error('The recording of this dictation was not kept.')
       const warning = await this.retranscribe(session, encodeWav(prepareAudio(decodeWav(recording)).samples), {
@@ -965,6 +1064,7 @@ class Controller extends EventEmitter {
         style,
         outputLanguage
       })
+      if (untranscribed) session.error = undefined
       await history.save(session)
       if (warning) throw new Error(warning)
       return session

@@ -493,9 +493,28 @@ export function controlPanelRect(): { x: number; y: number; w: number; h: number
   return { x: b.x, y: b.y, w: b.width, h: b.height }
 }
 
+/** Left out of screen shares (settings → general), and the pill during a control session too. */
+let sharingHidden = false
+let controlHidden = false
+
+function protectOverlay(): void {
+  if (overlay && !overlay.isDestroyed()) overlay.setContentProtection((sharingHidden || controlHidden) && excludeFromCapture)
+}
+
+/**
+ * The pill and the preview, which show what was dictated, stay off screen shares, recordings and
+ * screenshots: the person sharing their screen still sees them, the others don't.
+ */
+export function hideFromSharing(on: boolean): void {
+  sharingHidden = on
+  protectOverlay()
+  if (preview && !preview.isDestroyed()) preview.setContentProtection(on && excludeFromCapture)
+}
+
 /** The pill is left out of screenshots while a control session runs (it may cover what the AI looks at). */
 export function setOverlayCaptureExcluded(on: boolean): void {
-  if (overlay && !overlay.isDestroyed()) overlay.setContentProtection(on && excludeFromCapture)
+  controlHidden = on
+  protectOverlay()
 }
 
 /**
