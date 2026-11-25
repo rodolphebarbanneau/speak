@@ -6,6 +6,7 @@
 import { useSyncExternalStore } from 'react'
 import type { Config } from '@shared/types'
 import { hold, setRecording, setSoundsAllowed } from './audio'
+import { startClock } from './clock'
 import { themeShown, type Palette, type Season, type ThemeSettings } from './shared'
 import type { Theme } from './types'
 import './themes.css'
@@ -146,6 +147,7 @@ export function initThemes(view: string): void {
   void api.getSeason().then(onSeason)
   api.onSeason(onSeason)
   if (view === 'overlay') return // the pill gets the palette and its decorations, no sounds
+  startClock(() => !document.hasFocus())
   api.onOverlay((s) => setRecording(s.phase === 'recording'))
   window.addEventListener('pointerdown', onPress, true)
   window.addEventListener('pointerup', onLetGo, true)

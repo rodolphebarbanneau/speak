@@ -26,6 +26,12 @@ function load(win: BrowserWindow, view: View): void {
   else void win.loadFile(join(__dirname, '../renderer/index.html'), { hash: view })
 }
 
+/**
+ * `backgroundThrottling: false`: a page isn't told when its window hides, and goes on at full pace.
+ * The pill's must: it holds the microphone, and records with the pill hidden when the indicator is
+ * off. A page that draws while hidden costs as much as on screen, so the windows that stay around
+ * hidden say otherwise (the main window, the preview dialog).
+ */
 function webPreferences(): Electron.WebPreferences {
   return {
     preload: join(__dirname, '../preload/index.js'),
@@ -308,8 +314,19 @@ export function createPreview(): BrowserWindow {
   return preview
 }
 
+/**
+ * The dialog is hidden, not closed, and its page isn't told (see webPreferences): it went on
+ * drawing its logo's animation behind the scenes, for good once the dialog had opened. So the page
+ * is told when the dialog hides, and stops; and told before the dialog shows again, so that it
+ * opens on what it holds now, not on a picture of the last dictation.
+ */
+function restPreview(resting: boolean): void {
+  if (preview && !preview.isDestroyed()) preview.webContents.setBackgroundThrottling(resting)
+}
+
 export function showPreview(): void {
   if (!preview) return
+  restPreview(false)
   if (!preview.isVisible()) {
     const { workArea } = cursorDisplay()
     const [w, h] = preview.getSize()
@@ -319,6 +336,7 @@ export function showPreview(): void {
 }
 
 export function hidePreview(): void {
+  restPreview(true)
   preview?.hide()
 }
 
@@ -340,7 +358,10 @@ export function showMain(section?: MainSection): void {
       title: 'Speak',
       icon: resource(APP_ICON),
       ...nativeChrome(),
-      webPreferences: webPreferences()
+      // Hidden (closed), minimized or covered by other windows, its page stops drawing. Left at
+      // full pace, a logo's animation had the window presented again at the screen's rate from
+      // its first opening on, even closed: a processor core, with some graphics drivers.
+      webPreferences: { ...webPreferences(), backgroundThrottling: true }
     })
     mainWindow.removeMenu()
     followActivation(mainWindow)
