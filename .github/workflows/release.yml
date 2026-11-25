@@ -18,6 +18,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # electron-builder uploads to the release of package.json's version, whatever the tag: a tag
+      # that doesn't match would add its files to another version's release, even a published one.
+      - name: Check the tag is the version
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          version="v$(node -p "require('./package.json').version")"
+          [ "$GITHUB_REF_NAME" = "$version" ] || { echo "::error::Tag $GITHUB_REF_NAME is not package.json's version ($version)"; exit 1; }
+          state=$(gh release view "$version" --json isDraft --jq .isDraft 2>/dev/null || echo none)
+          [ "$state" != false ] || { echo "::error::$version is already published: give the new release its own version"; exit 1; }
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: actions/setup-node@v7
         with:
           node-version: 24

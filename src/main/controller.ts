@@ -11,7 +11,7 @@ import { control } from './control'
 import { history, newSessionId } from './history'
 import { hotkeys, type RecordAction } from './hotkeys'
 import { log } from './log'
-import { captureFocus, restoreFocus, type FocusTarget } from './platform/focus'
+import { captureFocus, focusMoved, restoreFocus, type FocusTarget } from './platform/focus'
 import { copyToClipboard, pasteText } from './platform/paste'
 import { engine } from './stt/engine'
 import { isMac } from './util'
@@ -35,6 +35,8 @@ type Purpose = 'dictation' | 'edit' | 'control'
 const MIN_SPEECH_MS = 250
 /** Real microphones always have a noise floor; a peak this low means digital silence. */
 const SILENT_PEAK = 1e-4
+/** How long a recording must be for its silence to mean a microphone that gives nothing. */
+const SILENCE_TELLS_MS = 1000
 
 function noSignalMessage(device: string): string {
   const name = device ? `"${device}"` : 'The microphone'
@@ -74,6 +76,8 @@ class Controller extends EventEmitter {
   private recorderReq = 0
   private pendingResult: ((r: { samples: Float32Array | null; error?: string }) => void) | null = null
   private pendingStart: ((r: { ok: boolean; error?: string; device?: string }) => void) | null = null
+  /** The microphone opening: resolves with whether it did (a stop that comes first waits for it). */
+  private starting: Promise<boolean> | null = null
   /** Label of the microphone used by the current/last recording. */
   private device = ''
   private overlayTimer: NodeJS.Timeout | null = null
@@ -86,6 +90,9 @@ class Controller extends EventEmitter {
   private currentAudio: Buffer | null = null
   private previewBusy: PreviewState['busy'] = null
   private previewError: string | undefined
+  private previewNotice: string | undefined
+  /** The preview's text as typed, not yet a version (see previewDraft). */
+  private draft: string | null = null
   private lastText = ''
 
   constructor() {
@@ -209,7 +216,7 @@ class Controller extends EventEmitter {
 
   private setPhase(phase: Phase): void {
     this.phase = phase
-    hotkeys.setCancelActive(phase !== 'idle')
+    hotkeys.setCancel(phase === 'idle' ? 'off' : phase === 'recording' ? 'grab' : 'watch')
     control.setListening(phase === 'recording' && this.purpose === 'control')
     // The recording ended (finished, cancelled) while an address was being typed into the pill.
     if (phase !== 'recording' && this.typing) void this.contextKeyboard(false)
@@ -269,6 +276,8 @@ class Controller extends EventEmitter {
     if (purpose === 'edit') this.updatePreviewBusy('listening')
     engine.warmup()
 
+    let opened: (ok: boolean) => void = () => undefined
+    this.starting = new Promise<boolean>((resolve) => (opened = resolve))
     const started = await new Promise<{ ok: boolean; error?: string; device?: string }>((resolve) => {
       this.pendingStart = resolve
       overlay!.webContents.send('speak:recorder', {
@@ -280,14 +289,20 @@ class Controller extends EventEmitter {
       setTimeout(() => resolve({ ok: false, error: 'Microphone did not start (timeout).' }), 8000)
     })
     this.pendingStart = null
+    this.starting = null
+    opened(started.ok)
     if (!started.ok) {
+      // A microphone that opens after all, late, is closed again (the recorder takes its orders in turn).
+      overlay?.webContents.send('speak:recorder', { type: 'cancel' })
+      if ((this.phase as Phase) === 'idle') return // cancelled meanwhile
       this.setPhase('idle')
       if (purpose === 'edit') this.updatePreviewBusy(null, started.error)
       return this.fail(started.error ?? 'Could not start the microphone.')
     }
     this.device = started.device ?? ''
     log.info(`Recording from "${this.device}"`)
-    this.armMaxTimer()
+    // Stopped (the stop waited for the microphone) or cancelled while it opened: no maximum to watch.
+    if ((this.phase as Phase) === 'recording') this.armMaxTimer()
   }
 
   recorderStarted(ok: boolean, error?: string, device?: string): void {
@@ -330,6 +345,10 @@ class Controller extends EventEmitter {
     const loading = configStore.get().speech.engine === 'whisper' && !engine.modelLoaded
     this.overlayState({ phase: 'transcribing', purpose: this.overlayPurpose, message: loading ? 'loading the speech model' : undefined })
     if (this.purpose === 'edit') this.updatePreviewBusy('transcribing')
+    // A quick press and release: the microphone may still be opening. Its stop waits for it; a
+    // microphone that didn't open has said so already.
+    if (this.starting && !(await this.starting)) return
+    if ((this.phase as Phase) !== 'transcribing') return // cancelled meanwhile
     const reqId = ++this.recorderReq
     const result = await new Promise<{ samples: Float32Array | null; error?: string }>((resolve) => {
       this.pendingResult = resolve
@@ -349,6 +368,8 @@ class Controller extends EventEmitter {
   cancel(): void {
     if (this.phase === 'idle') return
     log.info('Cancelled during', this.phase)
+    // Cancelled while the AI works on a dictation: its transcript is kept (see handleAudio).
+    const kept = this.phase === 'processing' && this.purpose === 'dictation'
     if (this.phase === 'recording') overlay?.webContents.send('speak:recorder', { type: 'cancel' })
     this.pendingResult?.({ samples: null, error: 'Cancelled' })
     this.abort?.abort()
@@ -356,7 +377,7 @@ class Controller extends EventEmitter {
     if (this.maxTimer) clearTimeout(this.maxTimer)
     this.setPhase('idle')
     if (this.purpose === 'edit') this.updatePreviewBusy(null)
-    this.flash({ phase: 'info', message: 'Cancelled' }, 1200)
+    this.flash({ phase: 'info', message: kept ? 'Cancelled: the transcript is in the history' : 'Cancelled' }, kept ? 2500 : 1200)
   }
 
   private fail(message: string, ms = 4500): void {
@@ -380,7 +401,9 @@ class Controller extends EventEmitter {
     try {
       const prepared = prepareAudio(raw)
       log.info(`Audio: ${(prepared.durationMs / 1000).toFixed(1)}s, peak ${prepared.peak.toFixed(4)}, speech ${(prepared.speechMs / 1000).toFixed(1)}s`)
-      if (prepared.peak < SILENT_PEAK) {
+      // Silence says the microphone gives nothing only over a while: a recording stopped as it
+      // started (the stop waited for the microphone to open) has no speech, that's all.
+      if (prepared.peak < SILENT_PEAK && prepared.durationMs >= SILENCE_TELLS_MS) {
         this.setPhase('idle')
         const message = noSignalMessage(this.device)
         if (purpose === 'edit') this.updatePreviewBusy(null, message)
@@ -431,6 +454,12 @@ class Controller extends EventEmitter {
       }
       const audio = encodeWav(raw)
       let nothingToWrite = false
+      /** Cancelled once transcribed: the transcript stays in the history (until the next dictation, as a cancelled one). */
+      const keepCancelled = async (): Promise<void> => {
+        session.action = 'cancelled'
+        session.error = 'Cancelled before the AI was done: this is the transcript.'
+        await history.save(session, audio)
+      }
 
       if (needsAi(session.style, session.outputLanguage)) {
         if (!aiConfigured()) {
@@ -440,7 +469,7 @@ class Controller extends EventEmitter {
           // The context only matters to the AI: read (or waited for) only when it runs.
           if (taken) this.overlayState({ phase: 'processing', purpose: compose ? 'compose' : purpose, message: `reading ${taken.source.label}` })
           const context = await this.readTaken(taken)
-          if (abort.signal.aborted) return
+          if (abort.signal.aborted) return keepCancelled()
           if (taken) session.source = taken.source
           if (context.clipboard) session.context = context.clipboard
           if (context.error) {
@@ -458,7 +487,7 @@ class Controller extends EventEmitter {
               context: ai,
               signal: abort.signal
             })
-            if (abort.signal.aborted) return
+            if (abort.signal.aborted) return keepCancelled()
             this.addVersion(session, {
               kind: 'processed',
               text: r.text,
@@ -469,7 +498,7 @@ class Controller extends EventEmitter {
               ms: r.ms
             })
           } catch (err) {
-            if (abort.signal.aborted) return
+            if (abort.signal.aborted) return keepCancelled()
             session.error = (err as Error).message
             nothingToWrite = err instanceof NothingToWrite
             if (!nothingToWrite) log.warn('AI processing failed:', session.error)
@@ -485,6 +514,12 @@ class Controller extends EventEmitter {
 
       if (cfg.writing.then === 'paste' && !session.error) {
         this.overlayState({ phase: 'idle' })
+        // Another window came in front while the dictation was worked on: the text would land
+        // there. The preview shows it instead, and its insert goes back to where it started.
+        if (await focusMoved(this.target)) {
+          log.info('Another window came in front during the dictation: the preview opens instead of pasting')
+          return this.openPreview(session, wav, 'another window came in front: insert puts the text where you started')
+        }
         const ok = await pasteText(session.text, { keys: cfg.writing.pasteKeys, restoreClipboard: cfg.writing.restoreClipboard })
         await this.finish(session, ok ? 'pasted' : 'copied')
         if (ok) this.sound('done')
@@ -645,11 +680,13 @@ class Controller extends EventEmitter {
 
   // ---------------------------------------------------------------- preview dialog
 
-  private openPreview(session: Session, audio: Buffer): void {
+  private openPreview(session: Session, audio: Buffer, notice?: string): void {
     this.current = session
     this.currentAudio = audio
     this.previewBusy = null
     this.previewError = session.error
+    this.previewNotice = notice
+    this.draft = null
     this.sendPreview()
     showPreview()
   }
@@ -660,6 +697,7 @@ class Controller extends EventEmitter {
       session: this.current,
       busy: this.previewBusy,
       error: this.previewError,
+      notice: this.previewNotice,
       targetTitle: this.target?.title
     }
     preview.webContents.send('speak:preview', state)
@@ -669,12 +707,28 @@ class Controller extends EventEmitter {
     this.sendPreview()
   }
 
+  /** The preview's text as the user types it: a voice edit, a new style or a new spoken language keeps it (see keepDraft). */
+  previewDraft(text: string): void {
+    if (this.current) this.draft = text
+  }
+
+  /**
+   * What was typed in the preview, made a version before the text changes otherwise: a voice
+   * edit then works on it, and undo after a new style or language brings it back.
+   */
+  private keepDraft(session: Session): void {
+    const draft = this.draft
+    this.draft = null
+    if (draft !== null && draft.trim()) this.manualEdit(session, draft)
+  }
+
   private async applyVoiceEdit(instruction: string, signal: AbortSignal): Promise<void> {
     const session = this.current
     if (!session) {
       this.setPhase('idle')
       return
     }
+    this.keepDraft(session)
     this.setPhase('processing')
     this.overlayState({ phase: 'processing', purpose: 'edit' })
     this.updatePreviewBusy('processing')
@@ -698,6 +752,7 @@ class Controller extends EventEmitter {
   async previewReprocess(style: Style, outputLanguage: string): Promise<void> {
     const session = this.current
     if (!session || this.phase !== 'idle') return
+    this.keepDraft(session)
     if (!needsAi(style, outputLanguage)) {
       this.addVersion(session, { kind: 'processed', text: session.transcription.text, style, outputLanguage })
       await history.save(session)
@@ -732,6 +787,7 @@ class Controller extends EventEmitter {
     const session = this.current
     const audio = this.currentAudio
     if (!session || !audio || this.phase !== 'idle' || language === session.transcription.language) return
+    this.keepDraft(session)
     const abort = new AbortController()
     this.abort = abort
     this.setPhase('transcribing')
@@ -797,6 +853,7 @@ class Controller extends EventEmitter {
   async previewUndo(): Promise<void> {
     const session = this.current
     if (!session || session.versions.length === 0 || this.phase !== 'idle') return
+    this.draft = null
     const undone = session.versions.pop()!
     if (undone.previous) session.transcription = undone.previous
     const prev = session.versions[session.versions.length - 1]
@@ -807,6 +864,7 @@ class Controller extends EventEmitter {
   }
 
   private manualEdit(session: Session, text: string): void {
+    this.draft = null
     if (text !== session.text) this.addVersion(session, { kind: 'manual', text })
   }
 

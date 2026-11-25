@@ -45,6 +45,11 @@ export function Preview() {
 
   const busy = state?.busy ?? null
   const session = state?.session
+  /** Typed (or "use original"): Speak keeps it, so a voice edit or a new style starts from it. */
+  const edit = (value: string) => {
+    setText(value)
+    api.previewDraft(value)
+  }
 
   const actions = useMemo(
     () => ({
@@ -52,9 +57,10 @@ export function Preview() {
       copy: () => text.trim() && api.previewCopy(text),
       cancel: () => api.previewCancel(),
       voiceEdit: () => api.previewVoiceEdit(),
-      undo: () => api.previewUndo()
+      // What was typed since the last version goes first; then the versions, one by one.
+      undo: () => (session && text !== session.text ? edit(session.text) : api.previewUndo())
     }),
-    [text]
+    [text, session] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   useEffect(() => {
@@ -110,8 +116,9 @@ export function Preview() {
 
       <div className="preview-body">
         {state.error && <div className="line error">✗ {state.error}</div>}
-        <textarea ref={editorRef} className="editor" value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} disabled={working} />
-        <Sep tail={text !== session.transcription.text && <Action onClick={() => setText(session.transcription.text)}>use original</Action>}>transcript</Sep>
+        {state.notice && <div className="line yellow">! {state.notice}</div>}
+        <textarea ref={editorRef} className="editor" value={text} onChange={(e) => edit(e.target.value)} spellCheck={false} disabled={working} />
+        <Sep tail={text !== session.transcription.text && <Action onClick={() => edit(session.transcription.text)}>use original</Action>}>transcript</Sep>
         <div className="transcript">{session.transcription.text}</div>
         {session.source && session.source.kind !== 'clipboard' && (
           <>
@@ -178,7 +185,7 @@ export function Preview() {
         <Key k={`${MOD}+e`} onClick={actions.voiceEdit} disabled={working} danger={busy === 'listening'}>
           {busy === 'listening' ? 'stop' : 'edit by voice'}
         </Key>
-        <Key k={`${MOD}+z`} onClick={actions.undo} disabled={!!busy || session.versions.length === 0}>
+        <Key k={`${MOD}+z`} onClick={actions.undo} disabled={!!busy || (session.versions.length === 0 && text === session.text)}>
           undo
         </Key>
         <Key k={`${MOD}+shift+c`} onClick={actions.copy} disabled={!text.trim()}>

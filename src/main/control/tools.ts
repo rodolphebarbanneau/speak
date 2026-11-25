@@ -61,6 +61,8 @@ export interface ActionRequest {
   risk: ControlRisk
   category?: keyof ControlAlwaysAsk
   key: string
+  /** "Always" can't approve it in advance: asked each time it's asked at all. */
+  once?: boolean
   /** Typed into a password field: the panel doesn't show the text. */
   secret?: boolean
   /** Where it will act, on its latest look (a data URL, the spot boxed): shown with the approval. */
@@ -972,7 +974,7 @@ export class ToolServer {
     if (!(await this.host.hold())) throw new Held()
     const target = String(a.target ?? '').trim()
     if (!target) throw new Error('Nothing to open.')
-    const g = await this.host.gate({ title: a.intent || `open ${target}`, detail: target, risk: 'change', key: 'open' })
+    const g = await this.host.gate({ title: a.intent || `open ${target}`, detail: target, ...openRisk(target) })
     if (!g.ok) return text(g.reason)
     try {
       // A new window takes the focus: not while the user types.
@@ -1082,4 +1084,19 @@ export class ToolServer {
 function thumb(shot: Shot): string {
   const small = shot.image.getSize().width > 480 ? shot.image.resize({ width: 480, quality: 'good' }) : shot.image
   return `data:image/jpeg;base64,${small.toJPEG(70).toString('base64')}`
+}
+
+/** Files that run when opened: a program, a script, a shortcut to one, an installer. */
+const RUNS =
+  /\.(exe|com|bat|cmd|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|msi|msix|appx|lnk|url|scr|hta|cpl|reg|pif|jar|app|command|sh|bash|zsh|pkg|dmg|desktop|appimage|run|deb|rpm)$/i
+
+/**
+ * How risky opening `target` is, and what "always" approves for it. A web address or a document
+ * changes what's on the screen; an app, a program or a link to another app (ms-settings:, a
+ * protocol) runs something, and is asked like a command.
+ */
+export function openRisk(target: string): Pick<ActionRequest, 'risk' | 'key' | 'once'> {
+  if (/^https?:\/\//i.test(target)) return { risk: 'change', key: 'open' }
+  if (isAbsolute(target) || /^~[\/]/.test(target)) return RUNS.test(target) ? { risk: 'risky', key: 'open', once: true } : { risk: 'change', key: 'open' }
+  return { risk: 'risky', key: `open app:${target.toLowerCase()}` }
 }

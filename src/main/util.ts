@@ -22,14 +22,13 @@ export interface RunResult {
 export function run(
   cmd: string,
   args: string[],
-  opts: { timeoutMs?: number; input?: string; cwd?: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal; lowPriority?: boolean } = {}
+  opts: { timeoutMs?: number; input?: string; cwd?: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal } = {}
 ): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     const spawnOpts: SpawnOptions = { cwd: opts.cwd, env: opts.env ?? shellEnv(), windowsHide: true }
     // .cmd/.bat shims need a shell on Windows.
     const viaShell = isWin && /\.(cmd|bat)$/i.test(cmd)
     const child = viaShell ? spawn(`"${cmd}"`, args.map(quoteCmdArg), { ...spawnOpts, shell: true }) : spawn(cmd, args, spawnOpts)
-    if (opts.lowPriority) lowerPriority(child)
     let stdout = ''
     let stderr = ''
     let settled = false
@@ -61,23 +60,23 @@ export function run(
   })
 }
 
-/**
- * Run heavy work (speech recognition: loading a model, transcribing) below normal priority. It
- * goes just as fast on an idle computer, but yields to whatever the user is doing instead of
- * making the whole system stutter.
- */
 /** A long-running child with pipes (a CLI session): .cmd/.bat shims go through a shell, quoted. */
 export function spawnPiped(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): ChildProcess {
   const spawnOpts: SpawnOptions = { cwd: opts.cwd, env: opts.env ?? shellEnv(), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }
   return isWin && /\.(cmd|bat)$/i.test(cmd) ? spawn(`"${cmd}"`, args.map(quoteCmdArg), { ...spawnOpts, shell: true }) : spawn(cmd, args, spawnOpts)
 }
 
-export function lowerPriority(child: ChildProcess): void {
+/**
+ * Heavy work (speech recognition) below normal priority when it runs on its own: as fast on an idle
+ * computer, it yields to whatever the user is doing instead of making the whole system stutter.
+ * `normal` while the user waits on it: on a busy computer, below normal would starve it.
+ */
+export function setChildPriority(child: ChildProcess, normal: boolean): void {
   if (!child.pid) return
   try {
-    setPriority(child.pid, constants.priority.PRIORITY_BELOW_NORMAL)
+    setPriority(child.pid, normal ? constants.priority.PRIORITY_NORMAL : constants.priority.PRIORITY_BELOW_NORMAL)
   } catch {
-    // not allowed: keep the default priority
+    // not allowed: keep the priority it has
   }
 }
 

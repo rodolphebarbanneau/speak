@@ -12,7 +12,7 @@ import { configStore } from '../config'
 import { downloads } from '../download'
 import { log } from '../log'
 import { paths } from '../paths'
-import { delay, findDirContaining, freePort, isLinux, isMac, isWin, lowerPriority, run, shellEnv, which } from '../util'
+import { delay, findDirContaining, freePort, isLinux, isMac, isWin, run, setChildPriority, shellEnv, which } from '../util'
 import { binaryOption, binaryOptions, MODELS, PROBE, VAD_MODEL, WHISPER_CPP_TAG, type ModelDef } from './catalog'
 import { fitModel } from './fit'
 
@@ -71,6 +71,8 @@ class Engine {
   private serverPort = 0
   private serverKey = ''
   private starting: Promise<void> | null = null
+  /** Transcriptions waiting on the whisper-server: it runs at normal priority meanwhile. */
+  private waiting = 0
   private idleTimer: NodeJS.Timeout | null = null
   private gpu: EngineStatus['gpu'] | null = null
 
@@ -209,7 +211,7 @@ class Engine {
     const port = await freePort()
     const args = ['-m', model, '--host', '127.0.0.1', '--port', String(port), '-t', String(threads()), '-nt', '-l', 'auto', '-ng']
     const child = spawn(join(bin.dir, SERVER), args, { cwd: bin.dir, env: childEnv(bin.dir), windowsHide: true, stdio: 'ignore' })
-    lowerPriority(child)
+    setChildPriority(child, false)
     let exited = false
     child.on('exit', () => (exited = true))
     child.on('error', () => (exited = true))
@@ -224,6 +226,7 @@ class Engine {
         )
           break
       }
+      setChildPriority(child, true)
       let best = Infinity
       for (let i = 0; i < 3; i++) {
         const started = Date.now()
@@ -343,11 +346,29 @@ class Engine {
   }
 
   private async transcribeWhisper(wav: Buffer, model: string, bin: BinaryLocation, opts: TranscribeOptions): Promise<{ text: string; detected?: string }> {
-    await this.ensureServer(model, bin)
-    this.touch()
-    const result = await this.infer(this.serverPort, wav, opts)
-    this.touch()
-    return result
+    this.waiting++
+    try {
+      const ready = this.ensureServer(model, bin)
+      // Already loading its model in the background (warmup): someone waits on it now.
+      this.prioritize()
+      await ready
+      this.touch()
+      return await this.infer(this.serverPort, wav, opts)
+    } finally {
+      this.touch()
+      this.waiting--
+      this.prioritize()
+    }
+  }
+
+  /**
+   * The whisper-server's priority: below normal on its own (loading its model in the background,
+   * idle), so it yields to what the user is doing; normal while a transcription waits on it, as
+   * then it is what the user is doing: on a busy computer, below normal starved it (an 11 s
+   * recording took 85 s).
+   */
+  private prioritize(): void {
+    if (this.server) setChildPriority(this.server, this.waiting > 0)
   }
 
   /** Have the whisper-server listening on `port` transcribe a recording. */
@@ -380,7 +401,8 @@ class Engine {
     try {
       const args = ['-m', model, '-t', String(threads()), '-np', '-f', file]
       if (!configStore.get().speech.useGpu) args.push('-ng')
-      const r = await run(join(bin.dir, PARAKEET), args, { cwd: bin.dir, env: childEnv(bin.dir), timeoutMs: 300_000, signal: opts.signal, lowPriority: true })
+      // Started for each transcription, someone waiting on it: normal priority (see prioritize).
+      const r = await run(join(bin.dir, PARAKEET), args, { cwd: bin.dir, env: childEnv(bin.dir), timeoutMs: 300_000, signal: opts.signal })
       if (r.code !== 0) throw new Error(`parakeet-cli failed: ${(r.stderr || r.stdout).trim().split('\n').slice(-3).join(' ')}`)
       return r.stdout
         .split('\n')
@@ -414,8 +436,8 @@ class Engine {
     if (useVad) args.push('--vad', '-vm', this.vadPath())
     log.info('Starting whisper-server', args.join(' '))
     const child = spawn(join(bin.dir, SERVER), args, { cwd: bin.dir, env: childEnv(bin.dir), windowsHide: true })
-    lowerPriority(child)
     this.server = child
+    this.prioritize()
     this.serverPort = port
     let output = ''
     const collect = (d: Buffer) => {

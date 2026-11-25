@@ -125,28 +125,82 @@ function migrate(raw: unknown): unknown {
   return typeof raw.version === 'number' && raw.version >= 2 ? raw : fromV1(raw)
 }
 
+/** Next to config.json: the copy that last loaded, and an unreadable one, kept aside. */
+const sibling = (name: string) => paths.config.replace(/config\.json$/, name)
+
+/** Wait, without an event loop (the settings load before anything else runs). */
+function pause(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+type Read = { ok: true; raw: string; value: unknown } | { ok: false; missing: boolean; error: unknown }
+
+/** A settings file, read and parsed. A file another program holds (an antivirus) is tried again, briefly. */
+function readSettings(file: string): Read {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const raw = readFileSync(file, 'utf8')
+      return { ok: true, raw, value: JSON.parse(raw) }
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'ENOENT') return { ok: false, missing: true, error: err }
+      if ((code === 'EBUSY' || code === 'EPERM' || code === 'EACCES') && attempt < 4) {
+        pause(100)
+        continue
+      }
+      return { ok: false, missing: false, error: err }
+    }
+  }
+}
+
+const SAVE_RETRY_MS = 1000
+const SAVE_RETRIES = 5
+
 class ConfigStore extends EventEmitter {
   private config: Config = structuredClone(DEFAULT_CONFIG)
+  private retry: NodeJS.Timeout | null = null
+  private retries = 0
 
+  /**
+   * The settings, from config.json. A file that can't be read or isn't valid is never replaced by
+   * the defaults: it's kept aside as config.broken.json, and the copy that last loaded
+   * (config.backup.json) is used instead, else the defaults.
+   */
   load(): Config {
-    try {
-      const raw = readFileSync(paths.config, 'utf8')
-      const parsed = JSON.parse(raw)
-      const layout = isObject(parsed) && typeof parsed.version === 'number' ? parsed.version : 1
-      this.config = merge(structuredClone(DEFAULT_CONFIG), migrate(parsed))
+    const read = readSettings(paths.config)
+    if (read.ok) {
+      const layout = isObject(read.value) && typeof read.value.version === 'number' ? read.value.version : 1
+      this.config = merge(structuredClone(DEFAULT_CONFIG), migrate(read.value))
       // Brought up to date (an older layout, or new settings with their defaults): kept that way.
       // An older layout's file is kept as it was, next to it.
-      if (JSON.stringify(this.config, null, 2) !== raw) {
-        if (layout < DEFAULT_CONFIG.version) copyFileSync(paths.config, `${paths.config.replace(/\.json$/, '')}.v${layout}.json`)
+      if (JSON.stringify(this.config, null, 2) !== read.raw) {
+        if (layout < DEFAULT_CONFIG.version) this.copy(paths.config, sibling(`config.v${layout}.json`))
         log.info(layout < DEFAULT_CONFIG.version ? `Settings moved from layout ${layout} to ${DEFAULT_CONFIG.version}` : 'Settings updated to this version')
         this.save()
       }
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') log.warn('Invalid config.json, using defaults:', err)
-      this.config = structuredClone(DEFAULT_CONFIG)
-      this.save()
+      this.copy(paths.config, sibling('config.backup.json'))
+      return this.config
     }
+    this.config = structuredClone(DEFAULT_CONFIG)
+    if (!read.missing) {
+      log.warn('config.json could not be read, kept aside as config.broken.json:', read.error)
+      this.copy(paths.config, sibling('config.broken.json'))
+      const backup = readSettings(sibling('config.backup.json'))
+      if (backup.ok) {
+        this.config = merge(structuredClone(DEFAULT_CONFIG), migrate(backup.value))
+        log.info('Settings restored from config.backup.json')
+      } else log.warn('No backup of the settings to restore: the defaults are used')
+    }
+    this.save()
     return this.config
+  }
+
+  private copy(from: string, to: string): void {
+    try {
+      copyFileSync(from, to)
+    } catch (err) {
+      log.warn(`Could not copy ${from} to ${to}:`, err)
+    }
   }
 
   get(): Config {
@@ -162,10 +216,26 @@ class ConfigStore extends EventEmitter {
     return next
   }
 
+  /**
+   * Write the settings. A write that fails (a disk full, a file another program holds) is tried
+   * again a few times; meanwhile the settings in use are the ones changed, and nothing is lost.
+   */
   private save(): void {
+    if (this.retry) clearTimeout(this.retry)
+    this.retry = null
     const tmp = paths.config + '.tmp'
-    writeFileSync(tmp, JSON.stringify(this.config, null, 2))
-    renameSync(tmp, paths.config)
+    try {
+      writeFileSync(tmp, JSON.stringify(this.config, null, 2))
+      renameSync(tmp, paths.config)
+      this.retries = 0
+    } catch (err) {
+      if (this.retries++ >= SAVE_RETRIES) {
+        this.retries = 0
+        return log.error('Could not save the settings (they apply until Speak quits):', err)
+      }
+      log.warn('Could not save the settings, trying again:', (err as Error).message)
+      this.retry = setTimeout(() => this.save(), SAVE_RETRY_MS)
+    }
   }
 }
 

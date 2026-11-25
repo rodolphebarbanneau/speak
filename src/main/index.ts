@@ -4,6 +4,7 @@ import type { Config } from '../shared/types'
 import { themeShown } from '../themes/shared'
 import { decodeWav } from './audio'
 import { configStore } from './config'
+import { reportCrashes, watchCrashes } from './crash'
 import { control } from './control'
 import { checkScreen } from './control/screen'
 import { controller } from './controller'
@@ -104,6 +105,7 @@ if (refused) {
 } else if (relaunchOnXWayland()) {
   // Starting again through XWayland.
 } else {
+  watchCrashes()
   app.on('second-instance', (_e, argv) => handleArgs(argv))
   // Windows takes the taskbar icon from the Start menu shortcut registered for this ID (Electron
   // writes one on the first notification). Dev runs (electron.exe) get their own ID so they never
@@ -126,13 +128,17 @@ if (refused) {
       ? `, ${process.env.XDG_SESSION_TYPE || 'unknown'} session, ${app.commandLine.getSwitchValue('ozone-platform') || 'default'} display`
       : ''
     log.info(`Speak ${version} starting (${process.platform}-${process.arch}, electron ${process.versions.electron}${display})`)
+    reportCrashes()
     const config = configStore.load()
     seasons.start() // the easter egg theme in season, before any window takes its colors
     applyChrome()
     nativeTheme.on('updated', applyChrome) // the computer went light or dark
     if (isMac) app.dock?.hide()
     // Right after "restart & update", say so: the new version shows up instead of reappearing silently.
+    // Updated while the computer was left alone (updater.ts): back as it was, a notification only.
     const updated = !!config.state.lastVersion && config.state.lastVersion !== version
+    const reopen = config.state.reopen
+    if (reopen) configStore.update({ state: { reopen: '' } })
     registerIpc() // first: the loading dialog asks for the settings (its theme)
 
     // A loading dialog shows only if startup is slow (or just updated). Speech models load later,
@@ -183,13 +189,16 @@ if (refused) {
         ],
         [label('tidying up your history', 'dusting off old dictations'), () => history.prune()]
       ],
-      updated ? { showAfterMs: 0, minShownMs: 1500 } : {}
+      reopen ? { unseen: true } : updated ? { showAfterMs: 0, minShownMs: 1500 } : {}
     )
     if (config.state.lastVersion !== version) configStore.update({ state: { lastVersion: version } })
     setInterval(() => void history.prune(), 6 * 3600_000).unref()
 
     if (selfChecking) return selfCheck()
-    handleArgs(process.argv)
+    if (!reopen) return handleArgs(process.argv)
+    if (reopen === 'main') showMain()
+    if (updated && Notification.isSupported())
+      new Notification({ title: `Speak updated to ${version}`, body: 'It installed while you were away.', silent: true }).show()
   })
 
   app.on('will-quit', () => {

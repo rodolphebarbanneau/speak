@@ -27,6 +27,8 @@ export async function withLoading(
     note?: string
     /** Leave it open after the last step (it ends by quitting the app). */
     leaveOpen?: boolean
+    /** Never shown: nobody is there to read it (Speak updated while the computer was left alone). */
+    unseen?: boolean
   } = {}
 ): Promise<void> {
   const minShownMs = opts.minShownMs ?? 800
@@ -53,8 +55,8 @@ export async function withLoading(
   }
   // Shown right away (just updated, updating): the steps wait for it, so they can be seen going by.
   const showAfterMs = opts.showAfterMs ?? 700
-  const timer = showAfterMs > 0 ? setTimeout(open, showAfterMs) : null
-  if (!timer) {
+  const timer = opts.unseen ? null : showAfterMs > 0 ? setTimeout(open, showAfterMs) : null
+  if (!timer && !opts.unseen) {
     open()
     await shown
   }

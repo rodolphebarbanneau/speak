@@ -165,6 +165,7 @@ export function registerIpc(): void {
 
   // Preview dialog
   on('previewReady', () => controller.previewReady())
+  on('previewDraft', (text: string) => controller.previewDraft(text))
   on('previewInsert', (text: string) => void controller.previewInsert(text))
   on('previewCopy', (text: string) => void controller.previewCopy(text))
   on('previewCancel', () => void controller.previewCancel())

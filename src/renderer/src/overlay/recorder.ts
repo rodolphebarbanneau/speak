@@ -51,6 +51,15 @@ let node: AudioWorkletNode | null = null
 let chunks: Float32Array[] = []
 let onLevel: ((level: number) => void) | null = null
 let flushResolve: (() => void) | null = null
+/** Counts the starts, stops and cancels: a start that finishes after a later order closes what it opened. */
+let generation = 0
+
+/** A start overtaken by a stop or a cancel while the microphone opened: nothing to report. */
+export class Superseded extends Error {
+  constructor() {
+    super('Superseded by a later order')
+  }
+}
 
 export function setLevelListener(cb: ((level: number) => void) | null): void {
   onLevel = cb
@@ -64,14 +73,24 @@ const NO_SIGNAL_AFTER_MS = 1500
  * once if that microphone delivers only digital silence (muted, or an idle virtual device).
  */
 export async function startCapture(deviceId: string, deviceLabel: string, onNoSignal: (device: string) => void): Promise<string> {
+  const mine = ++generation
   await stopTracks()
   chunks = []
-  stream = await openMicrophone(await resolveDeviceId(deviceId, deviceLabel))
+  const opened = await openMicrophone(await resolveDeviceId(deviceId, deviceLabel))
+  if (mine !== generation) {
+    opened.getTracks().forEach((t) => t.stop())
+    throw new Superseded()
+  }
+  stream = opened
   const device = cleanLabel(stream.getAudioTracks()[0]?.label || 'microphone')
   ctx = new AudioContext()
   const url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }))
   await ctx.audioWorklet.addModule(url)
   URL.revokeObjectURL(url)
+  if (mine !== generation) {
+    await stopTracks()
+    throw new Superseded()
+  }
   const source = ctx.createMediaStreamSource(stream)
   node = new AudioWorkletNode(ctx, 'speak-capture')
   const startedAt = performance.now()
@@ -118,7 +137,8 @@ async function stopTracks(): Promise<void> {
 
 /** Stop recording and return 16 kHz mono samples. */
 export async function stopCapture(): Promise<Float32Array> {
-  if (!ctx || !node) throw new Error('Not recording')
+  generation++
+  if (!ctx || !node) throw new Error('The microphone was not open')
   const rate = ctx.sampleRate
   await new Promise<void>((resolve) => {
     flushResolve = resolve
@@ -139,6 +159,7 @@ export async function stopCapture(): Promise<Float32Array> {
 }
 
 export async function cancelCapture(): Promise<void> {
+  generation++
   chunks = []
   await stopTracks()
 }
@@ -158,11 +179,16 @@ async function resample(pcm: Float32Array, rate: number): Promise<Float32Array> 
 }
 
 let soundCtx: AudioContext | null = null
+let soundRest = 0
 
 /** Short UI cues synthesized with Web Audio. */
 export function playSound(name: 'start' | 'stop' | 'error' | 'done'): void {
   soundCtx ??= new AudioContext()
   const c = soundCtx
+  if (c.state === 'suspended') void c.resume()
+  // Asleep once the notes are over: a sound player left running keeps the audio device and a thread busy.
+  clearTimeout(soundRest)
+  soundRest = window.setTimeout(() => void c.suspend(), 1000)
   const notes: Record<typeof name, number[]> = { start: [660, 880], stop: [880, 660], done: [784, 1046], error: [330, 247] }
   notes[name].forEach((freq, i) => {
     const osc = c.createOscillator()

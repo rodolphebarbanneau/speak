@@ -1,7 +1,7 @@
-import { systemPreferences } from 'electron'
+import { powerMonitor, systemPreferences } from 'electron'
 import { log } from '../log'
 import { delay, isMac, isWayland, isWin } from '../util'
-import { sendKeyCombo, VK } from './send-input'
+import { keyIsDown, sendKeyCombo, VK } from './send-input'
 
 type Uiohook = typeof import('uiohook-napi')
 
@@ -13,6 +13,10 @@ let mod: Uiohook | null = null
 let started = false
 const pressed = new Set<number>()
 const releaseListeners = new Set<(keycode: number) => void>()
+
+/** A key going down, with the modifiers held with it. */
+export type KeyPress = { keycode: number; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }
+const pressListeners = new Set<(e: KeyPress) => void>()
 
 /** A key pressed, a click, a wheel turn or the pointer moving, from anyone (Speak's own input included). */
 export type UserInput = { kind: 'key'; keycode: number; modifiers: boolean } | { kind: 'mouse'; x: number; y: number } | { kind: 'move'; x: number; y: number }
@@ -53,6 +57,10 @@ export function startKeyboardHook(): boolean {
     m.uIOhook.on('keydown', (e) => {
       pressed.add(e.keycode)
       if (inputListeners.size) for (const l of inputListeners) l({ kind: 'key', keycode: e.keycode, modifiers: e.ctrlKey || e.altKey || e.metaKey })
+      if (pressListeners.size) {
+        const press = { keycode: e.keycode, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey }
+        for (const l of pressListeners) l(press)
+      }
     })
     m.uIOhook.on('mousedown', (e) => {
       if (inputListeners.size) for (const l of inputListeners) l({ kind: 'mouse', x: e.x, y: e.y })
@@ -70,6 +78,11 @@ export function startKeyboardHook(): boolean {
     m.uIOhook.start()
     started = true
     log.info('Keyboard hook started')
+    // The lock screen takes the keys held to lock (Win+L): their releases never come.
+    if (!locking) {
+      locking = true
+      powerMonitor.on('lock-screen', forgetPressed)
+    }
   } catch (err) {
     log.warn('Keyboard hook failed to start:', err)
   }
@@ -93,9 +106,53 @@ export function onUserInput(cb: (e: UserInput) => void): () => void {
   return () => inputListeners.delete(cb)
 }
 
+/** Every key going down (seen, not taken: the app in front gets it too). */
+export function onKeyPress(cb: (e: KeyPress) => void): () => void {
+  pressListeners.add(cb)
+  return () => pressListeners.delete(cb)
+}
+
 export function onKeyRelease(cb: (keycode: number) => void): () => void {
   releaseListeners.add(cb)
   return () => releaseListeners.delete(cb)
+}
+
+let locking = false
+
+/** Every key the hook saw go down, released: nothing is held at the lock screen. */
+function forgetPressed(): void {
+  const codes = [...pressed]
+  pressed.clear()
+  for (const code of codes) for (const l of releaseListeners) l(code)
+}
+
+/**
+ * Whether a key is held. On Windows, as the keyboard is now: the hook misses the releases made
+ * in an administrator's window (Windows keeps them from other apps) and on the lock screen, and
+ * a key it saw go down then looks held for good. Elsewhere, as the hook saw it.
+ */
+export function isPressed(code: number): boolean {
+  if (!isWin) return pressed.has(code)
+  const down = keyIsDown(code)
+  if (down === null) return pressed.has(code)
+  if (!down) pressed.delete(code)
+  return down
+}
+
+/**
+ * Whether a combination is held, as the keyboard itself says (Windows): each key down (a key: one
+ * of its codes, a modifier's left or right). Null when it can't tell, elsewhere or for a key
+ * Windows can't name from its code.
+ */
+export function keysHeld(keys: number[][]): boolean | null {
+  if (!isWin || !keys.length) return null
+  let held = true
+  for (const codes of keys) {
+    const states = codes.map(keyIsDown)
+    if (states.includes(null)) return null
+    if (!states.includes(true)) held = false
+  }
+  return held
 }
 
 const MODIFIER_CODES = [29, 3613, 42, 54, 56, 3640, 3675, 3676]
@@ -104,7 +161,7 @@ const MODIFIER_CODES = [29, 3613, 42, 54, 56, 3640, 3675, 3676]
 export async function waitForModifiersReleased(maxMs = 1500): Promise<void> {
   if (!started) return
   const until = Date.now() + maxMs
-  while (MODIFIER_CODES.some((c) => pressed.has(c)) && Date.now() < until) await delay(25)
+  while (MODIFIER_CODES.some(isPressed) && Date.now() < until) await delay(25)
 }
 
 /** Map an Electron accelerator key token to a uiohook keycode. */

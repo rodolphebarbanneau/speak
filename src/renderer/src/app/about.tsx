@@ -30,7 +30,12 @@ function UpdateStatus({ state }: { state: UpdateState }) {
         </span>
       )
     case 'available':
-      return <span className="acc">{state.latest} available</span>
+      return (
+        <span>
+          <span className="acc">{state.latest} available</span>
+          {state.manual && <span className="dim"> · this build can't update itself: get it from the releases page</span>}
+        </span>
+      )
     case 'downloading':
       return <Bar value={state.percent ?? 0} total={100} label={`downloading ${state.latest ?? ''} · ${percent((state.percent ?? 0) / 100)}`} />
     case 'downloaded':
@@ -53,7 +58,11 @@ export function About({ config, update }: { config: Config; update: (patch: Deep
 
   const updateAction =
     state?.status === 'available' ? (
-      <Action onClick={() => api.downloadUpdate()}>download</Action>
+      state.manual ? (
+        <Action onClick={() => api.openReleases()}>releases</Action>
+      ) : (
+        <Action onClick={() => api.downloadUpdate()}>download</Action>
+      )
     ) : state?.status === 'downloaded' ? (
       <Action onClick={() => api.installUpdate()}>restart & update</Action>
     ) : state?.status === 'error' ? (
@@ -91,7 +100,10 @@ export function About({ config, update }: { config: Config; update: (patch: Deep
         <Row label="status" hint="new versions come from the github releases of speak" actions={updateAction}>
           {state && <UpdateStatus state={state} />}
         </Row>
-        <Row label="automatic" hint="download updates in the background and install them when speak quits · check now always asks before downloading">
+        <Row
+          label="automatic"
+          hint="download updates in the background and install them when speak quits, or after 10 minutes away from the computer · check now always asks before downloading"
+        >
           <Check checked={config.updates.auto} onChange={(v) => update({ updates: { auto: v } })} />
         </Row>
       </section>

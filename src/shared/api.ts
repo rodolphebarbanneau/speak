@@ -137,6 +137,8 @@ export interface SpeakApi {
   // Preview dialog
   onPreview(cb: (s: PreviewState) => void): () => void
   previewReady(): void
+  /** The editor's text as typed, kept by the main process: a voice edit or a new style starts from it. */
+  previewDraft(text: string): void
   previewInsert(text: string): void
   previewCopy(text: string): void
   previewCancel(): void

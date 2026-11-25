@@ -82,6 +82,7 @@ const api: SpeakApi = {
 
   onPreview: listen('preview'),
   previewReady: () => send('previewReady'),
+  previewDraft: (text) => send('previewDraft', text),
   previewInsert: (text) => send('previewInsert', text),
   previewCopy: (text) => send('previewCopy', text),
   previewCancel: () => send('previewCancel'),

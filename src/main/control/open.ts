@@ -12,6 +12,8 @@ import { isMac, isWin, run, shellEnv, which } from '../util'
  */
 export async function openApp(name: string, background: boolean): Promise<void> {
   if (isWin) {
+    // cmd.exe reads its own signs in the name: "notepad&calc" would start both, and anything else.
+    if (/[&|<>^%!"()\r\n]/.test(name)) throw new Error(`"${name}" is not an app's name.`)
     const r = await run('cmd.exe', ['/d', '/c', 'start', '""', name], { timeoutMs: 10_000 })
     if (r.code !== 0) throw new Error(`Could not open "${name}": ${r.stderr.trim() || `exit ${r.code}`}`)
     return

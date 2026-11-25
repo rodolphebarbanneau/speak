@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events'
 import { homedir } from 'node:os'
 import { isAbsolute, resolve } from 'node:path'
 import { CONTROL_APPROVALS, CONTROL_SCOPES, languageName } from '../../shared/constants'
-import type { ControlAlwaysAsk, ControlAsk, ControlApproval, ControlScope, ControlState, ControlStep, Session } from '../../shared/types'
+import type { ControlAlwaysAsk, ControlAsk, ControlApproval, ControlRisk, ControlScope, ControlState, ControlStep, Session } from '../../shared/types'
 import { configStore } from '../config'
 import { history, newSessionId } from '../history'
 import { log } from '../log'
@@ -92,8 +92,12 @@ class Control extends EventEmitter implements ToolHost {
   private resumeWaiters: Array<() => void> = []
   /** The user stopped it: what it tries until their next message is refused. */
   private stopped = false
+  /** Counts the stops: what waited through one (for the user's hands) doesn't run after it. */
+  private stops = 0
+  /** The plan the user approved, for the order under way: a new order needs its own. */
   private planApproved = false
-  private always = new Set<string>()
+  /** What "always" approved for the session, each with the most risky action it covered. */
+  private always = new Map<string, ControlRisk>()
   private ops = new Map<string, FileOp>()
   /** Built-in actions of the CLI → their step. */
   private native = new Map<string, string>()
@@ -383,6 +387,8 @@ class Control extends EventEmitter implements ToolHost {
     this.stopped = false
     // A new order: they let it act again (what needs their hands still waits for them to be still).
     this.handsTaken = false
+    // Its plan is asked again: the one approved was for the order before.
+    this.planApproved = false
     if (this.paused) this.resume(true)
     this.orders.push(said)
     if (!this.agent) return void this.relaunch(said)
@@ -436,7 +442,7 @@ class Control extends EventEmitter implements ToolHost {
     const always = alwaysOf(req, because ? req.category : undefined)
     let ask = false
     if (req.risk !== 'look') {
-      if (always && this.always.has(always.key)) ask = false
+      if (always && covers(this.always.get(always.key), req.risk)) ask = false
       else if (because) ask = true
       else if (level === 'step') ask = true
       else if (level === 'plan') {
@@ -467,7 +473,7 @@ class Control extends EventEmitter implements ToolHost {
         }
       }
       if (answer.decision === 'always' && always) {
-        this.always.add(always.key)
+        if (!covers(this.always.get(always.key), req.risk)) this.always.set(always.key, req.risk)
         this.addStep({ who: 'info', text: `${always.label}: approved for this session` })
       }
       // Approved after a stop: they want it.
@@ -559,12 +565,16 @@ class Control extends EventEmitter implements ToolHost {
    */
   async handsFree(what: string): Promise<boolean> {
     const free = () => !this.handsTaken && Date.now() - this.lastUserInput >= configStore.get().control.handsSeconds * 1000
+    // A stop while it waits ends the wait for good: the turn it ended may be over (and the stop
+    // forgotten) by the time the wait looks again.
+    const stops = this.stops
+    const going = () => this.state.active && !this.stopped && this.stops === stops
     if (!(await this.hold())) return false
-    if (free()) return true
+    if (free()) return going()
     this.state.hands = what
     this.state.tookOver = this.handsTaken || undefined
     this.refresh()
-    while (this.state.active && !this.stopped && !this.goAhead && !free()) {
+    while (going() && !this.goAhead && !free()) {
       await this.whilePaused()
       await new Promise((r) => setTimeout(r, 150))
       // A new order lets it go on (it then waits for still hands only).
@@ -577,7 +587,7 @@ class Control extends EventEmitter implements ToolHost {
     this.state.hands = undefined
     this.state.tookOver = undefined
     this.refresh()
-    return this.state.active && !this.stopped
+    return going()
   }
 
   /** The user lets it take the mouse and the keyboard now. */
@@ -681,6 +691,7 @@ class Control extends EventEmitter implements ToolHost {
   stop(): void {
     if (!this.state.active) return
     this.stopped = true
+    this.stops++
     for (const a of this.asks.splice(0)) a.resolve({ decision: 'no', message: 'The user stopped you.' })
     this.paused = false
     this.wake()
@@ -906,12 +917,18 @@ const OTHER: Record<string, string> = {
  * the action ("sending as you in Discord"). Paying and passwords are never approved in advance.
  */
 function alwaysOf(req: ActionRequest, category?: keyof ControlAlwaysAsk): { key: string; label: string } | undefined {
-  if (category === 'money' || category === 'secrets') return undefined
+  if (category === 'money' || category === 'secrets' || req.once) return undefined
   const i = req.key.indexOf(':')
   const kind = i < 0 ? req.key : req.key.slice(0, i)
   const rest = i < 0 ? '' : req.key.slice(i + 1)
   const app = IN_APP[kind] && rest ? rest.replace(/\.exe$/i, '') : ''
-  const what = app ? `${IN_APP[kind]} in ${app}` : kind === 'command' ? `running ${rest || 'commands'}` : (OTHER[kind] ?? `using ${req.key}`)
+  const what = app
+    ? `${IN_APP[kind]} in ${app}`
+    : kind === 'command'
+      ? `running ${rest.split('+').join(', ') || 'commands'}`
+      : kind === 'open app'
+        ? `opening ${rest}`
+        : (OTHER[kind] ?? `using ${req.key}`)
   if (!category) return { key: req.key, label: what }
   const item = ALWAYS_ASK_LABEL[category]
   return app ? { key: `${category}:${rest}`, label: `${item} in ${app}` } : { key: `${category}:${req.key}`, label: `${item} (${what})` }
@@ -948,12 +965,14 @@ function nativeRequest(a: NativeAction, abs?: string): ActionRequest {
     case 'command': {
       const command = Array.isArray(input.command) ? input.command.join(' ') : String(input.command ?? '')
       const category = /\b(rm|del|erase|rmdir|rd|remove-item|shred|format)\b/i.test(command) ? 'delete' : categoryOf(String(input.description ?? ''))
+      const programs = programsOf(command)
       return {
         title: String(input.description ?? '') || `run ${command.split(/\s+/)[0] ?? 'a command'}`,
         detail: command,
         risk: 'risky',
         category,
-        key: `command:${command.trim().split(/\s+/)[0] ?? ''}`
+        key: `command:${programs?.join('+') ?? ''}`,
+        once: !programs
       }
     }
     case 'file change':
@@ -964,5 +983,31 @@ function nativeRequest(a: NativeAction, abs?: string): ActionRequest {
 }
 
 const shortPath = (p: string) => p.split(/[\\/]/).slice(-2).join('/')
+
+const RISK_RANK: Record<ControlRisk, number> = { look: 0, change: 1, risky: 2 }
+
+/** Whether what "always" approved (at most that risky, or nothing) covers an action this risky. */
+function covers(approved: ControlRisk | undefined, risk: ControlRisk): boolean {
+  return approved !== undefined && RISK_RANK[risk] <= RISK_RANK[approved]
+}
+
+/**
+ * The programs a command line runs ("cd src && git status | head" → git, head), for what
+ * "always" approves: each of them, not the first word (usually cd). Null when that can't be
+ * told: a command inside it ($(…), backquotes), or a redirection that writes a file.
+ */
+function programsOf(command: string): string[] | null {
+  if (/\$\(|`|<\(|>\(|[<>]/.test(command)) return null
+  const programs = new Set<string>()
+  for (const part of command.split(/&&|\|\||[;|&\n]/)) {
+    const words = part.trim().split(/\s+/).filter(Boolean)
+    // Settings before the program (NAME=value) aren't programs; nor is changing folders.
+    while (words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0])) words.shift()
+    const program = words[0]?.replace(/^["']|["']$/g, '').toLowerCase()
+    if (!program || /^(cd|pushd|popd|set-location|sl|chdir)$/.test(program)) continue
+    programs.add(program)
+  }
+  return programs.size ? [...programs].sort() : null
+}
 
 export const control = new Control()

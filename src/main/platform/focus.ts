@@ -93,6 +93,29 @@ export async function captureFocus(): Promise<FocusTarget | null> {
 }
 
 /**
+ * Whether another window has come in front since `target` was captured, as far as the system
+ * tells (Windows, X11 with xdotool). False when it can't tell, or there was no target.
+ */
+export async function focusMoved(target: FocusTarget | null): Promise<boolean> {
+  try {
+    if (isWin && target?.handle) {
+      const w = loadWin32()
+      if (!w) return false
+      const now = w.GetForegroundWindow()
+      return !!now && w.address(now) !== w.address(target.handle)
+    }
+    if (isLinux && !isWayland && target?.xid && which('xdotool')) {
+      const r = await run('xdotool', ['getactivewindow'], { timeoutMs: 1500 })
+      const xid = r.stdout.trim()
+      return !!xid && xid !== target.xid
+    }
+  } catch (err) {
+    log.warn('focusMoved failed:', err)
+  }
+  return false
+}
+
+/**
  * Give keyboard focus back to the target window. `hideOwn` hides our dialog; on macOS
  * hiding the app is what returns focus to the previously active application.
  */

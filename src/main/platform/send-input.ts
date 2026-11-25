@@ -21,6 +21,7 @@ const EXTENDED = new Set<number>([VK.Insert])
 interface Win32Input {
   SendInput: (count: number, inputs: Buffer, size: number) => number
   MapVirtualKeyW: (code: number, type: number) => number
+  GetAsyncKeyState: (vk: number) => number
 }
 
 let win32: Win32Input | null | undefined
@@ -33,7 +34,8 @@ function load(): Win32Input | null {
     const user32 = koffi.load('user32.dll')
     win32 = {
       SendInput: user32.func('uint32 __stdcall SendInput(uint32 cInputs, const uint8_t *pInputs, int cbSize)'),
-      MapVirtualKeyW: user32.func('uint32 __stdcall MapVirtualKeyW(uint32 uCode, uint32 uMapType)')
+      MapVirtualKeyW: user32.func('uint32 __stdcall MapVirtualKeyW(uint32 uCode, uint32 uMapType)'),
+      GetAsyncKeyState: user32.func('int16 __stdcall GetAsyncKeyState(int vKey)')
     } as Win32Input
   } catch (err) {
     log.warn('SendInput unavailable:', err)
@@ -69,4 +71,19 @@ export function sendKeyCombo(key: number, modifiers: number[]): boolean | null {
   const sent = w.SendInput(events.length, buf, INPUT_SIZE)
   if (sent !== events.length) log.warn(`SendInput delivered ${sent} of ${events.length} key events (synthetic input blocked?)`)
   return sent === events.length
+}
+
+const MAPVK_VSC_TO_VK_EX = 3
+
+/**
+ * Whether a key is down right now, as Windows sees the keyboard, by its libuiohook key code (a
+ * scan code, 0x0E00 marking the extended keys that Windows marks 0xE000). Null when unknown.
+ */
+export function keyIsDown(code: number): boolean | null {
+  const w = load()
+  if (!w) return null
+  const scan = code & 0x0e00 ? 0xe000 | (code & 0xff) : code
+  const vk = w.MapVirtualKeyW(scan, MAPVK_VSC_TO_VK_EX)
+  if (!vk) return null
+  return (w.GetAsyncKeyState(vk) & 0x8000) !== 0
 }

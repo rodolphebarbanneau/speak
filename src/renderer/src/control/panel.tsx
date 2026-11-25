@@ -19,9 +19,14 @@ const STATUS: Record<ControlStatus, { label: string; tone: string }> = {
 
 /** Soft cues: something waits for you (rising), a task is done (the dictation's "done"). */
 let audio: AudioContext | null = null
+let audioRest = 0
 function chime(kind: 'ask' | 'done'): void {
   audio ??= new AudioContext()
   const c = audio
+  if (c.state === 'suspended') void c.resume()
+  // Asleep once the notes are over: a sound player left running keeps the audio device and a thread busy.
+  clearTimeout(audioRest)
+  audioRest = window.setTimeout(() => void c.suspend(), 1000)
   const notes = kind === 'ask' ? [587, 880] : [784, 1046]
   notes.forEach((freq, i) => {
     const osc = c.createOscillator()
@@ -229,10 +234,14 @@ export function ControlPanel() {
     void api.getConfig().then(setConfig)
     return api.onConfig(setConfig)
   }, [])
+  // The session's clock ticks during a session: the panel stays loaded, hidden, after one ends.
+  const ticking = !!state && state.status !== 'ended'
   useEffect(() => {
+    if (!ticking) return
+    setNow(Date.now())
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
-  }, [])
+  }, [ticking])
   // A cue when it starts waiting for you (an approval, a question), and when a task is done.
   const previous = useRef<ControlStatus | null>(null)
   useEffect(() => {

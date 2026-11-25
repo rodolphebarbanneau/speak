@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { CONTROL_APPROVALS, CONTROL_SCOPES, FORMATS, LANGUAGES, MODES, spokenLanguages } from '@shared/constants'
-import type { ClipboardInfo, Config, DeepPartial, Mode, OutputMode, OverlayState } from '@shared/types'
+import type { ClipboardInfo, Config, DeepPartial, Mode, OutputMode, OverlayState, RecorderCommand } from '@shared/types'
 import { PillDecor } from '@themes/components'
 import { Boundary, Spinner } from '../components/ui'
 import { CONTEXT_KINDS, ipcError, shorten } from '../lib/format'
 import { microphoneError } from '../lib/microphone'
-import { cancelCapture, pauseCapture, playSound, setLevelListener, startCapture, stopCapture } from './recorder'
+import { cancelCapture, pauseCapture, playSound, setLevelListener, startCapture, stopCapture, Superseded } from './recorder'
 
 const api = window.speak
 const LEVELS = 10
+/** Longest a microphone order waits for the one before it (see the recorder's commands). */
+const ORDER_WAIT_MS = 10_000
 /** Bar heights, in eighths like the ▁…█ block characters. */
 const STEPS = 8
 
@@ -419,35 +421,47 @@ export function Overlay() {
     return () => setLevelListener(null)
   }, [])
 
-  useEffect(
-    () =>
-      api.onRecorderCommand(async (cmd) => {
-        if (cmd.type === 'sound') return playSound(cmd.name)
-        if (cmd.type === 'start') {
-          setLevels(Array(LEVELS).fill(0))
-          try {
-            if (cmd.sounds) playSound('start')
-            const device = await startCapture(cmd.deviceId, cmd.deviceLabel, (d) => api.recorderNoSignal(d))
-            api.recorderStarted(true, undefined, device)
-          } catch (err) {
-            api.recorderStarted(false, microphoneError(err))
-          }
-        } else if (cmd.type === 'stop') {
-          try {
-            const samples = await stopCapture()
-            api.recorderResult(cmd.reqId, samples)
-          } catch (err) {
-            api.recorderResult(cmd.reqId, null, (err as Error).message)
-          }
-        } else if (cmd.type === 'pause' || cmd.type === 'resume') {
-          pauseCapture(cmd.type === 'pause')
-          setLevels(Array(LEVELS).fill(0))
-        } else if (cmd.type === 'cancel') {
-          await cancelCapture()
+  useEffect(() => {
+    /**
+     * The microphone's orders, one after the other: a stop or a cancel that comes while the
+     * microphone is still opening waits for it, instead of finding nothing to stop and leaving it
+     * open. An order stuck on a microphone that never answers holds the next ones a few seconds
+     * at most (the recorder then drops that microphone when it comes).
+     */
+    let queue: Promise<unknown> = Promise.resolve()
+    const run = async (cmd: RecorderCommand): Promise<void> => {
+      if (cmd.type === 'start') {
+        setLevels(Array(LEVELS).fill(0))
+        try {
+          if (cmd.sounds) playSound('start')
+          const device = await startCapture(cmd.deviceId, cmd.deviceLabel, (d) => api.recorderNoSignal(d))
+          api.recorderStarted(true, undefined, device)
+        } catch (err) {
+          if (!(err instanceof Superseded)) api.recorderStarted(false, microphoneError(err))
         }
-      }),
-    []
-  )
+      } else if (cmd.type === 'stop') {
+        try {
+          const samples = await stopCapture()
+          api.recorderResult(cmd.reqId, samples)
+        } catch (err) {
+          api.recorderResult(cmd.reqId, null, (err as Error).message)
+        }
+      } else if (cmd.type === 'pause' || cmd.type === 'resume') {
+        pauseCapture(cmd.type === 'pause')
+        setLevels(Array(LEVELS).fill(0))
+      } else if (cmd.type === 'cancel') {
+        await cancelCapture()
+      }
+    }
+    return api.onRecorderCommand((cmd) => {
+      if (cmd.type === 'sound') return playSound(cmd.name)
+      const before = queue
+      // An order that throws mustn't leave the queue rejected: every later order would be skipped.
+      queue = Promise.race([before, new Promise((r) => setTimeout(r, ORDER_WAIT_MS))])
+        .then(() => run(cmd))
+        .catch((err) => console.error('Recorder order failed:', cmd.type, err))
+    })
+  }, [])
 
   useEffect(() => {
     if (state.phase !== 'recording') return

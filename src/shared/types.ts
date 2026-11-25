@@ -103,7 +103,7 @@ export interface Config {
   context: { current: string; recent: ContextSource[] }
   /** Control mode: what a new control session may touch, and when it asks first (both can change during it). */
   control: ControlConfig
-  /** Download updates in the background and install them when Speak quits. */
+  /** Download updates in the background and install them when Speak quits, or while the computer is left alone. */
   updates: { auto: boolean }
   /**
    * Speak's own bookkeeping, not settings. onboarded: the guided setup was finished or skipped (or
@@ -112,9 +112,11 @@ export interface Config {
    * themeOff: the season of the theme the user turned off by clicking its logo ("christmas-2026"),
    * off until the next season · formatBeforeNone: the format picking no ai provider switched to
    * verbatim, put back when an ai is picked again ('' when none was switched) · summoned: the
-   * secret theme the user summoned (src/themes/index.ts), shown until its logo sends it away.
+   * secret theme the user summoned (src/themes/index.ts), shown until its logo sends it away ·
+   * reopen: Speak quit to install an update while the computer was left alone, and starts again
+   * as it was ('tray', or 'main': its window open), quietly.
    */
-  state: { onboarded: boolean; lastVersion: string; themeOff: string; formatBeforeNone: Format | ''; summoned: string }
+  state: { onboarded: boolean; lastVersion: string; themeOff: string; formatBeforeNone: Format | ''; summoned: string; reopen: '' | 'tray' | 'main' }
 }
 
 /** The colors of Speak's windows. system: light or dark, as the computer is set. */
@@ -230,6 +232,8 @@ export interface PreviewState {
   session: Session
   busy: null | 'listening' | 'transcribing' | 'processing'
   error?: string
+  /** Why the preview opened instead of pasting, in paste mode. */
+  notice?: string
   /** Title of the window the text will be inserted into, when known. */
   targetTitle?: string
 }
@@ -345,6 +349,8 @@ export interface UpdateState {
   percent?: number
   error?: string
   checkedAt?: string
+  /** This build can't replace itself (a Mac build without Apple's signature): the new version is on the releases page. */
+  manual?: boolean
 }
 
 export interface AppInfo {

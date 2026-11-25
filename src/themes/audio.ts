@@ -18,6 +18,20 @@ const held = new Set<() => void>()
 let letGoAt = 0
 /** Longest a press holds its notes: a lost mouse-up mustn't leave one droning. */
 const MAX_HOLD_MS = 15_000
+/**
+ * The sound player sleeps this long after the last sound started, no press held: running, it keeps
+ * the audio device and a thread busy with silence. Longer than any sound and its reverb.
+ */
+const REST_AFTER_MS = 30_000
+let rest = 0
+
+function restLater(): void {
+  clearTimeout(rest)
+  rest = window.setTimeout(() => {
+    if (held.size) return restLater()
+    void ctx?.suspend()
+  }, REST_AFTER_MS)
+}
 
 export function setSoundsAllowed(on: boolean): void {
   allowed = on
@@ -73,6 +87,7 @@ function graph(): { c: AudioContext; out: GainNode } | null {
     master.connect(reverb).connect(wet).connect(ctx.destination)
   }
   if (ctx.state === 'suspended') void ctx.resume()
+  restLater()
   master!.gain.cancelScheduledValues(ctx.currentTime)
   master!.gain.setValueAtTime(1, ctx.currentTime)
   return { c: ctx, out: master! }
