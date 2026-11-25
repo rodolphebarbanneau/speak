@@ -68,6 +68,14 @@ export const MODELS: ModelDef[] = [
   { id: 'medium-q5_0', engine: 'whisper', file: 'ggml-medium-q5_0.bin', label: 'Whisper medium · Q5', sizeMB: 539, note: 'Good on CPU-only machines' },
   { id: 'small', engine: 'whisper', file: 'ggml-small.bin', label: 'Whisper small', sizeMB: 488, note: 'Fast, less accurate' },
   {
+    id: 'base-q5_1',
+    engine: 'whisper',
+    file: 'ggml-base-q5_1.bin',
+    label: 'Whisper base · Q5',
+    sizeMB: 57,
+    note: 'For slow computers: the fastest, the least accurate'
+  },
+  {
     id: 'parakeet-tdt-0.6b-v3-q8_0',
     engine: 'parakeet',
     file: 'ggml-parakeet-tdt-0.6b-v3-q8_0.bin',
@@ -84,6 +92,16 @@ export const MODELS: ModelDef[] = [
     note: 'Smaller download'
   }
 ].map((m) => ({ ...m, url: `${m.engine === 'whisper' ? WHISPER_HF : PARAKEET_HF}/${m.file}` }) as ModelDef)
+
+/**
+ * What the speed test runs (fit.ts): the smallest Whisper model, on eleven seconds of speech
+ * (whisper.cpp's own sample, a 1961 speech by John F. Kennedy, in the public domain). Both are
+ * downloaded for the test and deleted after it.
+ */
+export const PROBE = {
+  model: { file: 'ggml-tiny-q5_1.bin', url: `${WHISPER_HF}/ggml-tiny-q5_1.bin`, sizeMB: 32 },
+  sample: { file: 'speed-test.wav', url: `https://raw.githubusercontent.com/ggml-org/whisper.cpp/${WHISPER_CPP_TAG}/samples/jfk.wav`, seconds: 11 }
+}
 
 export const VAD_MODEL = {
   file: 'ggml-silero-v5.1.2.bin',

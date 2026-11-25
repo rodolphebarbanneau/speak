@@ -96,6 +96,7 @@ export function registerIpc(): void {
   handle('getEngineStatus', () => engine.status())
   handle('installBinary', (variant: BinaryVariant) => engine.installBinary(variant))
   handle('installModel', (id: string) => engine.installModel(id))
+  handle('fitSpeechModel', () => engine.fit())
   handle('deleteModel', (id: string) => engine.deleteModel(id))
   on('cancelDownload', (id: string) => downloads.cancel(id))
 

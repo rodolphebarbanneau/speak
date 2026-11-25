@@ -245,8 +245,22 @@ function SpeechStep({ speech, onSettings }: { speech: ReturnType<typeof useSpeec
           <span className="yellow">not installed</span>
         )}
       </Row>
-      <Row label="model" hint={model?.note?.toLowerCase() ?? 'what the engine recognizes speech with'}>
-        {model?.installed ? (
+      <Row
+        label="model"
+        hint={
+          speech.toFit
+            ? 'this computer has no gpu to transcribe on: a short speed test picks the model that keeps up with you here'
+            : speech.fit?.seconds
+              ? `picked for this computer's speed: about ${speech.fit.seconds} s for 10 s of speech`
+              : (model?.note?.toLowerCase() ?? 'what the engine recognizes speech with')
+        }
+      >
+        {speech.toFit ? (
+          <span>
+            <span className="yellow">to choose</span>
+            <span className="dim"> · after a speed test</span>
+          </span>
+        ) : model?.installed ? (
           <span>
             <span className="green">installed</span> <span className="dim">· {model.label.toLowerCase()}</span>
           </span>
@@ -264,7 +278,11 @@ function SpeechStep({ speech, onSettings }: { speech: ReturnType<typeof useSpeec
       </Row>
       {speech.downloading && (
         <Row label="download" hint="it goes on while you set up the rest" actions={<Action onClick={speech.cancel}>cancel</Action>}>
-          <Bar value={speech.received} total={speech.total} label={speech.extracting ? 'installing the engine…' : undefined} />
+          <Bar
+            value={speech.received}
+            total={speech.total}
+            label={speech.extracting ? 'installing the engine…' : speech.timing ? 'timing this computer…' : undefined}
+          />
         </Row>
       )}
       {!speech.ready && !speech.downloading && speech.canInstall && (

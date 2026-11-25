@@ -259,9 +259,19 @@ export interface EngineStatus {
   recommendedVariant?: BinaryVariant
   platformNote?: string
   gpu: { nvidia: boolean; name?: string }
+  /** Transcription runs on a GPU here (CUDA, Metal): any model keeps up, and no speed test is needed. */
+  accelerated: boolean
   models: ModelInfo[]
   vadInstalled: boolean
   serverRunning: boolean
+}
+
+/** The model the speed test chose for this computer (main/stt/fit.ts), now the selected one. */
+export interface SpeechFit {
+  engine: EngineId
+  model: string
+  /** How long that model should take here for ten seconds of speech; absent with a GPU (nothing was measured). */
+  seconds?: number
 }
 
 export interface DownloadProgress {

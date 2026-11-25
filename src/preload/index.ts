@@ -47,6 +47,7 @@ const api: SpeakApi = {
   getEngineStatus: () => invoke('getEngineStatus'),
   installBinary: (variant) => invoke('installBinary', variant),
   installModel: (id) => invoke('installModel', id),
+  fitSpeechModel: () => invoke('fitSpeechModel'),
   deleteModel: (id) => invoke('deleteModel', id),
   cancelDownload: (id) => send('cancelDownload', id),
   onDownload: listen('download'),

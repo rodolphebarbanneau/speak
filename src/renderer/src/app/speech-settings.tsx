@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import type { BinaryVariant, Config, DeepPartial, EngineId } from '@shared/types'
+import type { BinaryVariant, Config, DeepPartial, EngineId, SpeechFit } from '@shared/types'
 import { Dropdown } from '../components/dropdown'
-import { Action, Bar, Check, List, ListRow, Radio, Row, Sep, TextInput } from '../components/ui'
+import { Action, Bar, Check, List, ListRow, Radio, Row, Sep, Spinner, TextInput } from '../components/ui'
 import { ipcError, sizeMB } from '../lib/format'
 import { spokenOptions } from '../lib/languages'
 import type { TestVerdict } from '../lib/microphone'
@@ -51,6 +51,8 @@ function Recognition({ config, update }: { config: Config; update: Update }) {
   const downloads = useDownloads()
   const [variant, setVariant] = useState<BinaryVariant | ''>('')
   const [error, setError] = useState<string | null>(null)
+  const [fit, setFit] = useState<SpeechFit | null>(null)
+  const [fitting, setFitting] = useState(false)
   const t = config.speech
 
   if (!status) return null
@@ -63,6 +65,19 @@ function Recognition({ config, update }: { config: Config; update: Update }) {
     p.catch((e: Error) => !/cancel/i.test(e.message) && setError(ipcError(e))).finally(refresh)
   }
   const selectModel = (engine: EngineId, id: string) => update({ speech: { engine, models: { [engine]: id } } })
+  /** Time this computer, select the model that suits it and download it. */
+  const speedTest = () => {
+    setFitting(true)
+    run(
+      api
+        .fitSpeechModel()
+        .then((chosen) => {
+          setFit(chosen)
+          return api.installModel(chosen.model)
+        })
+        .finally(() => setFitting(false))
+    )
+  }
   const selected = (engine: EngineId) => t.models[engine]
 
   return (
@@ -128,6 +143,25 @@ function Recognition({ config, update }: { config: Config; update: Update }) {
 
       <section>
         <Sep>model</Sep>
+        {!status.accelerated && (
+          <Row
+            label="this computer"
+            hint="no gpu to transcribe on, so the heavier models can't keep up · the speed test times a short recording here and selects the best model that does (a 32 mb download, deleted after)"
+            actions={!fitting && <Action onClick={speedTest}>speed test</Action>}
+          >
+            {fitting ? (
+              <span>
+                <Spinner /> <span className="dim">timing…</span>
+              </span>
+            ) : fit?.seconds ? (
+              <span>
+                about {fit.seconds} s for 10 s of speech <span className="dim">· with the model it selected</span>
+              </span>
+            ) : (
+              <span className="dim">not timed</span>
+            )}
+          </Row>
+        )}
         <Row label="engine" hint="whisper handles mixed languages and your vocabulary best · parakeet is very fast even without a gpu (25 european languages)">
           <Dropdown<EngineId>
             value={t.engine}

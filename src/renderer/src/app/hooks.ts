@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AgentId, AgentStatus, Config, DeepPartial, DownloadProgress, EngineStatus } from '@shared/types'
+import { DEFAULT_CONFIG } from '@shared/constants'
+import type { AgentId, AgentStatus, Config, DeepPartial, DownloadProgress, EngineStatus, SpeechFit } from '@shared/types'
 import { ipcError } from '../lib/format'
 
 const api = window.speak
@@ -46,24 +47,42 @@ export function useEngineStatus(): [EngineStatus | null, () => void] {
 
 /**
  * Speech recognition as setup shows it: whisper.cpp and the selected model, one step, downloaded
- * together (installModel fetches the engine too when it's missing).
+ * together (installModel fetches the engine too when it's missing). On a computer with no GPU to
+ * transcribe on, a speed test first chooses the model (main/stt/fit.ts), unless the user already
+ * chose one.
  */
 export function useSpeechSetup(config: Config) {
   const [engine, refresh] = useEngineStatus()
   const downloads = useDownloads()
   const [error, setError] = useState<string | null>(null)
+  const [fit, setFit] = useState<SpeechFit | null>(null)
+  const [measuring, setMeasuring] = useState(false)
   const modelId = config.speech.models[config.speech.engine]
   const model = engine?.models.find((m) => m.id === modelId)
   const engineOk = !!engine?.binary.found
   const build = engine?.binaryOptions.find((o) => o.variant === engine.recommendedVariant)
-  const ids = ['binary', 'model:vad', `model:${modelId}`]
+  const untouched = config.speech.engine === DEFAULT_CONFIG.speech.engine && modelId === DEFAULT_CONFIG.speech.models[DEFAULT_CONFIG.speech.engine]
+  const toFit = !!engine && !engine.accelerated && untouched && !model?.installed && !fit
+  const ids = ['binary', 'model:vad', `model:${modelId}`, 'fit:model', 'fit:sample']
   const pending = ids.map((id) => downloads[id]).filter((d) => d && d.state !== 'error')
-  const install = () => {
+  const install = async () => {
     setError(null)
-    api
-      .installModel(modelId)
-      .catch((e: Error) => !/cancel/i.test(e.message) && setError(ipcError(e)))
-      .finally(refresh)
+    try {
+      let id = modelId
+      if (toFit) {
+        setMeasuring(true)
+        const chosen = await api.fitSpeechModel()
+        setFit(chosen)
+        setMeasuring(false)
+        id = chosen.model
+      }
+      await api.installModel(id)
+    } catch (e) {
+      if (!/cancel/i.test((e as Error).message)) setError(ipcError(e as Error))
+    } finally {
+      setMeasuring(false)
+      refresh()
+    }
   }
   return {
     engine,
@@ -73,13 +92,19 @@ export function useSpeechSetup(config: Config) {
     ready: engineOk && !!model?.installed,
     /** Without a downloadable engine build (e.g. macOS dev runs), settings → speech explains the options. */
     canInstall: engineOk || !!build,
-    downloading: pending.length > 0,
+    /** The speed test will choose the model: the one shown isn't the one to come. */
+    toFit,
+    /** What the speed test chose, once it ran. */
+    fit,
+    /** The speed test is timing this computer (its downloads are over). */
+    timing: measuring && pending.length === 0,
+    downloading: pending.length > 0 || measuring,
     received: pending.reduce((n, d) => n + d.received, 0),
     total: pending.reduce((n, d) => n + d.total, 0),
     extracting: pending.some((d) => d.state === 'extracting'),
-    /** What's left to download, in MB. */
-    installSize: (engineOk ? 0 : (build?.sizeMB ?? 0)) + (model?.installed ? 0 : (model?.sizeMB ?? 0)),
-    install,
+    /** What's left to download, in MB (not known before the speed test). */
+    installSize: toFit ? 0 : (engineOk ? 0 : (build?.sizeMB ?? 0)) + (model?.installed ? 0 : (model?.sizeMB ?? 0)),
+    install: () => void install(),
     cancel: () => pending.forEach((d) => api.cancelDownload(d.id)),
     error
   }

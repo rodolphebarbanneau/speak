@@ -25,6 +25,7 @@ import type {
   RecorderCommand,
   RecordingAction,
   Session,
+  SpeechFit,
   Style
 } from './types'
 import type { Palette, Season } from '../themes/shared'
@@ -79,6 +80,8 @@ export interface SpeakApi {
   getEngineStatus(): Promise<EngineStatus>
   installBinary(variant: BinaryVariant): Promise<void>
   installModel(id: string): Promise<void>
+  /** Time this computer and select the speech model that suits it (downloading it is installModel's). */
+  fitSpeechModel(): Promise<SpeechFit>
   deleteModel(id: string): Promise<void>
   cancelDownload(id: string): void
   onDownload(cb: (p: DownloadProgress) => void): () => void

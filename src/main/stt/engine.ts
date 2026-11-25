@@ -6,14 +6,15 @@ import { basename, dirname, join } from 'node:path'
 import { app } from 'electron'
 import extractZip from 'extract-zip'
 import * as tar from 'tar'
-import { LANGUAGES } from '../../shared/constants'
-import type { BinaryVariant, EngineId, EngineStatus } from '../../shared/types'
+import { DEFAULT_CONFIG, LANGUAGES, PARAKEET_LANGUAGES } from '../../shared/constants'
+import type { BinaryVariant, EngineId, EngineStatus, SpeechFit } from '../../shared/types'
 import { configStore } from '../config'
 import { downloads } from '../download'
 import { log } from '../log'
 import { paths } from '../paths'
 import { delay, findDirContaining, freePort, isLinux, isMac, isWin, lowerPriority, run, shellEnv, which } from '../util'
-import { binaryOption, binaryOptions, MODELS, VAD_MODEL, WHISPER_CPP_TAG, type ModelDef } from './catalog'
+import { binaryOption, binaryOptions, MODELS, PROBE, VAD_MODEL, WHISPER_CPP_TAG, type ModelDef } from './catalog'
+import { fitModel } from './fit'
 
 const exe = (name: string) => (isWin ? `${name}.exe` : name)
 const SERVER = exe('whisper-server')
@@ -137,9 +138,101 @@ class Engine {
       recommendedVariant: await this.recommendedVariant(),
       platformNote,
       gpu,
+      accelerated: await this.accelerated(),
       models: MODELS.map((m) => ({ ...m, installed: existsSync(this.modelPath(m)) })),
       vadInstalled: existsSync(this.vadPath()),
       serverRunning: !!this.server
+    }
+  }
+
+  /**
+   * Whether transcription runs on a GPU here: Metal on Apple silicon, CUDA with an NVIDIA card
+   * (the build installed, or the one that would be). A build of the user's own is taken to use
+   * the card when there's one.
+   */
+  async accelerated(): Promise<boolean> {
+    if (!configStore.get().speech.useGpu) return false
+    if (isMac) return process.arch === 'arm64'
+    const bin = await this.locateBinary()
+    const variant = bin ? (bin.variant ?? ((await this.detectGpu()).nvidia ? 'cuda' : 'cpu')) : await this.recommendedVariant()
+    return !!variant?.startsWith('cuda')
+  }
+
+  /**
+   * Choose the speech model for this computer, and select it. With a GPU, the recommended one.
+   * Without, the speed test: the smallest Whisper model transcribes a short recording, and how
+   * long it takes says which model keeps up here (fit.ts). The engine is installed first when it
+   * isn't; the test's model and recording are deleted after. Downloading the chosen model is
+   * installModel's.
+   */
+  async fit(): Promise<SpeechFit> {
+    const recommended = DEFAULT_CONFIG.speech.models.whisper
+    if (await this.accelerated()) {
+      configStore.update({ speech: { engine: 'whisper', models: { whisper: recommended } } })
+      return { engine: 'whisper', model: recommended }
+    }
+    if (!(await this.locateBinary()) && !downloads.isActive('binary')) {
+      const variant = await this.recommendedVariant()
+      if (variant) await this.installBinary(variant)
+    }
+    const bin = await this.locateBinary()
+    if (!bin || !existsSync(join(bin.dir, SERVER)))
+      throw new Error('The speed test needs the transcription engine (whisper.cpp): install it in Speak → settings → speech.')
+    const model = join(paths.tmp, PROBE.model.file)
+    const sample = join(paths.tmp, PROBE.sample.file)
+    try {
+      await Promise.all([
+        downloads.fetch('fit:model', 'Speed test model', PROBE.model.url, model),
+        downloads.fetch('fit:sample', 'Speed test recording', PROBE.sample.url, sample)
+      ])
+      const ms = await this.timeProbe(bin, model, await readFile(sample))
+      const { speech } = configStore.get()
+      // The language spoken, or the computer's when Speak is left to detect it.
+      const language = (speech.language === 'auto' ? app.getLocale() : speech.language).split('-')[0].toLowerCase()
+      const fit = fitModel(ms, PARAKEET_LANGUAGES.has(language) && existsSync(join(bin.dir, PARAKEET)))
+      log.info(
+        `Speed test: ${ms}ms for ${PROBE.sample.seconds}s of speech with the smallest model (${threads()} threads): ${fit.engine}/${fit.model}, about ${fit.seconds}s for 10s`
+      )
+      configStore.update({ speech: { engine: fit.engine, models: { [fit.engine]: fit.model } } })
+      return fit
+    } finally {
+      await Promise.all([rm(model, { force: true }), rm(sample, { force: true })])
+    }
+  }
+
+  /**
+   * How long the test's model takes for its recording, on the processor: a server of its own,
+   * started and stopped here, as a dictation's (same threads, same priority). The best of three:
+   * the first also loads the model, and another program may get in the way of one.
+   */
+  private async timeProbe(bin: BinaryLocation, model: string, wav: Buffer): Promise<number> {
+    const port = await freePort()
+    const args = ['-m', model, '--host', '127.0.0.1', '--port', String(port), '-t', String(threads()), '-nt', '-l', 'auto', '-ng']
+    const child = spawn(join(bin.dir, SERVER), args, { cwd: bin.dir, env: childEnv(bin.dir), windowsHide: true, stdio: 'ignore' })
+    lowerPriority(child)
+    let exited = false
+    child.on('exit', () => (exited = true))
+    child.on('error', () => (exited = true))
+    try {
+      for (const deadline = Date.now() + 60_000; ; await delay(100)) {
+        if (exited || Date.now() > deadline) throw new Error("The speed test's engine did not start.")
+        if (
+          await fetch(`http://127.0.0.1:${port}/health`).then(
+            (r) => r.ok,
+            () => false
+          )
+        )
+          break
+      }
+      let best = Infinity
+      for (let i = 0; i < 3; i++) {
+        const started = Date.now()
+        await this.infer(port, wav, { language: 'auto', signal: AbortSignal.timeout(120_000) })
+        best = Math.min(best, Date.now() - started)
+      }
+      return best
+    } finally {
+      child.kill()
     }
   }
 
@@ -252,6 +345,13 @@ class Engine {
   private async transcribeWhisper(wav: Buffer, model: string, bin: BinaryLocation, opts: TranscribeOptions): Promise<{ text: string; detected?: string }> {
     await this.ensureServer(model, bin)
     this.touch()
+    const result = await this.infer(this.serverPort, wav, opts)
+    this.touch()
+    return result
+  }
+
+  /** Have the whisper-server listening on `port` transcribe a recording. */
+  private async infer(port: number, wav: Buffer, opts: TranscribeOptions): Promise<{ text: string; detected?: string }> {
     const form = new FormData()
     form.append('file', new Blob([new Uint8Array(wav)], { type: 'audio/wav' }), 'audio.wav')
     // verbose_json also names the language it transcribed.
@@ -260,7 +360,7 @@ class Engine {
     form.append('temperature_inc', '0.2')
     form.append('language', opts.language || 'auto')
     if (opts.prompt) form.append('prompt', opts.prompt)
-    const res = await fetch(`http://127.0.0.1:${this.serverPort}/inference`, { method: 'POST', body: form, signal: opts.signal })
+    const res = await fetch(`http://127.0.0.1:${port}/inference`, { method: 'POST', body: form, signal: opts.signal })
     const body = await res.text()
     if (!res.ok) throw new Error(`Transcription failed (${res.status}): ${body.slice(0, 300)}`)
     let parsed: { text?: string; language?: string; error?: string }
@@ -270,7 +370,6 @@ class Engine {
       throw new Error(`Unexpected response from whisper-server: ${body.slice(0, 200)}`)
     }
     if (parsed.error) throw new Error(`Transcription failed: ${parsed.error}`)
-    this.touch()
     const auto = !opts.language || opts.language === 'auto'
     return { text: (parsed.text ?? '').trim(), detected: auto && parsed.language ? languageCode(parsed.language) : undefined }
   }
