@@ -7,7 +7,7 @@ import { seasons } from './season'
 import { resource } from './paths'
 import { log } from './log'
 import { dipToScreen, screenToDip } from './platform/coords'
-import { bringToFront, restoreMouseInput } from './platform/focus'
+import { bringToFront, raiseOnTop, restoreMouseInput } from './platform/focus'
 import { isMac, isWin } from './util'
 
 type View = 'overlay' | 'preview' | 'main' | 'loader' | 'control' | 'frame'
@@ -111,7 +111,7 @@ const OVERLAY_SIZE = { width: 760, height: 320 }
 let tracking = false
 
 /** What the pill did this session, for bug reports. */
-const pill = { shown: 0, last: '', reloads: [] as number[] }
+const pill = { shown: 0, sunk: 0, last: '', reloads: [] as number[] }
 let overlayGoneHandler: () => void = () => undefined
 
 /** Called when the pill's page stopped (its recording, if any, is lost) and is being reloaded. */
@@ -186,9 +186,11 @@ export function showOverlay(clickable = false): void {
   if (!overlay.isVisible()) {
     overlay.showInactive()
     restoreMouseInput(overlay)
+    const sunk = raiseOnTop(overlay)
+    if (sunk) pill.sunk++
     pill.shown++
     pill.last = `at ${bounds.x},${bounds.y} on ${displayOf(bounds)}`
-    log.info(`Pill shown ${pill.last}`)
+    log.info(`Pill shown ${pill.last}${sunk ? ' (it was behind other windows: brought back on top)' : ''}`)
   }
 }
 
@@ -199,6 +201,7 @@ export function pillState(): string {
   return [
     overlay.isVisible() ? `shown at ${b.x},${b.y} ${b.width}x${b.height} on ${displayOf(b)}` : 'hidden',
     `shown ${pill.shown} time${pill.shown === 1 ? '' : 's'} this session${pill.last ? `, last ${pill.last}` : ''}`,
+    pill.sunk ? `found behind other windows and brought back on top ${pill.sunk} time${pill.sunk === 1 ? '' : 's'}` : '',
     pill.reloads.length ? `reloaded after a crash ${pill.reloads.length} time${pill.reloads.length === 1 ? '' : 's'} in the last minute` : ''
   ]
     .filter(Boolean)
@@ -436,6 +439,7 @@ export function showControlPanel(avoid?: { x: number; y: number; w: number; h: n
     win.setBounds({ x: Math.round(best.x), y: Math.round(best.y), width: PANEL.width, height })
     win.showInactive()
     restoreMouseInput(win)
+    if (raiseOnTop(win)) log.info('The control panel was behind other windows: brought back on top')
   }
 }
 

@@ -25,6 +25,9 @@ interface Win32 {
   FindWindowExPtr: (parent: bigint, after: bigint, cls: string, title: string | null) => number | bigint
   IsWindowVisiblePtr: (h: number | bigint) => boolean
   ShowWindowPtr: (h: number | bigint, cmd: number) => boolean
+  GetWindowPtr: (h: number | bigint, cmd: number) => number | bigint
+  GetWindowLongPtr: (h: number | bigint, index: number) => number | bigint
+  SetWindowPosPtr: (h: number | bigint, after: number | bigint, x: number, y: number, cx: number, cy: number, flags: number) => boolean
 }
 
 let win32: Win32 | null | undefined
@@ -50,7 +53,10 @@ function loadWin32(): Win32 | null {
       BringWindowToTopPtr: user32.func('BringWindowToTop', 'bool', ['intptr_t']),
       FindWindowExPtr: user32.func('FindWindowExW', 'intptr_t', ['intptr_t', 'intptr_t', 'str16', 'str16']),
       IsWindowVisiblePtr: user32.func('IsWindowVisible', 'bool', ['intptr_t']),
-      ShowWindowPtr: user32.func('ShowWindow', 'bool', ['intptr_t', 'int'])
+      ShowWindowPtr: user32.func('ShowWindow', 'bool', ['intptr_t', 'int']),
+      GetWindowPtr: user32.func('GetWindow', 'intptr_t', ['intptr_t', 'uint32']),
+      GetWindowLongPtr: user32.func('GetWindowLongPtrW', 'intptr_t', ['intptr_t', 'int']),
+      SetWindowPosPtr: user32.func('SetWindowPos', 'bool', ['intptr_t', 'intptr_t', 'int', 'int', 'int', 'int', 'uint32'])
     } as unknown as Win32
   } catch (err) {
     log.warn('Win32 bindings unavailable:', err)
@@ -166,5 +172,41 @@ export function restoreMouseInput(win: BrowserWindow): void {
     if (child && !w.IsWindowVisiblePtr(child)) w.ShowWindowPtr(child, 4) // SW_SHOWNOACTIVATE
   } catch (err) {
     log.warn('restoreMouseInput failed:', err)
+  }
+}
+
+const WS_EX_TOPMOST = 0x8n
+
+/** Windows: whether an ordinary window is above this always-on-top one (which then shows behind it). */
+function sunk(w: Win32, hwnd: bigint): boolean {
+  let above = w.GetWindowPtr(hwnd, 3) // GW_HWNDPREV
+  for (let i = 0; above && i < 2000; i++) {
+    if (w.IsWindowVisiblePtr(above) && !(BigInt(w.GetWindowLongPtr(above, -20)) & WS_EX_TOPMOST)) return true // GWL_EXSTYLE
+    above = w.GetWindowPtr(above, 3)
+  }
+  return false
+}
+
+/**
+ * Windows: put an always-on-top window back above the others. While such a window is hidden,
+ * Windows can move it below the ordinary ones without taking its always-on-top flag away (seen
+ * after a day without a dictation: Speak's pill, and the hidden always-on-top windows of other
+ * apps with it). Showing a window without activating it leaves it where it is in that order, so
+ * the pill opened behind every other window, unseen, until Speak restarted. Call this after
+ * showing such a window. Returns whether the window had sunk.
+ */
+export function raiseOnTop(win: BrowserWindow): boolean {
+  if (!isWin) return false
+  const w = loadWin32()
+  try {
+    if (!w) throw new Error('no Win32 bindings')
+    const hwnd = win.getNativeWindowHandle().readBigUInt64LE(0)
+    const was = sunk(w, hwnd)
+    w.SetWindowPosPtr(hwnd, -1n, 0, 0, 0, 0, 0x13) // HWND_TOPMOST; SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
+    return was
+  } catch (err) {
+    log.warn('raiseOnTop failed:', err)
+    win.moveTop()
+    return false
   }
 }
