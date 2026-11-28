@@ -5,3 +5,6 @@ dist/
 .DS_Store
 vendor/whisper/*/*
 !vendor/whisper/*/.gitkeep
+
+# speak.brbnn.com, built by site/tools/build.mjs
+_site/

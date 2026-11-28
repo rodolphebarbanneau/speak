@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#ece7db" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f0f0d" media="(prefers-color-scheme: dark)" />
+    <meta name="format-detection" content="telephone=no" />
+    <title>Speak · Talk instead of typing</title>
+    <meta
+      name="description"
+      content="Speak is a free, open-source voice app for Windows, macOS and Linux. Hold a shortcut, talk the way you normally do, and Speak types what you meant, right where your cursor is, in any app. Your voice never leaves your computer."
+    />
+    <link rel="canonical" href="https://speak.brbnn.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://speak.brbnn.com/" />
+    <meta property="og:title" content="Speak · Talk instead of typing" />
+    <meta
+      property="og:description"
+      content="Say it the way it comes. Speak writes what you meant, right where your cursor is, in any app. Free and open source."
+    />
+    <meta property="og:image" content="https://speak.brbnn.com/assets/img/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Speak: talk instead of typing. The recording bar, and what you said turned into what you meant." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="assets/img/icon-256.png" />
+    <link rel="preload" href="assets/fonts/jetbrains-mono-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="assets/css/site.css" />
+    <script type="module" src="assets/js/site.js"></script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Speak",
+        "url": "https://speak.brbnn.com/",
+        "description": "Talk instead of typing, in any app. Voice dictation, composition and computer control, with speech recognition on your own computer.",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Windows, macOS, Linux",
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+        "codeRepository": "https://github.com/rodolphebarbanneau/speak"
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="top">
+      <div class="wrap top-in">
+        <a class="wm" href="#top" aria-label="Speak, back to the top">
+          <svg class="glyph" viewBox="0 0 76 56" aria-hidden="true" focusable="false">
+            <path class="g-b" d="M0 0h16v7H7v42h9v7H0zM76 0H60v7h9v42h-9v7h16z" />
+            <path class="g-d" d="M16 23h10v10H16zM33 23h10v10H33zM50 23h10v10H50z" />
+          </svg>
+          <span>Speak</span>
+        </a>
+        <nav class="nav" aria-label="On this page">
+          <a href="#modes">modes</a>
+          <a href="#privacy">privacy</a>
+          <a href="#download">download</a>
+          <a class="br" href="https://github.com/rodolphebarbanneau/speak">github <span aria-hidden="true">↗</span></a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- ───────────────────────────── hero ───────────────────────────── -->
+      <section class="hero wrap" id="top" aria-labelledby="h-hero">
+        <h1 id="h-hero">Talk instead of typing<span class="dot">.</span></h1>
+        <div class="hero-copy">
+          <p class="lead">Say it the way it comes. Speak writes what you meant, right where your cursor is, in any app.</p>
+
+          <div class="cta">
+            <a class="btn" id="dl-main" href="https://github.com/rodolphebarbanneau/speak/releases/latest">download speak <span aria-hidden="true">↓</span></a>
+            <a class="br" href="https://github.com/rodolphebarbanneau/speak">source <span aria-hidden="true">↗</span></a>
+          </div>
+          <p class="cta-note" id="dl-note">free and open source · Windows, macOS, Linux</p>
+
+          <ul class="modes-mini" role="list">
+            <li><span class="br-tag">dictate</span> writes what you said</li>
+            <li><span class="br-tag">compose</span> writes what you ask for</li>
+            <li><span class="br-tag">control</span> does what you ask</li>
+          </ul>
+        </div>
+
+        <!--
+          The demo. Without a script it shows the first example finished; site.js plays the
+          four in turn. Its moving parts are hidden from screen readers, which read the
+          example as one sentence instead (#demo-text).
+        -->
+        <figure class="demo" id="demo" aria-labelledby="demo-text">
+          <div class="demo-bar">
+            <div class="demo-tabs" role="group" aria-label="Examples">
+              <button type="button" class="tab" data-scene="0" aria-pressed="true">dictate</button>
+              <button type="button" class="tab" data-scene="1" aria-pressed="false">translate</button>
+              <button type="button" class="tab" data-scene="2" aria-pressed="false">compose</button>
+              <button type="button" class="tab" data-scene="3" aria-pressed="false">control</button>
+            </div>
+            <button type="button" class="demo-play" id="demo-play" hidden>pause</button>
+          </div>
+
+          <div class="stage" id="stage" aria-hidden="true">
+            <div class="win app">
+              <div class="win-t"><b>messages</b> · #launch</div>
+              <div class="win-b">
+                <p class="msg"><b>marc</b> Still on for the review Monday?</p>
+                <div class="field">Can we move the meeting to Tuesday at 3?<span class="caret"></span></div>
+              </div>
+            </div>
+            <p class="said" data-clean>
+              <span class="said-k">you said</span>
+              <span class="said-q"
+                ><span class="w drop">so um</span> <span class="w drop">can we,</span> <span class="w">can we move the meeting to</span>
+                <span class="w drop">Monday, no sorry,</span> <span class="w">Tuesday at three</span></span
+              >
+            </p>
+            <div class="pill" data-state="off">
+              <span class="p-dot"></span>
+              <span class="p-time">0:00</span>
+              <span class="p-lvl"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+              <span class="p-mode">dictate</span>
+              <span class="p-act"><span class="p-pause">❚❚</span><span class="p-ok">✓</span><span class="p-x">✕</span></span>
+            </div>
+          </div>
+
+          <figcaption class="demo-cap">
+            <span class="vh" id="demo-text"
+              >You say “so um can we, can we move the meeting to Monday, no sorry, Tuesday at three”. Speak types “Can we move the meeting to Tuesday at
+              3?”</span
+            >
+            <span aria-hidden="true">hold <kbd class="k-win">ctrl+shift+space</kbd><kbd class="k-mac">⌘⇧space</kbd> anywhere and talk</span>
+          </figcaption>
+        </figure>
+      </section>
+
+      <!-- ───────────────────────────── modes ───────────────────────────── -->
+      <section class="sec wrap" id="modes" aria-labelledby="h-modes">
+        <p class="rule-h"><span>modes</span></p>
+        <h2 id="h-modes">Three modes. Three shortcuts.</h2>
+        <p class="sub">
+          Hold a shortcut while you talk, or tap it to start and again to stop. A small bar at the bottom of the screen shows you’re being heard.
+        </p>
+
+        <ol class="modes" role="list">
+          <li class="mode">
+            <p class="mode-h"><span class="br-tag">dictate</span></p>
+            <h3>Writes what you said</h3>
+            <p>Your words, minus the “um”s, the repeats and the “no wait, I mean…”. Punctuation fixed, in any of 26 languages, or translated as you speak.</p>
+            <p class="keys"><kbd class="k-win">ctrl+shift+space</kbd><kbd class="k-mac">⌘⇧space</kbd></p>
+          </li>
+          <li class="mode">
+            <p class="mode-h"><span class="br-tag">compose</span></p>
+            <h3>Writes what you ask for</h3>
+            <p>
+              Describe the email, the reply, the release notes. Speak writes it from what you said, invents nothing, and leaves a <code>[placeholder]</code> for
+              what’s missing.
+            </p>
+            <p class="keys"><kbd class="k-win">ctrl+shift+alt+space</kbd><kbd class="k-mac">⌘⇧⌥space</kbd></p>
+          </li>
+          <li class="mode">
+            <p class="mode-h"><span class="br-tag">control</span></p>
+            <h3>Does what you ask</h3>
+            <p>“Reply to Marc that Thursday works.” “Tidy my desktop.” The AI does it on your computer, in the apps you use, and asks first, as you choose.</p>
+            <p class="keys"><kbd class="k-win">ctrl+shift+alt+enter</kbd><kbd class="k-mac">⌘⇧⌥enter</kbd></p>
+          </li>
+        </ol>
+      </section>
+
+      <!-- ───────────────────────────── formats ───────────────────────────── -->
+      <section class="sec wrap split" aria-labelledby="h-formats">
+        <div>
+          <p class="rule-h"><span>formats</span></p>
+          <h2 id="h-formats">Your words, the way you need them</h2>
+          <p class="sub">
+            Clean is the default. Pick another format on the bar while you talk, or later: every dictation stays in your history with its recording, ready to
+            redo in another format or language.
+          </p>
+        </div>
+
+        <div class="fmt">
+          <!-- Radio buttons, so the four formats switch without a script. -->
+          <input type="radio" name="fmt" id="f-clean" checked />
+          <input type="radio" name="fmt" id="f-verbatim" />
+          <input type="radio" name="fmt" id="f-structured" />
+          <input type="radio" name="fmt" id="f-summary" />
+          <div class="win">
+            <div class="win-t"><b>speak</b> · preview</div>
+            <div class="win-b">
+              <div class="fmt-tabs">
+                <span class="fmt-k">style</span>
+                <label for="f-clean">clean</label>
+                <label for="f-verbatim">verbatim</label>
+                <label for="f-structured">structured</label>
+                <label for="f-summary">summary</label>
+              </div>
+              <div class="fmt-outs">
+                <p class="out o-clean">
+                  For the launch, we need the landing page done by Friday. The pricing is fine; it’s the FAQ that needs work. And someone has to tell support
+                  about the new export. I think Marc can do that.
+                </p>
+                <p class="out o-verbatim">
+                  OK, so for the launch, um, we need the landing page done by Friday, and, uh, the pricing, no wait, the pricing is fine, it’s the FAQ that
+                  needs work, and someone has to tell support about the new export. I think Marc can do that.
+                </p>
+                <div class="out o-structured">
+                  <p>For the launch:</p>
+                  <ul>
+                    <li>The landing page, done by Friday.</li>
+                    <li>The FAQ needs work (the pricing is fine).</li>
+                    <li>Someone has to tell support about the new export. I think Marc can do that.</li>
+                  </ul>
+                </div>
+                <p class="out o-summary">Launch: landing page by Friday, FAQ to rework, and support to brief on the new export, probably by Marc.</p>
+              </div>
+              <p class="rule-h small"><span>transcript</span></p>
+              <p class="tx">
+                ok so for the launch, um, we need the landing page done by friday, and, uh, the pricing, no wait, the pricing is fine, it’s the FAQ that needs
+                work, and someone has to tell support about the new export, I think Marc can do that
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ───────────────────────────── control ───────────────────────────── -->
+      <section class="sec wrap split rev" aria-labelledby="h-control">
+        <div>
+          <p class="rule-h"><span>control</span></p>
+          <h2 id="h-control">It does it, and asks first</h2>
+          <p class="sub">
+            Say what to do. A panel stays on top: it shows what the AI says and does, asks for your approval, and lets you pause, stop or end at any time.
+          </p>
+          <dl class="facts">
+            <div>
+              <dt>What it may touch</dt>
+              <dd>
+                <b>app</b>: only the app in front. <b>screen</b>: any window, no files or commands. <b>full</b>: everything. Speak enforces it, not the AI.
+              </dd>
+            </div>
+            <div>
+              <dt>When it asks</dt>
+              <dd>Every step, once for the plan, when it’s risky, or never. Paying, passwords, deleting for good and sending as you always ask.</dd>
+            </div>
+            <div>
+              <dt>Keep working meanwhile</dt>
+              <dd>It clicks and types in the background, and waits for your hands to be still. Touch the mouse or keyboard, and it stops.</dd>
+            </div>
+            <div>
+              <dt>Undo</dt>
+              <dd>Files it moves, writes or trashes can be put back from the panel.</dd>
+            </div>
+          </dl>
+        </div>
+
+        <figure class="ctl-fig">
+          <div class="cpanel">
+            <div class="cp-h">
+              <span><span class="y">●</span> <span class="pu">control</span> · mail · asks the plan</span>
+              <span class="y">waiting for you 0:42</span>
+            </div>
+            <div class="cp-b">
+              <p class="cp-you">reply to Marc’s last email, tell him Thursday works</p>
+              <p class="cp-l"><span class="cp-m">·</span><span>looked at mail</span></p>
+              <p class="cp-l"><span class="cp-m g">ai</span><span>Found Marc’s email about the design review. I’ll answer that Thursday works.</span></p>
+              <p class="cp-l"><span class="cp-m g">✓</span><span>opened the reply</span></p>
+              <p class="cp-l">
+                <span class="cp-m g">✓</span><span>wrote the reply <span class="cp-s">Hi Marc, Thursday works for me. See you then!</span></span>
+              </p>
+              <div class="cp-ask">
+                <p class="y">approve? · always asks: sending as you</p>
+                <p class="cp-what">click Send</p>
+                <p class="cp-s">to Marc · Re: Design review</p>
+                <p><span class="g">[yes]</span> <span class="r">[no]</span> <span class="cp-s">· or say what to do instead</span></p>
+              </div>
+            </div>
+            <div class="cp-f">
+              <span>[● talk] <span class="cp-s">ctrl+shift+space</span></span>
+              <span><span class="cp-s">[pause]</span> [stop] <span class="r">[end]</span></span>
+            </div>
+          </div>
+          <figcaption class="vh">The control panel: the AI wrote a reply to Marc and asks for approval before sending it.</figcaption>
+        </figure>
+      </section>
+
+      <!-- ───────────────────────────── context & languages ───────────────────────────── -->
+      <section class="sec wrap duo" aria-label="Context and languages">
+        <div class="duo-c">
+          <p class="rule-h"><span>context</span></p>
+          <h2>It spells your project right</h2>
+          <p class="sub">
+            Point Speak at a folder, a git repository or a web page. Dictating, it writes names as your project does. Composing, the AI reads the files to write
+            the release notes or answer the issue. Read-only: nothing in your folders is changed.
+          </p>
+          <div class="ctx win">
+            <div class="win-b">
+              <p class="ctx-r">
+                <span class="ctx-k">context</span><span><span class="br-tag">folder</span> ~/code/shop</span>
+              </p>
+              <p class="ctx-r"><span class="ctx-k">spoken</span><span class="muted">the use auth hook returns null before login</span></p>
+              <p class="ctx-r">
+                <span class="ctx-k">written</span><span>The <code>useAuth</code> hook returns null before login.</span>
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="duo-c">
+          <p class="rule-h"><span>languages</span></p>
+          <h2>Talk in one language, write in another</h2>
+          <p class="sub">Dictate in any of 26 languages, and translate as you speak: talk in French, get English. Names and jargon go in your vocabulary.</p>
+          <ul class="langs" role="list">
+            <li>English</li>
+            <li>French</li>
+            <li>Spanish</li>
+            <li>German</li>
+            <li>Italian</li>
+            <li>Portuguese</li>
+            <li>Dutch</li>
+            <li>Polish</li>
+            <li>Swedish</li>
+            <li>Danish</li>
+            <li>Norwegian</li>
+            <li>Finnish</li>
+            <li>Czech</li>
+            <li>Romanian</li>
+            <li>Greek</li>
+            <li>Ukrainian</li>
+            <li>Russian</li>
+            <li>Turkish</li>
+            <li>Arabic</li>
+            <li>Hebrew</li>
+            <li>Hindi</li>
+            <li>Chinese</li>
+            <li>Japanese</li>
+            <li>Korean</li>
+            <li>Vietnamese</li>
+            <li>Indonesian</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ───────────────────────────── privacy ───────────────────────────── -->
+      <section class="sec wrap" id="privacy" aria-labelledby="h-privacy">
+        <p class="rule-h"><span>privacy</span></p>
+        <h2 id="h-privacy">Your voice stays on your computer</h2>
+        <ul class="tiles" role="list">
+          <li>
+            <h3>Transcribed right here</h3>
+            <p>Speech recognition runs on your own machine. Recordings are never uploaded.</p>
+          </li>
+          <li>
+            <h3>Your own AI</h3>
+            <p>The cleanup runs through the Claude Code or Codex you already have, signed in with your account. No API keys, no new subscription.</p>
+          </li>
+          <li>
+            <h3>No account, no servers</h3>
+            <p>Nothing to sign up for. Speak has no servers and no analytics.</p>
+          </li>
+          <li>
+            <h3>Your history is yours</h3>
+            <p>Kept in a <code>.speak</code> folder in your home. Turn it off, or choose how long it’s kept.</p>
+          </li>
+        </ul>
+        <p class="aside">
+          Only text goes to your AI provider: the transcript, and the context you choose. In control mode, pictures of what it acts on go too. Without an AI
+          provider, Speak types exactly what you said.
+        </p>
+      </section>
+
+      <!-- ───────────────────────────── download ───────────────────────────── -->
+      <section class="sec wrap" id="download" aria-labelledby="h-download">
+        <p class="rule-h"><span>download</span></p>
+        <h2 id="h-download">Get Speak</h2>
+        <p class="sub">Free and open source, under the MIT license. It updates itself.</p>
+        <p class="rel" id="dl-rel" hidden></p>
+
+        <div class="get">
+          <table class="builds">
+            <caption class="vh">
+              Installers of the latest release
+            </caption>
+            <thead class="vh">
+              <tr>
+                <th scope="col">System</th>
+                <th scope="col">Kind</th>
+                <th scope="col">Size</th>
+                <th scope="col">Download</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-build="windows x64 exe">
+                <th scope="row">Windows</th>
+                <td>installer, .exe</td>
+                <td class="sz"></td>
+                <td>
+                  <a class="br" href="https://github.com/rodolphebarbanneau/speak/releases/latest"
+                    ><span class="dl-w">download </span><span aria-hidden="true">↓</span></a
+                  >
+                </td>
+              </tr>
+              <tr data-build="mac arm64 dmg">
+                <th scope="row">macOS</th>
+                <td>Apple silicon, .dmg</td>
+                <td class="sz"></td>
+                <td>
+                  <a class="br" href="https://github.com/rodolphebarbanneau/speak/releases/latest"
+                    ><span class="dl-w">download </span><span aria-hidden="true">↓</span></a
+                  >
+                </td>
+              </tr>
+              <tr data-build="mac x64 dmg">
+                <th scope="row">macOS</th>
+                <td>Intel, .dmg</td>
+                <td class="sz"></td>
+                <td>
+                  <a class="br" href="https://github.com/rodolphebarbanneau/speak/releases/latest"
+                    ><span class="dl-w">download </span><span aria-hidden="true">↓</span></a
+                  >
+                </td>
+              </tr>
+              <tr data-build="linux x64 AppImage">
+                <th scope="row">Linux</th>
+                <td>AppImage</td>
+                <td class="sz"></td>
+                <td>
+                  <a class="br" href="https://github.com/rodolphebarbanneau/speak/releases/latest"
+                    ><span class="dl-w">download </span><span aria-hidden="true">↓</span></a
+                  >
+                </td>
+              </tr>
+              <tr data-build="linux x64 deb">
+                <th scope="row">Linux</th>
+                <td>Debian, Ubuntu, .deb</td>
+                <td class="sz"></td>
+                <td>
+                  <a class="br" href="https://github.com/rodolphebarbanneau/speak/releases/latest"
+                    ><span class="dl-w">download </span><span aria-hidden="true">↓</span></a
+                  >
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <ol class="steps" role="list">
+            <li>
+              <span class="k" aria-hidden="true">1</span>
+              <div>
+                <h3>Open it</h3>
+                <p>
+                  Speak lives in your system tray. A short setup downloads speech recognition (about 1 GB), tests your microphone and finds Claude Code or
+                  Codex.
+                </p>
+              </div>
+            </li>
+            <li>
+              <span class="k" aria-hidden="true">2</span>
+              <div>
+                <h3>Click into any text field</h3>
+                <p>Chat, email, documents, your code editor, an AI prompt box. Nothing to integrate.</p>
+              </div>
+            </li>
+            <li>
+              <span class="k" aria-hidden="true">3</span>
+              <div>
+                <h3>Hold <kbd class="k-win">ctrl+shift+space</kbd><kbd class="k-mac">⌘⇧space</kbd> and talk</h3>
+                <p>Let go, and your text appears where your cursor is.</p>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <ul class="notes" role="list">
+          <li><b>Windows</b> If Windows says “Windows protected your PC” on the first launch, click More info, then Run anyway.</li>
+          <li><b>macOS</b> 13.5 or later. Signed and notarized by Apple.</li>
+          <li><b>Linux</b> Control mode needs an X11 session. On Wayland, tap the shortcut to start and stop.</li>
+          <li><b>Speed</b> An NVIDIA graphics card or an Apple silicon Mac makes transcription almost instant.</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <div class="wrap foot-in">
+        <span class="foot-wm">
+          <svg class="glyph" viewBox="0 0 76 56" aria-hidden="true" focusable="false">
+            <path class="g-b" d="M0 0h16v7H7v42h9v7H0zM76 0H60v7h9v42h-9v7h16z" />
+            <path class="g-d" d="M16 23h10v10H16zM33 23h10v10H33zM50 23h10v10H50z" />
+          </svg>
+          Speak · MIT license
+        </span>
+        <span class="foot-links">
+          <a href="https://github.com/rodolphebarbanneau/speak">source</a>
+          <a href="https://github.com/rodolphebarbanneau/speak/releases">releases</a>
+          <a href="https://github.com/rodolphebarbanneau/speak/issues">report a bug</a>
+          <a href="https://brbnn.com">by brbnn</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

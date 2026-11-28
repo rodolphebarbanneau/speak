@@ -1,0 +1,142 @@
+<!doctype html>
+<!--
+  The social card, assets/img/og.png (1200 × 630). After a change, render it again:
+  "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --hide-scrollbars --window-size=1200,630 --screenshot=site/assets/img/og.png site/tools/og.html
+  (or Chrome, with the same flags).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Speak social card</title>
+    <link rel="stylesheet" href="../assets/css/site.css" />
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+      }
+      .card {
+        display: grid;
+        grid-template-columns: 1fr 470px;
+        gap: 56px;
+        height: 100%;
+        padding: 64px 72px;
+      }
+      .left {
+        display: grid;
+        align-content: space-between;
+      }
+      .wm {
+        font-size: 34px;
+        gap: 16px;
+      }
+      .wm .glyph {
+        width: 48px;
+      }
+      h1 {
+        font-size: 92px;
+        line-height: 1;
+        font-weight: 800;
+        letter-spacing: -0.035em;
+      }
+      h1 .dot {
+        color: var(--red);
+      }
+      .lead {
+        font-size: 24px;
+        max-width: none;
+      }
+      .right {
+        display: grid;
+        align-content: center;
+        gap: 22px;
+      }
+      .win {
+        font-size: 18px;
+      }
+      .field {
+        min-height: 0;
+      }
+      .said {
+        font-size: 18px;
+      }
+      .pill {
+        font-size: 20px;
+      }
+      .caret {
+        animation: none;
+      }
+      /* A still of a voice. */
+      .p-lvl i:nth-child(1) {
+        height: 35%;
+      }
+      .p-lvl i:nth-child(2) {
+        height: 70%;
+      }
+      .p-lvl i:nth-child(3) {
+        height: 45%;
+      }
+      .p-lvl i:nth-child(4) {
+        height: 100%;
+      }
+      .p-lvl i:nth-child(5) {
+        height: 60%;
+      }
+      .p-lvl i:nth-child(6) {
+        height: 85%;
+      }
+      .p-lvl i:nth-child(7) {
+        height: 30%;
+      }
+      .p-lvl i:nth-child(8) {
+        height: 75%;
+      }
+      .p-lvl i:nth-child(9) {
+        height: 50%;
+      }
+      .p-lvl i:nth-child(10) {
+        height: 25%;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="left">
+        <span class="wm">
+          <svg class="glyph" viewBox="0 0 76 56" aria-hidden="true">
+            <path class="g-b" d="M0 0h16v7H7v42h9v7H0zM76 0H60v7h9v42h-9v7h16z" />
+            <path class="g-d" d="M16 23h10v10H16zM33 23h10v10H33zM50 23h10v10H50z" />
+          </svg>
+          Speak
+        </span>
+        <h1>Talk instead of typing<span class="dot">.</span></h1>
+        <p class="lead">In any app, in your language, on your own computer.</p>
+      </div>
+      <div class="right">
+        <p class="said" data-clean>
+          <span class="said-k">you said</span>
+          <span class="said-q"
+            ><span class="w drop">so um</span> <span class="w drop">can we,</span> <span class="w">can we move the meeting to</span>
+            <span class="w drop">Monday, no sorry,</span> <span class="w">Tuesday at three</span></span
+          >
+        </p>
+        <div class="win">
+          <div class="win-t"><b>messages</b> · #launch</div>
+          <div class="win-b">
+            <div class="field">Can we move the meeting to Tuesday at 3?<span class="caret"></span></div>
+          </div>
+        </div>
+        <div class="pill" data-state="done">
+          <span class="p-dot"></span>
+          <span class="p-time">0:04</span>
+          <span class="p-lvl"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          <span class="p-mode">inserted</span>
+          <span class="p-act"><span class="p-ok">✓</span></span>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

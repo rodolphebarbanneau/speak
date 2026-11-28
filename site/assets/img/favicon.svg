@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- The app icon: [ ··· ] in paper and red on an ink tile, in scripts/generate-icons.mjs's proportions. -->
+  <rect x="4" y="4" width="92" height="92" rx="20" fill="#12110e" />
+  <g transform="translate(17.3 25.9) scale(0.86)">
+    <path fill="#ece7db" d="M0 0h16v7H7v42h9v7H0zM76 0H60v7h9v42h-9v7h16z" />
+    <path fill="#f0603c" d="M16 23h10v10H16zM33 23h10v10H33zM50 23h10v10H50z" />
+  </g>
+</svg>
