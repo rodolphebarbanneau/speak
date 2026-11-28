@@ -161,7 +161,7 @@ Speak follows your system's light or dark setting. You can also choose for yours
    - **Try it:** your first dictation, in a box inside the setup.
 3. **Talk.** Hold Ctrl+Shift+Space in any app.
 
-Speak isn't code-signed yet, so on the first launch Windows shows "Windows protected your PC" (click **More info → Run anyway**), and macOS asks for confirmation (Control-click Speak in Applications, then **Open**; on macOS 15 or later, open it once, then click **Open Anyway** in **System Settings → Privacy & Security**).
+On the first launch, Windows may show "Windows protected your PC": click **More info → Run anyway**. On a Mac, Speak is signed and notarized by Apple, and opens without a warning.
 
 Speak runs on any recent computer (on a Mac, macOS 13.5 or later). An NVIDIA graphics card or an Apple Silicon Mac makes transcription almost instant. Intel Macs transcribe on the processor.
 
