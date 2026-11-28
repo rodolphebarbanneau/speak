@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Package Speak for this runner's system and upload it to the draft release (release.yml). Signed
-# when the repository has that system's secrets and variables (docs/signing.md), else unsigned,
-# which macOS gets as an ad hoc signature. Sets SPEAK_SIGNED for scripts/check-release.mjs.
+# Package Speak for this runner's system and, for a tag, upload it to the draft release (release.yml).
+# Signed when the repository has that system's secrets and variables (docs/signing.md), else
+# unsigned, which macOS gets as an ad hoc signature. Sets SPEAK_SIGNED for scripts/check-release.mjs.
 set -eo pipefail
 
 fail() {
@@ -62,6 +62,12 @@ if [ "$RUNNER_OS" = Windows ]; then
   fi
 fi
 
+# Only a tag publishes. A run started by hand is a test build: electron-builder would otherwise
+# upload it to the release of package.json's version, which is already published.
+publish=never
+[ "$GITHUB_REF_TYPE" != tag ] || publish=always
+
 echo "SPEAK_SIGNED=$signed" >>"${GITHUB_ENV:-/dev/null}"
 echo "Signed: $([ $signed = 1 ] && echo yes || echo no)"
-npx electron-builder --publish always "${args[@]}"
+echo "Published: $([ $publish = always ] && echo "yes, to the draft release" || echo "no, a test build (kept as the run's artifacts)")"
+npx electron-builder --publish "$publish" "${args[@]}"

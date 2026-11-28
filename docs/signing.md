@@ -18,10 +18,14 @@ Release builds are signed once the repository has each system's secrets (**Setti
 
 The draft release is uploaded before the check runs. If the check fails, don't publish the draft.
 
+To try signing before a release, run the workflow by hand (**Actions → Release → Run workflow**, or `gh workflow run release.yml --ref <branch>`). It signs and checks the same way but publishes nothing: download its installers from the run's artifacts, kept for a week.
+
 ## macOS: Developer ID and notarization
 
 1. Join the [Apple Developer Program](https://developer.apple.com/programs/) (99 USD a year), as an individual or as an organization. An organization needs a D-U-N-S number.
 2. Create a **Developer ID Application** certificate. In Xcode, go to Settings → Accounts → Manage Certificates. Alternatively, use [Certificates](https://developer.apple.com/account/resources/certificates/list) on the developer site, with a request made in Keychain Access. Then, in Keychain Access, export the certificate with its private key as a `.p12` file protected by a password.
+
+   Without a Mac, OpenSSL does it: make a key and a request (`openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -aes-256-cbc -out id.key`, then `openssl req -new -key id.key -subj "/CN=<your name>" -out id.csr`), upload the request on the developer site, and bundle the `.cer` it returns with the key and Apple's [Developer ID G2 intermediate](https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer): `openssl pkcs12 -export -inkey id.key -in id.pem -certfile DeveloperIDG2CA.pem -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 -out cert.p12`, with the `.cer` files converted to PEM by `openssl x509 -inform DER`. The `-keypbe`, `-certpbe` and `-macalg` options pick the older encryption that macOS's keychain imports: it may refuse OpenSSL 3's default one, with "MAC verification failed".
 3. Pick a way to notarize:
    - **Apple ID**: create an app-specific password at [account.apple.com](https://account.apple.com) (Sign-In and Security). Your Team ID is under Membership details on the developer site.
    - **App Store Connect API key**: in App Store Connect, go to Users and Access → Integrations → Team Keys. Create a key with Developer access, download its `.p8` file (you can download it only once), and note its Key ID and the Issuer ID.

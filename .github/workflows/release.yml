@@ -60,7 +60,8 @@ jobs:
         run: npm run build
 
       # Signed once the repository has a system's secrets and variables (docs/signing.md), else
-      # unsigned (macOS: ad hoc). The script gives each system only its own.
+      # unsigned (macOS: ad hoc). The script gives each system only its own, and uploads to the
+      # draft release only for a tag.
       - name: Package & publish (draft release)
         shell: bash
         run: bash scripts/package-release.sh
@@ -93,3 +94,21 @@ jobs:
         shell: bash
         run: |
           if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a node scripts/check-release.mjs; else node scripts/check-release.mjs; fi
+
+      # A run started by hand (Actions → Release → Run workflow) publishes nothing: its installers
+      # are kept here a week, to try a build (a first signed one, say) before releasing it. Kept even
+      # when a check failed, to look into why.
+      - name: Keep the test build
+        if: ${{ !cancelled() && github.ref_type != 'tag' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: speak-${{ runner.os }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.deb
+            dist/latest*.yml
+          retention-days: 7
+          if-no-files-found: warn
